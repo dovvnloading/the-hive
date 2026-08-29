@@ -129,7 +129,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'bookshelfFilled', x: 47, baseline: 100, backWallRoomId: 'research', resourceId: 'archive-desk' },
   { asset: 'bookshelfB', x: 96, baseline: 100, backWallRoomId: 'research' },
   { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
-  { asset: 'floorLamp', x: 111, y: 126, baseline: 156, resourceId: 'archive-lamp' },
+  { asset: 'floorLamp', x: 226, y: 88, baseline: 118, resourceId: 'archive-lamp' },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
   { asset: 'deskRect', x: 146, y: 108, baseline: 140, resourceId: 'research-computer-a' },
   { asset: 'chairSouth', x: 164, y: 137, baseline: 159 },
@@ -141,7 +141,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'tableRound', x: 326, y: 126, baseline: 158, resourceId: 'command-table' },
   { asset: 'chairWest', x: 307, y: 129, baseline: 156 },
   { asset: 'chairEast', x: 382, y: 128, baseline: 156 },
-  { asset: 'plantSmall', x: 350, y: 96, baseline: 118, entityId: 'plant-command' },
+  { asset: 'plantSmall', x: 420, y: 78, baseline: 100, entityId: 'plant-command' },
 
   // Utility / Tools — four physically distinct workstations.
   { asset: 'deskRect', x: 455, y: 126, baseline: 158, resourceId: 'shell-console-a' },
@@ -152,7 +152,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 155, baseline: 177 },
   { asset: 'chairSouth', x: 633, y: 155, baseline: 177 },
   { asset: 'chairSouth', x: 697, y: 155, baseline: 177 },
-  { asset: 'plantSmall', x: 650, y: 96, baseline: 118, entityId: 'plant-tools' },
+  { asset: 'plantSmall', x: 456, y: 78, baseline: 100, entityId: 'plant-tools' },
 
   // Synthesis / Decisions — a small library salon and evidence table.
   { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
@@ -177,7 +177,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 633, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 697, y: 367, baseline: 389 },
-  { asset: 'plantSmall', x: 666, y: 320, baseline: 342, entityId: 'plant-build' },
+  { asset: 'plantSmall', x: 608, y: 394, baseline: 416, entityId: 'plant-build' },
 ];
 
 const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
@@ -617,13 +617,13 @@ function drawEnvironmentalLighting(
 
   const archiveLamp = effectiveEntityState(state, 'archive-lamp', now);
   if (archiveLamp.power === 'on') {
-    const taskGlow = context.createRadialGradient(119, 147, 3, 119, 147, 62);
+    const taskGlow = context.createRadialGradient(234, 109, 3, 234, 109, 62);
     taskGlow.addColorStop(0, 'rgba(255,211,121,.34)');
     taskGlow.addColorStop(0.55, 'rgba(239,172,82,.13)');
     taskGlow.addColorStop(1, 'rgba(239,172,82,0)');
     context.globalCompositeOperation = 'screen';
     context.fillStyle = taskGlow;
-    context.fillRect(52, 92, 136, 92);
+    context.fillRect(178, 64, 96, 104);
   }
   context.restore();
 }

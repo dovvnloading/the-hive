@@ -242,6 +242,10 @@ const ROOM_ROUTES: Record<
   },
 };
 
+const ENTITY_HUB_APPROACH_PATHS: Record<string, readonly Vec2[]> = {
+  'plant-tools': [{ x: 77.083, y: 25 }],
+};
+
 const PORTAL_TRANSFER_PAIRS = [
   ['spawn-lift', 'context-hub'],
   ['door-research', 'research-hub'],
@@ -332,6 +336,16 @@ export function buildArenaPath(
       fromStationId === route.hubId ||
       toStationId === route.hubId
     ) {
+      const entityId =
+        fromStationId === route.hubId ? toStationId : fromStationId;
+      const approach = ENTITY_HUB_APPROACH_PATHS[entityId];
+      if (approach) {
+        return compactPath(
+          fromStationId === route.hubId
+            ? [...approach, to]
+            : [...approach].reverse().concat(to),
+        );
+      }
       return compactPath(
         routeBetweenRoomEntityAndHub(
           from,
