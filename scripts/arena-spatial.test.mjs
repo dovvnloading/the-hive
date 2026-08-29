@@ -149,7 +149,7 @@ void test('all station slots and semantic edge routes clear static world geometr
   for (const slot of lift.slots) {
     const pixelY = (slot.y / 100) * 448;
     assert.equal(capsuleIsWorldLegal(slot), true);
-    assert.ok(pixelY >= 319 && pixelY <= 321);
+    assert.ok(pixelY >= 339 && pixelY <= 341);
   }
 });
 
@@ -167,8 +167,8 @@ void test('v3 back walls and the wall-anchored lift are not walkable floor', () 
     );
   }
   assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 52 }), true);
-  assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 73.661 }), true);
-  assert.equal(capsuleIsWorldLegal({ x: 53.125, y: 71.429 }), true);
+  assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 75.893 }), true);
+  assert.equal(capsuleIsWorldLegal({ x: 53.125, y: 75.893 }), true);
 });
 
 void test('world collision resolution rejects motion from a portal endpoint into its wall', () => {

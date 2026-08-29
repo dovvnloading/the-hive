@@ -132,18 +132,18 @@ const STATION_OVERFLOW_SLOTS: Record<string, Vec2[]> = {
   // tightened. Replay queues those residents along the clear centerline rather
   // than inventing a near-identical point that visually merges their sprites.
   'context-hub': [
-    { x: 49.1, y: 73.661 },
-    { x: 44.792, y: 81.25 },
+    { x: 49.1, y: 75.893 },
+    { x: 44.792, y: 83.1 },
   ],
   'context-kiosk': [
-    { x: 52.083, y: 84.821 },
-    { x: 56.25, y: 84.821 },
-    { x: 52.083, y: 92 },
+    { x: 43.75, y: 89.286 },
+    { x: 47.917, y: 89.286 },
+    { x: 43.75, y: 95 },
   ],
   commons: [
-    { x: 44.792, y: 86.607 },
     { x: 48.958, y: 86.607 },
-    { x: 44.792, y: 94 },
+    { x: 53.125, y: 86.607 },
+    { x: 53.125, y: 94 },
   ],
 };
 
@@ -231,8 +231,8 @@ const ROOM_ROUTES: Record<
   context: {
     hubId: 'context-hub',
     doorId: 'door-context',
-    centerX: 44.792,
-    aisleY: 84.821,
+    centerX: 50,
+    aisleY: 89.286,
   },
   build: {
     hubId: 'build-hub',
