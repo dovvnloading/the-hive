@@ -26,6 +26,7 @@ import type {
 const WORLD_WIDTH = 768;
 const WORLD_HEIGHT = 448;
 const BACK_WALL_HEIGHT = 64;
+const BACK_WALL_FURNITURE_OVERLAP = 4;
 const CHARACTER_SCALE = 2;
 const CHARACTER_FRAME_WIDTH = 16;
 const CHARACTER_FRAME_HEIGHT = 32;
@@ -120,9 +121,9 @@ const WALL_COLORS: Record<RoomId, { paper: string; panel: string }> = {
 
 const SCENE_PROPS: SceneProp[] = [
   // Research / Sources — full authored sprites, never arbitrary atlas cells.
-  { asset: 'bookshelfFilled', x: 47, baseline: 96, backWallRoomId: 'research', resourceId: 'archive-desk' },
-  { asset: 'bookshelfB', x: 96, baseline: 96, backWallRoomId: 'research' },
-  { asset: 'bookshelfC', x: 145, baseline: 96, backWallRoomId: 'research' },
+  { asset: 'bookshelfFilled', x: 47, baseline: 100, backWallRoomId: 'research', resourceId: 'archive-desk' },
+  { asset: 'bookshelfB', x: 96, baseline: 100, backWallRoomId: 'research' },
+  { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
   { asset: 'floorLamp', x: 111, y: 126, baseline: 156, resourceId: 'archive-lamp' },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
   { asset: 'deskRect', x: 146, y: 126, baseline: 158, resourceId: 'research-computer-a' },
@@ -146,8 +147,8 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 697, y: 155, baseline: 177 },
 
   // Synthesis / Decisions — a small library salon and evidence table.
-  { asset: 'bookshelfA', x: 48, baseline: 320, backWallRoomId: 'synthesis' },
-  { asset: 'bookshelfFilled', x: 97, baseline: 320, backWallRoomId: 'synthesis' },
+  { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
+  { asset: 'bookshelfFilled', x: 97, baseline: 324, backWallRoomId: 'synthesis' },
   { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
   { asset: 'tableRound', x: 119, y: 338, baseline: 370, resourceId: 'evidence-table' },
   { asset: 'armchairGreen', x: 178, y: 338, baseline: 368 },
@@ -567,7 +568,10 @@ function drawSceneProp(
     ? ROOMS.find((room) => room.id === prop.backWallRoomId)
     : undefined;
   const y = anchoredRoom
-    ? anchoredRoom.y + BACK_WALL_HEIGHT - height
+    ? anchoredRoom.y +
+      BACK_WALL_HEIGHT -
+      height +
+      BACK_WALL_FURNITURE_OVERLAP
     : (prop.y ?? 0);
   if (resourceIsActive(state, prop.resourceId)) {
     context.fillStyle = 'rgba(224,181,104,.16)';
