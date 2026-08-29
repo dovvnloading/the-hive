@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import {
+  FACILITY_PROPS,
   FACILITY_ROOMS,
   presentationFor,
   resourceById,
@@ -21,6 +22,7 @@ import type {
   AvatarProjection,
   RuntimeAgent,
   RuntimeEvent,
+  WorldEntityState,
 } from '@/lib/arena/agentic-types';
 
 const WORLD_WIDTH = 768;
@@ -110,6 +112,7 @@ type SceneProp = {
   baseline: number;
   backWallRoomId?: RoomId;
   resourceId?: string;
+  entityId?: string;
 };
 
 const WALL_COLORS: Record<RoomId, { paper: string; panel: string }> = {
@@ -132,11 +135,13 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 164, y: 155, baseline: 177 },
   { asset: 'deskSmall', x: 207, y: 126, baseline: 158, resourceId: 'research-computer-b' },
   { asset: 'chairSouth', x: 216, y: 155, baseline: 177 },
+  { asset: 'plantSmall', x: 37, y: 158, baseline: 180, entityId: 'plant-research' },
 
   // Command / Routing — a planning table beneath the mounted route board.
   { asset: 'tableRound', x: 326, y: 126, baseline: 158, resourceId: 'command-table' },
   { asset: 'chairWest', x: 307, y: 129, baseline: 156 },
   { asset: 'chairEast', x: 382, y: 128, baseline: 156 },
+  { asset: 'plantSmall', x: 350, y: 96, baseline: 118, entityId: 'plant-command' },
 
   // Utility / Tools — four physically distinct workstations.
   { asset: 'deskRect', x: 455, y: 126, baseline: 158, resourceId: 'shell-console-a' },
@@ -147,6 +152,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 155, baseline: 177 },
   { asset: 'chairSouth', x: 633, y: 155, baseline: 177 },
   { asset: 'chairSouth', x: 697, y: 155, baseline: 177 },
+  { asset: 'plantSmall', x: 650, y: 96, baseline: 118, entityId: 'plant-tools' },
 
   // Synthesis / Decisions — a small library salon and evidence table.
   { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
@@ -156,9 +162,11 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'armchairGreen', x: 178, y: 338, baseline: 368 },
   { asset: 'deskRect', x: 219, y: 338, baseline: 370, resourceId: 'publish-console' },
   { asset: 'chairSouth', x: 237, y: 367, baseline: 389 },
+  { asset: 'plantSmall', x: 37, y: 386, baseline: 408, entityId: 'plant-synthesis' },
 
   // Commons — a clear route from the north doorway to the anchored lift.
   { asset: 'deskSmall', x: 328, y: 366, baseline: 398, resourceId: 'context-kiosk' },
+  { asset: 'plantSmall', x: 421, y: 386, baseline: 408, entityId: 'plant-context' },
 
   // Build / Verify — workshop benches on the left, review desk on the right.
   { asset: 'deskRect', x: 455, y: 338, baseline: 370, resourceId: 'build-bench-a' },
@@ -169,6 +177,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 633, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 697, y: 367, baseline: 389 },
+  { asset: 'plantSmall', x: 666, y: 320, baseline: 342, entityId: 'plant-build' },
 ];
 
 const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
@@ -466,6 +475,159 @@ function resourceIsActive(state: AgentArenaState, resourceId?: string) {
   );
 }
 
+type StatefulFacilityProp = {
+  id: string;
+  kind: string;
+  initialState: WorldEntityState;
+  dynamics?: { kind: 'plant'; decayPerMinute: number };
+};
+
+const STATEFUL_PROPS = new Map(
+  (FACILITY_PROPS as unknown as readonly StatefulFacilityProp[]).map((prop) => [
+    prop.id,
+    prop,
+  ]),
+);
+
+const LIGHT_FIXTURES: Record<
+  RoomId,
+  { fixtureX: number; fixtureY: number; switchX: number; switchY: number }
+> = {
+  research: { fixtureX: 228, fixtureY: 72, switchX: 245, switchY: 87 },
+  command: { fixtureX: 422, fixtureY: 72, switchX: 439, switchY: 87 },
+  tools: { fixtureX: 708, fixtureY: 72, switchX: 725, switchY: 87 },
+  synthesis: { fixtureX: 286, fixtureY: 296, switchX: 303, switchY: 311 },
+  context: { fixtureX: 430, fixtureY: 296, switchX: 443, switchY: 311 },
+  build: { fixtureX: 706, fixtureY: 296, switchX: 723, switchY: 311 },
+};
+
+function runStartedAt(state: AgentArenaState) {
+  const started = state.events.find((event) => event.kind === 'run.started');
+  return started ? Date.parse(started.occurredAt) : Date.now();
+}
+
+function effectiveEntityState(
+  state: AgentArenaState,
+  entityId: string,
+  now: number,
+) {
+  const definition = STATEFUL_PROPS.get(entityId);
+  const projected = state.worldEntities.find((entity) => entity.id === entityId);
+  const stored = projected?.state ?? definition?.initialState ?? {};
+  if (definition?.dynamics?.kind !== 'plant') return stored;
+  const baseHydration = Number(
+    stored._hydrationBase ?? definition.initialState._hydrationBase ?? 0,
+  );
+  const rawBaseAt = String(
+    stored._hydrationBaseAt ??
+      definition.initialState._hydrationBaseAt ??
+      'run-start',
+  );
+  const parsedBaseAt =
+    rawBaseAt === 'run-start' ? runStartedAt(state) : Date.parse(rawBaseAt);
+  const elapsedMinutes = Math.max(
+    0,
+    (now - (Number.isFinite(parsedBaseAt) ? parsedBaseAt : now)) / 60_000,
+  );
+  const hydration = Math.max(
+    0,
+    baseHydration - elapsedMinutes * definition.dynamics.decayPerMinute,
+  );
+  return {
+    ...stored,
+    hydration,
+    condition:
+      hydration <= 0
+        ? 'dead'
+        : hydration < 25
+          ? 'wilted'
+          : hydration < 55
+            ? 'thirsty'
+            : 'healthy',
+  };
+}
+
+function roomLightIsOn(state: AgentArenaState, roomId: RoomId, now: number) {
+  return effectiveEntityState(state, `room-light-${roomId}`, now).power === 'on';
+}
+
+function drawRoomLightFixtures(
+  context: CanvasRenderingContext2D,
+  state: AgentArenaState,
+  now: number,
+) {
+  ROOMS.forEach((room) => {
+    const fixture = LIGHT_FIXTURES[room.id];
+    const powered = roomLightIsOn(state, room.id, now);
+    context.fillStyle = '#4b392c';
+    context.fillRect(fixture.fixtureX - 8, fixture.fixtureY - 3, 16, 7);
+    context.fillStyle = powered ? '#f2d58d' : '#665c4b';
+    context.fillRect(fixture.fixtureX - 5, fixture.fixtureY - 1, 10, 3);
+    context.fillStyle = 'rgba(35,25,18,.38)';
+    context.fillRect(fixture.switchX - 2, fixture.switchY - 3, 7, 9);
+    context.fillStyle = '#6d5845';
+    context.fillRect(fixture.switchX - 3, fixture.switchY - 5, 6, 10);
+    context.fillStyle = '#382b22';
+    context.fillRect(fixture.switchX - 2, fixture.switchY - 4, 4, 8);
+    context.fillStyle = powered ? '#d9b967' : '#777064';
+    context.fillRect(
+      fixture.switchX - 1,
+      fixture.switchY + (powered ? -3 : 1),
+      2,
+      3,
+    );
+  });
+}
+
+function drawEnvironmentalLighting(
+  context: CanvasRenderingContext2D,
+  state: AgentArenaState,
+  now: number,
+) {
+  context.save();
+  ROOMS.forEach((room) => {
+    const fixture = LIGHT_FIXTURES[room.id];
+    const powered = roomLightIsOn(state, room.id, now);
+    context.save();
+    context.beginPath();
+    context.rect(room.x + 3, room.y + 3, room.w - 6, room.h - 6);
+    context.clip();
+    if (!powered) {
+      context.fillStyle = 'rgba(8,11,17,.5)';
+      context.fillRect(room.x, room.y, room.w, room.h);
+    } else {
+      const glow = context.createRadialGradient(
+        fixture.fixtureX,
+        fixture.fixtureY + 24,
+        4,
+        fixture.fixtureX,
+        fixture.fixtureY + 34,
+        Math.max(room.w * 0.58, 112),
+      );
+      glow.addColorStop(0, 'rgba(255,225,157,.2)');
+      glow.addColorStop(0.5, 'rgba(234,183,106,.08)');
+      glow.addColorStop(1, 'rgba(234,183,106,0)');
+      context.globalCompositeOperation = 'screen';
+      context.fillStyle = glow;
+      context.fillRect(room.x, room.y, room.w, room.h);
+      context.globalCompositeOperation = 'source-over';
+    }
+    context.restore();
+  });
+
+  const archiveLamp = effectiveEntityState(state, 'archive-lamp', now);
+  if (archiveLamp.power === 'on') {
+    const taskGlow = context.createRadialGradient(119, 147, 3, 119, 147, 62);
+    taskGlow.addColorStop(0, 'rgba(255,211,121,.34)');
+    taskGlow.addColorStop(0.55, 'rgba(239,172,82,.13)');
+    taskGlow.addColorStop(1, 'rgba(239,172,82,0)');
+    context.globalCompositeOperation = 'screen';
+    context.fillStyle = taskGlow;
+    context.fillRect(52, 92, 136, 92);
+  }
+  context.restore();
+}
+
 const COMPUTER_SURFACES = new Set([
   'research-computer-a',
   'research-computer-b',
@@ -556,6 +718,53 @@ function drawSurfaceDetail(
   }
 }
 
+function drawLivingPlant(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  condition: string,
+) {
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  if (condition === 'dead') {
+    const potHeight = Math.min(10, height);
+    context.drawImage(
+      image,
+      0,
+      height - potHeight,
+      width,
+      potHeight,
+      x,
+      y + height - potHeight,
+      width,
+      potHeight,
+    );
+    context.fillStyle = '#76513a';
+    context.fillRect(x + Math.floor(width / 2), y + 7, 1, height - 14);
+    context.fillRect(x + Math.floor(width / 2) - 3, y + 11, 4, 1);
+    context.fillRect(x + Math.floor(width / 2), y + 15, 4, 1);
+    return;
+  }
+
+  const compression = condition === 'wilted' ? 5 : condition === 'thirsty' ? 2 : 0;
+  context.save();
+  context.globalAlpha = condition === 'wilted' ? 0.68 : condition === 'thirsty' ? 0.84 : 1;
+  context.drawImage(
+    image,
+    x,
+    y + compression,
+    width,
+    height - compression,
+  );
+  context.restore();
+  if (condition !== 'healthy') {
+    context.fillStyle = condition === 'wilted' ? '#9b6946' : '#b28a50';
+    context.fillRect(x + 3, y + 10 + compression, 3, 1);
+    context.fillRect(x + width - 6, y + 13 + compression, 3, 1);
+  }
+}
+
 function drawSceneProp(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
@@ -575,6 +784,14 @@ function drawSceneProp(
       height +
       BACK_WALL_FURNITURE_OVERLAP
     : (prop.y ?? 0);
+  if (prop.entityId?.startsWith('plant-')) {
+    const condition = String(
+      effectiveEntityState(state, prop.entityId, Date.now()).condition ??
+        'healthy',
+    );
+    drawLivingPlant(context, image, prop.x, y, condition);
+    return;
+  }
   if (resourceIsActive(state, prop.resourceId)) {
     context.fillStyle = 'rgba(224,181,104,.16)';
     context.fillRect(prop.x - 3, y - 3, width + 6, height + 6);
@@ -1017,7 +1234,9 @@ export function AgentArenaWorldV2({
 
     context.imageSmoothingEnabled = false;
     const bank = bankRef.current;
+    const environmentNow = bubbleNow || Date.now();
     drawArchitecture(context);
+    drawRoomLightFixtures(context, state, environmentNow);
     drawDepthSortedScene(
       context,
       bank,
@@ -1025,6 +1244,7 @@ export function AgentArenaWorldV2({
       agentsById,
       performance.now(),
     );
+    drawEnvironmentalLighting(context, state, environmentNow);
 
     labelContext.setTransform(1, 0, 0, 1, 0, 0);
     labelContext.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
@@ -1036,7 +1256,14 @@ export function AgentArenaWorldV2({
       labelContext.font = '10px ui-monospace, SFMono-Regular, Consolas, monospace';
       labelContext.fillText('Loading facility assets…', 31, 414);
     }
-  }, [agentsById, assetRevision, assetsReady, hoveredAgentId, state]);
+  }, [
+    agentsById,
+    assetRevision,
+    assetsReady,
+    bubbleNow,
+    hoveredAgentId,
+    state,
+  ]);
 
   function logicalPoint(event: CanvasPointEvent) {
     const bounds = event.currentTarget.getBoundingClientRect();

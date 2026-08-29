@@ -33,6 +33,7 @@ export type BoardAudience = 'broadcast' | 'direct';
 export type BoardAcknowledgementState = 'read' | 'acknowledged' | 'resolved';
 export type ProximitySpeechAct = 'say' | 'invite' | 'accept' | 'decline';
 export type CollaborationMode = 'collaborate' | 'recruit';
+export type AssignmentMode = 'directed' | 'self-directed';
 export type ToolCapability =
   | 'search'
   | 'browse'
@@ -99,7 +100,10 @@ export type RuntimeEvent =
       }
     >
   | EventEnvelope<'agent.spawned', { name: string; role: string }>
-  | EventEnvelope<'task.assigned', { objective: string }>
+  | EventEnvelope<
+      'task.assigned',
+      { objective: string; mode?: AssignmentMode }
+    >
   | EventEnvelope<
       'world.navigation',
       {
@@ -267,6 +271,7 @@ export type RuntimeAgent = {
   role: string;
   parentAgentId?: string;
   taskId?: string;
+  assignmentMode?: AssignmentMode;
   objective: string;
   phase: AgentPhase;
   status: RuntimeAgentStatus;
@@ -404,6 +409,7 @@ export type WorldEntityProjection = {
   state: WorldEntityState;
   stateVersion: number;
   lastChangedBy?: string;
+  lastChangedAt?: string;
 };
 
 export type RunStatus = 'booting' | 'running' | 'completed' | 'canceled';

@@ -36,6 +36,7 @@ Codex chat access loop:
 Agent lifecycle:
   spawn          --agent ID --name TEXT --role TEXT [--parent ID]
   assign         --agent ID --objective TEXT [--task ID]
+                 [--mode directed|self-directed]
   activity       --agent ID --phase PHASE --summary TEXT [--status working]
   complete       --agent ID --summary TEXT
   fail           --agent ID --error TEXT
@@ -100,7 +101,7 @@ const COMMAND_FLAGS = {
   intent: ['payload'],
   reset: ['objective', 'correlation'],
   spawn: ['agent', 'name', 'role', 'parent', 'task', 'correlation'],
-  assign: ['agent', 'objective', 'task', 'correlation'],
+  assign: ['agent', 'objective', 'task', 'mode', 'correlation'],
   activity: ['agent', 'phase', 'summary', 'status', 'task', 'correlation'],
   'tool-start': [
     'agent',
@@ -620,8 +621,21 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'assign':
       required(flags, 'agent', 'objective');
+      if (
+        flags.mode &&
+        !new Set(['directed', 'self-directed']).has(flags.mode)
+      ) {
+        throw new Error('--mode must be directed or self-directed');
+      }
       flags.task ||= identifier(`task_${flags.agent}`);
-      body = emitBody('task.assigned', { objective: flags.objective }, flags);
+      body = emitBody(
+        'task.assigned',
+        {
+          objective: flags.objective,
+          ...(flags.mode ? { mode: flags.mode } : {}),
+        },
+        flags,
+      );
       break;
     case 'activity':
       required(flags, 'agent', 'phase', 'summary');

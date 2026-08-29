@@ -1192,9 +1192,9 @@ void test('research computers, artifacts, and authenticated context remain agent
   const sageToken = await spawnAgent('sage', 'Sage', 'Research lead');
   const atlasToken = await spawnAgent('atlas', 'Atlas', 'Orchestrator');
 
-  for (const [agentId, objective] of [
-    ['sage', 'Research authoritative tool orchestration patterns'],
-    ['atlas', 'Coordinate the research and synthesis'],
+  for (const [agentId, objective, mode] of [
+    ['sage', 'Research authoritative tool orchestration patterns', 'directed'],
+    ['atlas', 'No imposed objective', 'self-directed'],
   ]) {
     assert.equal(
       (
@@ -1202,7 +1202,7 @@ void test('research computers, artifacts, and authenticated context remain agent
           kind: 'task.assigned',
           agentId,
           taskId: `task-${agentId}`,
-          payload: { objective },
+          payload: { objective, mode },
         })
       ).status,
       201,
@@ -1217,6 +1217,13 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.deepEqual(commandContext.sameRoomAgentIds, ['atlas']);
   assert.match(commandContext.brief, /AREA context/u);
   assert.ok(commandContext.brief.length < 240);
+
+  const selfDirectedContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', atlasToken),
+  );
+  assert.equal(selfDirectedContext.self.assignmentMode, 'self-directed');
+  assert.match(selfDirectedContext.brief, /MODE SELF-DIRECTED/u);
+  assert.match(selfDirectedContext.directive, /No task has been imposed/u);
 
   const beforeResearchSelection = await observe(origin, sageToken);
   const selected = await postEvent(origin, {
@@ -1358,6 +1365,67 @@ void test('research computers, artifacts, and authenticated context remain agent
   );
   assert.equal(conflictingRetry.status, 409);
   assert.match(await conflictingRetry.text(), /different action/u);
+
+  const atRoomLight = await walkTo(
+    origin,
+    sageToken,
+    'room-light-research',
+  );
+  const inspectedRoomLight = await interactAt(
+    origin,
+    sageToken,
+    atRoomLight,
+    'room-light-research',
+    'inspect',
+  );
+  assert.deepEqual(
+    inspectedRoomLight.observation.entities.find(
+      (entity) => entity.id === 'room-light-research',
+    ).known.affordances,
+    ['inspect', 'switch_on', 'switch_off'],
+  );
+  const ceilingLit = await interactAt(
+    origin,
+    sageToken,
+    inspectedRoomLight.observation,
+    'room-light-research',
+    'switch_on',
+  );
+  assert.equal(
+    ceilingLit.observation.entities.find(
+      (entity) => entity.id === 'room-light-research',
+    ).state.power,
+    'on',
+  );
+  assert.equal(ceilingLit.observation.place.light, 'warm');
+
+  const atPlant = await walkTo(origin, sageToken, 'plant-research');
+  const inspectedPlant = await interactAt(
+    origin,
+    sageToken,
+    atPlant,
+    'plant-research',
+    'inspect',
+  );
+  assert.deepEqual(
+    inspectedPlant.observation.entities.find(
+      (entity) => entity.id === 'plant-research',
+    ).known.affordances,
+    ['inspect', 'water', 'replace'],
+  );
+  const wateredPlant = await interactAt(
+    origin,
+    sageToken,
+    inspectedPlant.observation,
+    'plant-research',
+    'water',
+  );
+  const plantState = wateredPlant.observation.entities.find(
+    (entity) => entity.id === 'plant-research',
+  ).state;
+  assert.ok(plantState.hydration > 99.9);
+  assert.equal(plantState.condition, 'healthy');
+  assert.notEqual(plantState.lastWateredAt, 'never');
 
   let observation = await walkTo(origin, sageToken, 'research-computer-a');
   const engaged = await interactAt(

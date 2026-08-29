@@ -500,6 +500,7 @@ function applyRuntimeEvent(
     next = updateAgent(next, event.agentId, (agent) => ({
       ...agent,
       taskId: event.taskId,
+      assignmentMode: event.payload.mode ?? 'directed',
       objective: event.payload.objective,
       phase: 'planning',
       summary: 'Assignment received',
@@ -554,6 +555,7 @@ function applyRuntimeEvent(
               state: { ...event.payload.state },
               stateVersion: event.payload.stateVersion,
               lastChangedBy: event.agentId,
+              lastChangedAt: event.occurredAt,
             }
           : entity,
       ),

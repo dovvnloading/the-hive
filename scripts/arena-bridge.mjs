@@ -19,6 +19,7 @@ import process from 'node:process';
 
 import {
   AUTONOMY_DIRECTIVE,
+  SELF_DIRECTED_DIRECTIVE,
   FACILITY_PROPS,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
@@ -95,6 +96,7 @@ const BOARD_ACK_STATES = new Set(['read', 'acknowledged', 'resolved']);
 const BOARD_ACK_RANK = { read: 1, acknowledged: 2, resolved: 3 };
 const PROXIMITY_SPEECH_ACTS = new Set(['say', 'invite', 'accept', 'decline']);
 const COLLABORATION_MODES = new Set(['collaborate', 'recruit']);
+const ASSIGNMENT_MODES = new Set(['directed', 'self-directed']);
 const TOOL_CAPABILITIES = new Set([
   'search',
   'browse',
@@ -280,9 +282,10 @@ function assertPayload(kind, payload) {
         ? undefined
         : 'payload.name and payload.role are required';
     case 'task.assigned':
-      return hasText(payload, 'objective')
+      if (!hasText(payload, 'objective')) return 'payload.objective is required';
+      return payload.mode === undefined || ASSIGNMENT_MODES.has(payload.mode)
         ? undefined
-        : 'payload.objective is required';
+        : 'payload.mode must be directed or self-directed';
     case 'world.navigation':
       if (
         !hasText(payload, 'actionId') ||
@@ -1610,6 +1613,7 @@ function projectAgentStates() {
         name: event.payload.name,
         role: event.payload.role,
         objective: 'Waiting for an assignment',
+        assignmentMode: 'directed',
         taskId: undefined,
         phase: 'spawning',
         status: 'idle',
@@ -1631,6 +1635,7 @@ function projectAgentStates() {
     agent.lastSequence = event.sequence;
     if (event.kind === 'task.assigned') {
       agent.objective = event.payload.objective;
+      agent.assignmentMode = event.payload.mode ?? 'directed';
       agent.taskId = event.taskId;
       agent.phase = 'planning';
       agent.status = 'working';
@@ -1743,15 +1748,64 @@ function assertLocalBoardAccess(agentId) {
   }
 }
 
-function projectWorldEntityStates() {
+function plantCondition(hydration) {
+  if (hydration <= 0) return 'dead';
+  if (hydration < 25) return 'wilted';
+  if (hydration < 55) return 'thirsty';
+  return 'healthy';
+}
+
+function runStartedAt() {
+  return (
+    currentRunEvents().find((event) => event.kind === 'run.started')
+      ?.occurredAt ?? new Date().toISOString()
+  );
+}
+
+function effectiveEntityState(entity, stateValue, now = Date.now()) {
+  if (entity.dynamics?.kind !== 'plant') return { ...stateValue };
+  const baseHydration = Number(
+    stateValue._hydrationBase ?? entity.initialState._hydrationBase ?? 0,
+  );
+  const rawBaseAt =
+    stateValue._hydrationBaseAt ??
+    entity.initialState._hydrationBaseAt ??
+    'run-start';
+  const baseAt = rawBaseAt === 'run-start' ? runStartedAt() : rawBaseAt;
+  const elapsedMinutes = Math.max(0, (now - Date.parse(baseAt)) / 60_000);
+  const hydration = Math.max(
+    0,
+    Math.round(
+      (baseHydration - elapsedMinutes * entity.dynamics.decayPerMinute) * 10,
+    ) / 10,
+  );
+  return {
+    ...stateValue,
+    hydration,
+    condition: plantCondition(hydration),
+    minutesToDry: Math.max(
+      0,
+      Math.ceil(hydration / entity.dynamics.decayPerMinute),
+    ),
+  };
+}
+
+function publicEntityState(stateValue) {
+  return Object.fromEntries(
+    Object.entries(stateValue).filter(([key]) => !key.startsWith('_')),
+  );
+}
+
+function projectWorldEntityStates(now = Date.now()) {
   const projected = new Map(
     FACILITY_PROPS.map((entity) => [
       entity.id,
       {
         id: entity.id,
-        state: { ...entity.initialState },
+        state: effectiveEntityState(entity, entity.initialState, now),
         stateVersion: 0,
         lastChangedBy: undefined,
+        lastChangedAt: undefined,
       },
     ]),
   );
@@ -1759,9 +1813,15 @@ function projectWorldEntityStates() {
     if (event.kind !== 'world.interaction') continue;
     const entity = projected.get(event.payload.entityId);
     if (!entity) continue;
-    entity.state = { ...event.payload.state };
+    const definition = FACILITY_PROPS.find(
+      (candidate) => candidate.id === event.payload.entityId,
+    );
+    entity.state = definition
+      ? effectiveEntityState(definition, event.payload.state, now)
+      : { ...event.payload.state };
     entity.stateVersion = event.payload.stateVersion;
     entity.lastChangedBy = event.agentId;
+    entity.lastChangedAt = event.occurredAt;
   }
   return projected;
 }
@@ -2236,7 +2296,7 @@ function compileObservation(agentId, after = 0) {
       kind: entity.kind,
       bearing: bearingLabel(position, entity.position),
       range: rangeLabel(distance),
-      ...(projected ? { state: projected.state } : {}),
+      ...(projected ? { state: publicEntityState(projected.state) } : {}),
       ...(occupants.length > 0 ? { occupiedBy: occupants } : {}),
       ...(inspected
         ? {
@@ -2246,6 +2306,13 @@ function compileObservation(agentId, after = 0) {
                 `${entity.label} supports ${entity.capabilities.join(', ') || 'local use'}.`,
               ...(entity.capabilities.length > 0
                 ? { capabilities: entity.capabilities }
+                : {}),
+              ...(entity.interactions
+                ? {
+                    affordances: entity.interactions.map(
+                      (interaction) => interaction.verb,
+                    ),
+                  }
                 : {}),
             },
           }
@@ -2297,17 +2364,31 @@ function compileObservation(agentId, after = 0) {
       !latestAcknowledgement(message.payload.messageId, agentId),
   );
   const lamp = worldStates.get('archive-lamp');
+  const roomLight = worldStates.get(`room-light-${roomId}`);
   const light =
-    roomId === 'research'
-      ? lamp?.state.power === 'on'
+    roomLight?.state.power === 'on'
+      ? 'warm'
+      : roomId === 'research' && lamp?.state.power === 'on'
         ? 'task-lit'
-        : 'low'
-      : 'steady';
+        : 'low';
+  const localNeeds = entities.flatMap((entity) => {
+    if (entity.kind === 'plant') {
+      const condition = entity.state?.condition;
+      if (condition === 'dead') return [`${entity.id}:dead/replacement-possible`];
+      if (condition === 'wilted') return [`${entity.id}:wilted`];
+      if (condition === 'thirsty') return [`${entity.id}:thirsty`];
+    }
+    if (entity.kind === 'room-light' && entity.state?.power === 'off') {
+      return [`${entity.id}:off`];
+    }
+    return [];
+  });
   const observationId = sceneObservationId({
     self: {
       name: self.name,
       role: self.role,
       objective: self.objective,
+      assignmentMode: self.assignmentMode,
       taskId: self.taskId,
       phase: self.phase,
       status: self.status,
@@ -2322,6 +2403,7 @@ function compileObservation(agentId, after = 0) {
     locationId,
     roomId,
     light,
+    localNeeds,
     navigation,
     people: people
       .map((person) => ({ ...person }))
@@ -2344,7 +2426,7 @@ function compileObservation(agentId, after = 0) {
   });
   const lines = [
     `OBS HIVE/2 ${observationId} SEQ ${state.sequence}`,
-    `YOU ${self.name} | ${self.role} | assignment: ${self.objective}`,
+    `YOU ${self.name} | ${self.role} | ${self.assignmentMode === 'self-directed' ? 'self-directed; no imposed objective' : `assignment: ${self.objective}`}`,
     `HERE ${locationId} / ${room?.name ?? 'Central corridor'} | light:${light} | ${
       navigation
         ? `moving ${navigation.fromLocationId}->${navigation.toLocationId} until ${navigation.arrivesAt}`
@@ -2357,6 +2439,7 @@ function compileObservation(agentId, after = 0) {
     `INVITES ${invitations.length > 0 ? invitations.map((invitation) => `${invitation.invitationId} ${invitation.fromName}(${invitation.fromAgentId})->${invitation.toName}(${invitation.toAgentId}) ${invitation.mode}:${invitation.status} objective=${JSON.stringify(invitation.objective)}`).join(' ; ') : 'none'}`,
     `COLLAB ${collaborations.length > 0 ? collaborations.map((invitation) => `${invitation.invitationId} ${invitation.fromName}(${invitation.fromAgentId})+${invitation.toName}(${invitation.toAgentId}) ${invitation.mode} consent-recorded; shared work awaits an assignment`).join(' ; ') : 'none accepted'}`,
     `EXITS ${exits.length > 0 ? exits.map((exit) => `${exit.to}@${exit.bearing}/${exit.range}`).join(' ; ') : navigation ? 'none while moving' : 'none'}`,
+    `NEEDS ${localNeeds.length > 0 ? localNeeds.join(' ; ') : 'no obvious local urgency'}`,
     `SEE ${
       entities.length > 0
         ? entities
@@ -2406,6 +2489,7 @@ function compileObservation(agentId, after = 0) {
       name: self.name,
       role: self.role,
       assignment: self.objective,
+      assignmentMode: self.assignmentMode,
       locationId,
       engagedResourceId: self.engagedResourceId,
       navigation,
@@ -2414,6 +2498,7 @@ function compileObservation(agentId, after = 0) {
       id: roomId,
       name: room?.name ?? 'Central corridor',
       light,
+      needs: localNeeds,
     },
     people,
     talk,
@@ -2504,14 +2589,18 @@ function agentContext(agentId, after = 0) {
     runId: state.runId,
     sequence: state.sequence,
     after,
-    directive: AUTONOMY_DIRECTIVE,
-    brief: `AREA ${room.id} / ${room.name} | WITH ${withLabel} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
+    directive:
+      self.assignmentMode === 'self-directed'
+        ? SELF_DIRECTED_DIRECTIVE
+        : AUTONOMY_DIRECTIVE,
+    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | WITH ${withLabel} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
     observation: compileObservation(agentId, after),
     self: {
       id: self.id,
       name: self.name,
       role: self.role,
       taskId: self.taskId,
+      assignmentMode: self.assignmentMode,
       objective: self.objective,
       phase: self.phase,
       status: self.status,
@@ -2751,11 +2840,54 @@ function performWorldAction(agentId, body) {
           `${entity.label} cannot ${verb}: ${failedRequirement[0]} is ${currentState[failedRequirement[0]]}`,
         );
       }
-      if (interaction.set) {
+      if (interaction.effect === 'water_plant') {
+        if (currentState.condition === 'dead') {
+          throw httpError(
+            409,
+            `${entity.label} is dead; replace it before watering`,
+          );
+        }
+        const changedAt = new Date().toISOString();
+        nextState = {
+          ...currentState,
+          _hydrationBase: 100,
+          _hydrationBaseAt: changedAt,
+          hydration: 100,
+          condition: 'healthy',
+          minutesToDry: Math.ceil(
+            100 / Math.max(0.01, entity.dynamics?.decayPerMinute ?? 1),
+          ),
+          lastWateredAt: changedAt,
+        };
+        stateVersion += 1;
+      } else if (interaction.effect === 'replace_plant') {
+        if (currentState.condition !== 'dead') {
+          throw httpError(
+            409,
+            `${entity.label} is still living; replacement is not grounded`,
+          );
+        }
+        const changedAt = new Date().toISOString();
+        nextState = {
+          ...currentState,
+          _hydrationBase: 46,
+          _hydrationBaseAt: changedAt,
+          hydration: 46,
+          condition: 'thirsty',
+          minutesToDry: Math.ceil(
+            46 / Math.max(0.01, entity.dynamics?.decayPerMinute ?? 1),
+          ),
+          lastWateredAt: changedAt,
+        };
+        stateVersion += 1;
+      } else if (interaction.set) {
         nextState = { ...currentState, ...interaction.set };
         stateVersion += 1;
       }
-      result = interaction.result;
+      result =
+        entity.kind === 'plant' && verb === 'inspect'
+          ? `${interaction.result} It is ${currentState.condition} at ${currentState.hydration}% hydration; projected dry-out is ${currentState.minutesToDry} minutes.`
+          : interaction.result;
     }
 
     const event = appendEvent({
