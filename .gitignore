@@ -40,3 +40,7 @@ next-env.d.ts
 
 # local Codex arena event and intent journal
 /.arena/
+
+# downloaded asset-audit workspaces and rejected visual prototypes
+/.asset-audit-*/
+/public/assets/facility-v2/

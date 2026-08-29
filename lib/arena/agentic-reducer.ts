@@ -2,6 +2,7 @@ import {
   FACILITY_PROPS,
   buildArenaPath,
   inferToolCapability,
+  isFacilityPortalTransfer,
   resourceById,
   slotForAgent,
   stationById,
@@ -151,15 +152,16 @@ function routeAvatarToStation(
   const currentTarget = avatar.targetStationId ?? avatar.stationId;
   if (!stationId || stationId === currentTarget) return avatar;
 
-  const liftTransfer =
-    new Set([avatar.stationId, stationId]).has('spawn-lift') &&
-    new Set([avatar.stationId, stationId]).has('context-hub');
-  if (!avatar.isMoving && liftTransfer) {
+  const portalTransfer = isFacilityPortalTransfer(avatar.stationId, stationId);
+  if (!avatar.isMoving && portalTransfer) {
+    const includesLift = new Set([avatar.stationId, stationId]).has(
+      'spawn-lift',
+    );
     return {
       ...avatar,
       lastStationId: avatar.stationId,
       targetStationId: stationId,
-      routeDelayMs: 420,
+      routeDelayMs: includesLift ? 420 : 260,
       portalTransfer: true,
       path: [{ ...destination }],
       isMoving: true,

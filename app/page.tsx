@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { AgentArenaWorld } from '@/components/agent-arena-world';
+import { AgentArenaWorldV2 } from '@/components/agent-arena-world-v2';
 import {
   ArenaFieldJournal,
   type FieldJournalView,
@@ -28,7 +28,7 @@ export default function Home() {
 
   return (
     <main className="arena-app">
-      <AgentArenaWorld
+      <AgentArenaWorldV2
         state={arena.state}
         journalOpen={journalView !== undefined}
         onOpenJournal={(eventId) => openJournal('journal', eventId)}

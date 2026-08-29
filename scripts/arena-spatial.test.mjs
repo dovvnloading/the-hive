@@ -7,6 +7,7 @@ import {
   STATIONS,
   WORLD_EDGES,
   buildArenaPath,
+  isFacilityPortalTransfer,
   slotForAgent,
   stationById,
 } from '../lib/arena/agentic-catalog.ts';
@@ -111,10 +112,7 @@ void test('all station slots and semantic edge routes clear static world geometr
     for (const [fromId, toId] of [edge, [edge[1], edge[0]]]) {
       const fromStation = stationById(fromId);
       const toStation = stationById(toId);
-      const isLiftPortal =
-        new Set([fromId, toId]).has('spawn-lift') &&
-        new Set([fromId, toId]).has('context-hub');
-      if (isLiftPortal) {
+      if (isFacilityPortalTransfer(fromId, toId)) {
         assert.equal(capsuleIsWorldLegal(fromStation.slots[0]), true);
         assert.equal(capsuleIsWorldLegal(toStation.slots[0]), true);
         continue;
@@ -151,15 +149,15 @@ void test('all station slots and semantic edge routes clear static world geometr
   for (const slot of lift.slots) {
     const pixelY = (slot.y / 100) * 448;
     assert.equal(capsuleIsWorldLegal(slot), true);
-    assert.ok(pixelY >= 432 && pixelY <= 434);
+    assert.ok(pixelY >= 319 && pixelY <= 321);
   }
 });
 
-void test('visible commons walls and closed lift are not walkable floor', () => {
+void test('v3 back walls and the wall-anchored lift are not walkable floor', () => {
   const noWalkPoints = [
-    { id: 'west wall face', position: { x: 45, y: 64 } },
-    { id: 'east wall face', position: { x: 55, y: 64 } },
-    { id: 'closed lift', position: { x: 50, y: 86 } },
+    { id: 'north back wall', position: { x: 18.75, y: 10 } },
+    { id: 'south back wall', position: { x: 26, y: 60 } },
+    { id: 'closed lift face', position: { x: 53.125, y: 64 } },
   ];
   for (const sample of noWalkPoints) {
     assert.equal(
@@ -168,18 +166,21 @@ void test('visible commons walls and closed lift are not walkable floor', () => 
       `${sample.id} was incorrectly classified as floor`,
     );
   }
-  assert.equal(capsuleIsWorldLegal({ x: 50, y: 57.143 }), true);
-  assert.equal(capsuleIsWorldLegal({ x: 50, y: 75 }), true);
+  assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 52 }), true);
+  assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 73.661 }), true);
+  assert.equal(capsuleIsWorldLegal({ x: 53.125, y: 71.429 }), true);
 });
 
-void test('world collision resolution rejects a capsule displaced into a doorway jamb', () => {
-  const previous = avatar('vesper', { x: 50, y: 57.143 });
+void test('world collision resolution rejects motion from a portal endpoint into its wall', () => {
+  const previous = avatar('vesper', { x: 44.792, y: 52 });
   const proposed = {
     ...previous,
-    position: { x: 47.5, y: 57.143 },
+    position: { x: 49, y: 60 },
     isMoving: true,
   };
-  assert.ok(worldCollisionIds(proposed.position).some((id) => id.includes('jamb')));
+  assert.ok(
+    worldCollisionIds(proposed.position).includes('back-wall-context-east'),
+  );
   const [resolved] = resolveAvatarCollisions([previous], [proposed], 32);
   assert.equal(capsuleIsWorldLegal(resolved.position), true);
   assert.notDeepEqual(resolved.position, proposed.position);
@@ -309,6 +310,26 @@ void test('navigation owns location until arrival and reassignment restores the 
     assert.equal(state.agents[0].navigation, undefined);
     assert.equal(state.avatars[0].stationId, 'context-hub');
     assert.equal(state.avatars[0].isMoving, false);
+
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        8,
+        'world.navigation',
+        {
+          actionId: 'move-door',
+          observationId: 'obs-door',
+          fromLocationId: 'context-hub',
+          toLocationId: 'door-context',
+          startedAt: new Date(base + 70_100).toISOString(),
+          arrivesAt: new Date(base + 71_000).toISOString(),
+        },
+        { agentId: 'sage' },
+      ),
+    });
+    assert.equal(state.avatars[0].portalTransfer, true);
+    assert.equal(state.avatars[0].routeDelayMs, 260);
+    assert.equal(capsuleIsWorldLegal(state.avatars[0].position), true);
   } finally {
     await vite.close();
   }

@@ -70,33 +70,15 @@ function capsuleInsideNavigableBounds(position: Vec2) {
   const point = pixelPoint(position);
   const geometry = FACILITY_COLLISION_GEOMETRY;
   const shell = geometry.shell;
-  const landing = geometry.exteriorLanding;
   const left = point.x - WORLD_CAPSULE_RADIUS_PX;
   const right = point.x + WORLD_CAPSULE_RADIUS_PX;
   const top = point.y - WORLD_CAPSULE_HALF_HEIGHT_PX;
   const bottom = point.y + WORLD_CAPSULE_HALF_HEIGHT_PX;
-
-  if (top < shell.top || bottom > geometry.height) return false;
-  if (bottom <= shell.bottom) {
-    return left >= shell.left && right <= shell.right;
-  }
-  if (top >= shell.bottom) {
-    return (
-      left >= landing.x &&
-      right <= landing.x + landing.w &&
-      top >= landing.y &&
-      bottom <= landing.y + landing.h
-    );
-  }
-
-  // A capsule spanning the south wall must fit through the lift opening and
-  // remain over the exterior landing on its lower half.
-  const opening = geometry.liftOpening;
   return (
-    left >= opening.centerX - opening.width / 2 &&
-    right <= opening.centerX + opening.width / 2 &&
-    left >= landing.x &&
-    right <= landing.x + landing.w
+    left >= shell.left &&
+    right <= shell.right &&
+    top >= shell.top &&
+    bottom <= shell.bottom
   );
 }
 

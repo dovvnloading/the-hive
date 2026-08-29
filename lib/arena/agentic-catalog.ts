@@ -132,18 +132,18 @@ const STATION_OVERFLOW_SLOTS: Record<string, Vec2[]> = {
   // tightened. Replay queues those residents along the clear centerline rather
   // than inventing a near-identical point that visually merges their sprites.
   'context-hub': [
-    { x: 44.01, y: 75 },
-    { x: 55.99, y: 75 },
+    { x: 49.1, y: 73.661 },
+    { x: 44.792, y: 81.25 },
   ],
   'context-kiosk': [
-    { x: 50, y: 75 },
-    { x: 44.01, y: 75 },
-    { x: 55.99, y: 75 },
+    { x: 52.083, y: 84.821 },
+    { x: 56.25, y: 84.821 },
+    { x: 52.083, y: 92 },
   ],
   commons: [
-    { x: 50, y: 75 },
-    { x: 44.01, y: 75 },
-    { x: 55.99, y: 75 },
+    { x: 44.792, y: 86.607 },
+    { x: 48.958, y: 86.607 },
+    { x: 44.792, y: 94 },
   ],
 };
 
@@ -231,8 +231,8 @@ const ROOM_ROUTES: Record<
   context: {
     hubId: 'context-hub',
     doorId: 'door-context',
-    centerX: 50,
-    aisleY: 75,
+    centerX: 44.792,
+    aisleY: 84.821,
   },
   build: {
     hubId: 'build-hub',
@@ -241,6 +241,30 @@ const ROOM_ROUTES: Record<
     aisleY: 88,
   },
 };
+
+const PORTAL_TRANSFER_PAIRS = [
+  ['spawn-lift', 'context-hub'],
+  ['door-research', 'research-hub'],
+  ['door-command', 'command-hub'],
+  ['door-tools', 'tools-hub'],
+  ['door-synthesis', 'synthesis-hub'],
+  ['door-context', 'context-hub'],
+  ['door-build', 'build-hub'],
+] as const;
+
+const PORTAL_TRANSFER_KEYS = new Set(
+  PORTAL_TRANSFER_PAIRS.map(([left, right]) => [left, right].sort().join('|')),
+);
+
+export function isFacilityPortalTransfer(
+  fromStationId: string | undefined,
+  toStationId: string | undefined,
+) {
+  if (!fromStationId || !toStationId) return false;
+  return PORTAL_TRANSFER_KEYS.has(
+    [fromStationId, toStationId].sort().join('|'),
+  );
+}
 
 function routeBetweenRoomEntityAndHub(
   from: Vec2,
@@ -281,13 +305,9 @@ export function buildArenaPath(
   const toLocation = worldLocationById(toStationId);
   if (!fromLocation || !toLocation) return compactPath([{ ...to }]);
 
-  // The lift is a portal, not a walkable hallway. The reducer projects this
-  // semantic edge as a delayed transfer between two legal endpoints, so this
-  // path intentionally contains no intermediate floor points.
-  if (
-    new Set([fromStationId, toStationId]).has('spawn-lift') &&
-    new Set([fromStationId, toStationId]).has('context-hub')
-  ) {
+  // Doors and the lift are semantic portals, not walkable strips painted over
+  // wall art. The reducer delays then transfers between two legal endpoints.
+  if (isFacilityPortalTransfer(fromStationId, toStationId)) {
     return compactPath([{ ...to }]);
   }
 

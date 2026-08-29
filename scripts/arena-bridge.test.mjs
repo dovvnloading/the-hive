@@ -1121,7 +1121,7 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
     false,
   );
 
-  await walkTo(origin, tokens.sage, 'context-hub');
+  await walkTo(origin, tokens.sage, 'hall-east');
   const distantScene = await observe(origin, tokens.atlas);
   assert.equal(
     distantScene.talk.some((person) => person.id === 'sage'),
@@ -1135,7 +1135,10 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
     text: 'This should not cross the room at a distance.',
   });
   assert.equal(distantSpeech.status, 409);
-  assert.match((await json(distantSpeech)).error, /outside speaking range/u);
+  assert.match(
+    (await json(distantSpeech)).error,
+    /(outside speaking range|wall separates the two people)/u,
+  );
 });
 
 void test('research computers, artifacts, and authenticated context remain agent-authored', async (t) => {
