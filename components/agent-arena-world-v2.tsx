@@ -131,8 +131,8 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
   { asset: 'floorLamp', x: 111, y: 126, baseline: 156, resourceId: 'archive-lamp' },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
-  { asset: 'deskRect', x: 146, y: 126, baseline: 158, resourceId: 'research-computer-a' },
-  { asset: 'chairSouth', x: 164, y: 155, baseline: 177 },
+  { asset: 'deskRect', x: 146, y: 108, baseline: 140, resourceId: 'research-computer-a' },
+  { asset: 'chairSouth', x: 164, y: 137, baseline: 159 },
   { asset: 'deskSmall', x: 207, y: 126, baseline: 158, resourceId: 'research-computer-b' },
   { asset: 'chairSouth', x: 216, y: 155, baseline: 177 },
   { asset: 'plantSmall', x: 37, y: 158, baseline: 180, entityId: 'plant-research' },
@@ -160,8 +160,8 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
   { asset: 'tableRound', x: 119, y: 338, baseline: 370, resourceId: 'evidence-table' },
   { asset: 'armchairGreen', x: 178, y: 338, baseline: 368 },
-  { asset: 'deskRect', x: 219, y: 338, baseline: 370, resourceId: 'publish-console' },
-  { asset: 'chairSouth', x: 237, y: 367, baseline: 389 },
+  { asset: 'deskRect', x: 219, y: 320, baseline: 352, resourceId: 'publish-console' },
+  { asset: 'chairSouth', x: 237, y: 349, baseline: 371 },
   { asset: 'plantSmall', x: 37, y: 386, baseline: 408, entityId: 'plant-synthesis' },
 
   // Commons — a clear route from the north doorway to the anchored lift.
@@ -493,11 +493,11 @@ const LIGHT_FIXTURES: Record<
   RoomId,
   { fixtureX: number; fixtureY: number; switchX: number; switchY: number }
 > = {
-  research: { fixtureX: 228, fixtureY: 40, switchX: 196, switchY: 60 },
-  command: { fixtureX: 422, fixtureY: 40, switchX: 272, switchY: 60 },
-  tools: { fixtureX: 708, fixtureY: 40, switchX: 520, switchY: 60 },
+  research: { fixtureX: 228, fixtureY: 58, switchX: 196, switchY: 60 },
+  command: { fixtureX: 422, fixtureY: 58, switchX: 272, switchY: 60 },
+  tools: { fixtureX: 708, fixtureY: 58, switchX: 520, switchY: 60 },
   synthesis: { fixtureX: 256, fixtureY: 268, switchX: 202, switchY: 286 },
-  context: { fixtureX: 410, fixtureY: 268, switchX: 368, switchY: 286 },
+  context: { fixtureX: 384, fixtureY: 248, switchX: 368, switchY: 286 },
   build: { fixtureX: 520, fixtureY: 268, switchX: 646, switchY: 286 },
 };
 
