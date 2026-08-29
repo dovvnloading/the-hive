@@ -25,7 +25,7 @@ import type {
 
 const WORLD_WIDTH = 768;
 const WORLD_HEIGHT = 448;
-const BACK_WALL_HEIGHT = 40;
+const BACK_WALL_HEIGHT = 64;
 const CHARACTER_SCALE = 2;
 const CHARACTER_FRAME_WIDTH = 16;
 const CHARACTER_FRAME_HEIGHT = 32;
@@ -103,8 +103,9 @@ type FacilityAssetKey = keyof typeof FACILITY_ASSETS;
 type SceneProp = {
   asset: FacilityAssetKey;
   x: number;
-  y: number;
+  y?: number;
   baseline: number;
+  backWallRoomId?: RoomId;
   resourceId?: string;
 };
 
@@ -119,10 +120,9 @@ const WALL_COLORS: Record<RoomId, { paper: string; panel: string }> = {
 
 const SCENE_PROPS: SceneProp[] = [
   // Research / Sources — full authored sprites, never arbitrary atlas cells.
-  { asset: 'bookshelfFilled', x: 47, y: 60, baseline: 112, resourceId: 'archive-desk' },
-  { asset: 'bookshelfB', x: 96, y: 60, baseline: 112 },
-  { asset: 'bookshelfC', x: 145, y: 60, baseline: 112 },
-  { asset: 'plantTall', x: 220, y: 74, baseline: 117 },
+  { asset: 'bookshelfFilled', x: 47, baseline: 96, backWallRoomId: 'research', resourceId: 'archive-desk' },
+  { asset: 'bookshelfB', x: 96, baseline: 96, backWallRoomId: 'research' },
+  { asset: 'bookshelfC', x: 145, baseline: 96, backWallRoomId: 'research' },
   { asset: 'floorLamp', x: 111, y: 126, baseline: 156, resourceId: 'archive-lamp' },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
   { asset: 'deskRect', x: 146, y: 126, baseline: 158, resourceId: 'research-computer-a' },
@@ -130,16 +130,12 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'deskSmall', x: 207, y: 126, baseline: 158, resourceId: 'research-computer-b' },
   { asset: 'chairSouth', x: 216, y: 155, baseline: 177 },
 
-  // Command / Routing — a planning table and paper archive.
-  { asset: 'sideboardB', x: 271, y: 74, baseline: 101 },
-  { asset: 'cabinetFilled', x: 392, y: 72, baseline: 108 },
-  { asset: 'tableRound', x: 295, y: 126, baseline: 158, resourceId: 'command-table' },
-  { asset: 'chairWest', x: 277, y: 129, baseline: 156 },
-  { asset: 'chairEast', x: 349, y: 128, baseline: 156 },
+  // Command / Routing — a planning table beneath the mounted route board.
+  { asset: 'tableRound', x: 326, y: 126, baseline: 158, resourceId: 'command-table' },
+  { asset: 'chairWest', x: 307, y: 129, baseline: 156 },
+  { asset: 'chairEast', x: 382, y: 128, baseline: 156 },
 
-  // Utility / Tools — warm workshop furniture instead of laboratory banks.
-  { asset: 'cabinetA', x: 464, y: 72, baseline: 108 },
-  { asset: 'cabinetFilled', x: 674, y: 72, baseline: 108 },
+  // Utility / Tools — four physically distinct workstations.
   { asset: 'deskRect', x: 455, y: 126, baseline: 158, resourceId: 'shell-console-a' },
   { asset: 'deskRect', x: 519, y: 126, baseline: 158, resourceId: 'shell-console-b' },
   { asset: 'deskSmall', x: 624, y: 126, baseline: 158, resourceId: 'connector-console-a' },
@@ -150,8 +146,8 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 697, y: 155, baseline: 177 },
 
   // Synthesis / Decisions — a small library salon and evidence table.
-  { asset: 'bookshelfA', x: 48, y: 284, baseline: 336, resourceId: 'publish-console' },
-  { asset: 'bookshelfFilled', x: 97, y: 284, baseline: 336 },
+  { asset: 'bookshelfA', x: 48, baseline: 320, backWallRoomId: 'synthesis' },
+  { asset: 'bookshelfFilled', x: 97, baseline: 320, backWallRoomId: 'synthesis' },
   { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
   { asset: 'tableRound', x: 119, y: 338, baseline: 370, resourceId: 'evidence-table' },
   { asset: 'armchairGreen', x: 178, y: 338, baseline: 368 },
@@ -159,12 +155,9 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 237, y: 367, baseline: 389 },
 
   // Commons — a clear route from the north doorway to the anchored lift.
-  { asset: 'plantSmall', x: 424, y: 350, baseline: 374 },
   { asset: 'deskSmall', x: 328, y: 366, baseline: 398, resourceId: 'context-kiosk' },
 
   // Build / Verify — workshop benches on the left, review desk on the right.
-  { asset: 'sideboardA', x: 464, y: 300, baseline: 327 },
-  { asset: 'cabinetFilled', x: 674, y: 292, baseline: 328 },
   { asset: 'deskRect', x: 455, y: 338, baseline: 370, resourceId: 'build-bench-a' },
   { asset: 'deskRect', x: 519, y: 338, baseline: 370, resourceId: 'build-bench-b' },
   { asset: 'tableYellow', x: 622, y: 338, baseline: 370, resourceId: 'verify-rig-a' },
@@ -173,7 +166,6 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 633, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 697, y: 367, baseline: 389 },
-  { asset: 'flowerPot', x: 711, y: 298, baseline: 338 },
 ];
 
 const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
@@ -261,9 +253,19 @@ function drawRoom(
   context.fillStyle = colors.panel;
   context.fillRect(room.x, room.y, room.w, 7);
   context.fillStyle = colors.paper;
-  context.fillRect(room.x + 8, room.y + 7, room.w - 16, 27);
+  context.fillRect(
+    room.x + 8,
+    room.y + 7,
+    room.w - 16,
+    BACK_WALL_HEIGHT - 13,
+  );
   context.fillStyle = colors.panel;
-  context.fillRect(room.x + 8, room.y + 34, room.w - 16, 6);
+  context.fillRect(
+    room.x + 8,
+    room.y + BACK_WALL_HEIGHT - 6,
+    room.w - 16,
+    6,
+  );
   context.fillRect(room.x, room.y, 8, room.h);
   context.fillRect(room.x + room.w - 8, room.y, 8, room.h);
   if (north) {
@@ -287,7 +289,12 @@ function drawRoom(
   context.fillStyle = 'rgba(255,238,200,.42)';
   context.fillRect(room.x + 8, room.y + 8, room.w - 16, 1);
   context.fillStyle = 'rgba(45,25,18,.55)';
-  context.fillRect(room.x + 8, room.y + 39, room.w - 16, 1);
+  context.fillRect(
+    room.x + 8,
+    room.y + BACK_WALL_HEIGHT - 1,
+    room.w - 16,
+    1,
+  );
   context.strokeStyle = '#3c251c';
   context.lineWidth = 2;
   context.strokeRect(room.x + 1, room.y + 1, room.w - 2, room.h - 2);
@@ -416,11 +423,11 @@ function drawWallDetails(context: CanvasRenderingContext2D) {
   // Every wall mark describes an in-world resource; none are dashboard chrome.
   drawPlanBoard(context);
   context.fillStyle = '#72533a';
-  context.fillRect(522, 41, 158, 27);
+  context.fillRect(528, 41, 140, 27);
   context.fillStyle = '#d8c69f';
-  context.fillRect(530, 46, 142, 17);
+  context.fillRect(536, 46, 124, 17);
   context.strokeStyle = '#795b3e';
-  for (let x = 537; x < 665; x += 24) {
+  for (let x = 543; x < 651; x += 24) {
     context.strokeRect(x, 49, 10, 9);
   }
   context.fillStyle = '#493126';
@@ -469,6 +476,7 @@ function drawSurfaceDetail(
   context: CanvasRenderingContext2D,
   prop: SceneProp,
   width: number,
+  y: number,
 ) {
   const resourceId = prop.resourceId;
   if (!resourceId) return;
@@ -476,7 +484,7 @@ function drawSurfaceDetail(
 
   if (COMPUTER_SURFACES.has(resourceId)) {
     const left = centerX - 8;
-    const top = prop.y + 5;
+    const top = y + 5;
     context.fillStyle = '#302922';
     context.fillRect(left - 1, top - 1, 18, 10);
     context.fillStyle = '#596f69';
@@ -492,56 +500,56 @@ function drawSurfaceDetail(
 
   if (resourceId === 'command-table') {
     context.fillStyle = '#ead8b3';
-    context.fillRect(centerX - 9, prop.y + 7, 8, 6);
-    context.fillRect(centerX + 2, prop.y + 8, 7, 5);
+    context.fillRect(centerX - 9, y + 7, 8, 6);
+    context.fillRect(centerX + 2, y + 8, 7, 5);
     context.fillStyle = '#9e6042';
-    context.fillRect(centerX - 5, prop.y + 9, 2, 2);
+    context.fillRect(centerX - 5, y + 9, 2, 2);
     context.fillStyle = '#63867a';
-    context.fillRect(centerX + 5, prop.y + 10, 2, 1);
+    context.fillRect(centerX + 5, y + 10, 2, 1);
     return;
   }
 
   if (resourceId === 'evidence-table' || resourceId === 'publish-console') {
     context.fillStyle = '#eadfc6';
-    context.fillRect(centerX - 8, prop.y + 6, 15, 10);
+    context.fillRect(centerX - 8, y + 6, 15, 10);
     context.fillStyle = '#8b765e';
-    context.fillRect(centerX - 5, prop.y + 9, 9, 1);
-    context.fillRect(centerX - 5, prop.y + 12, 7, 1);
+    context.fillRect(centerX - 5, y + 9, 9, 1);
+    context.fillRect(centerX - 5, y + 12, 7, 1);
     if (resourceId === 'publish-console') {
       context.fillStyle = '#4f4538';
-      context.fillRect(centerX + 8, prop.y + 8, 3, 7);
+      context.fillRect(centerX + 8, y + 8, 3, 7);
     }
     return;
   }
 
   if (resourceId.startsWith('build-bench')) {
     context.fillStyle = '#d7b16e';
-    context.fillRect(centerX - 10, prop.y + 7, 16, 3);
+    context.fillRect(centerX - 10, y + 7, 16, 3);
     context.fillStyle = '#51453a';
-    context.fillRect(centerX + 6, prop.y + 5, 3, 9);
+    context.fillRect(centerX + 6, y + 5, 3, 9);
     context.fillStyle = '#a56f45';
-    context.fillRect(centerX - 7, prop.y + 12, 12, 3);
+    context.fillRect(centerX - 7, y + 12, 12, 3);
     return;
   }
 
   if (resourceId.startsWith('verify-rig')) {
     context.fillStyle = '#d7e0c6';
-    context.fillRect(centerX - 8, prop.y + 6, 16, 10);
+    context.fillRect(centerX - 8, y + 6, 16, 10);
     context.fillStyle = '#667765';
-    context.fillRect(centerX - 5, prop.y + 9, 2, 2);
-    context.fillRect(centerX - 5, prop.y + 13, 2, 2);
+    context.fillRect(centerX - 5, y + 9, 2, 2);
+    context.fillRect(centerX - 5, y + 13, 2, 2);
     context.fillStyle = '#65706b';
-    context.fillRect(centerX - 1, prop.y + 10, 6, 1);
-    context.fillRect(centerX - 1, prop.y + 14, 5, 1);
+    context.fillRect(centerX - 1, y + 10, 6, 1);
+    context.fillRect(centerX - 1, y + 14, 5, 1);
     return;
   }
 
   if (resourceId === 'context-kiosk') {
     context.fillStyle = '#eee1c2';
-    context.fillRect(centerX - 10, prop.y + 6, 9, 9);
-    context.fillRect(centerX + 1, prop.y + 6, 9, 9);
+    context.fillRect(centerX - 10, y + 6, 9, 9);
+    context.fillRect(centerX + 1, y + 6, 9, 9);
     context.fillStyle = '#86735a';
-    context.fillRect(centerX, prop.y + 6, 1, 9);
+    context.fillRect(centerX, y + 6, 1, 9);
   }
 }
 
@@ -555,14 +563,20 @@ function drawSceneProp(
   if (!imageReady(image)) return;
   const width = image.naturalWidth;
   const height = image.naturalHeight;
+  const anchoredRoom = prop.backWallRoomId
+    ? ROOMS.find((room) => room.id === prop.backWallRoomId)
+    : undefined;
+  const y = anchoredRoom
+    ? anchoredRoom.y + BACK_WALL_HEIGHT - height
+    : (prop.y ?? 0);
   if (resourceIsActive(state, prop.resourceId)) {
     context.fillStyle = 'rgba(224,181,104,.16)';
-    context.fillRect(prop.x - 3, prop.y - 3, width + 6, height + 6);
+    context.fillRect(prop.x - 3, y - 3, width + 6, height + 6);
     context.fillStyle = '#d8a85f';
-    context.fillRect(prop.x, prop.y + height + 1, width, 2);
+    context.fillRect(prop.x, y + height + 1, width, 2);
   }
-  drawFacilitySprite(context, bank, prop.asset, prop.x, prop.y);
-  drawSurfaceDetail(context, prop, width);
+  drawFacilitySprite(context, bank, prop.asset, prop.x, y);
+  drawSurfaceDetail(context, prop, width, y);
 }
 
 function statusColor(agent: RuntimeAgent) {
