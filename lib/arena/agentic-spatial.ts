@@ -5,15 +5,15 @@ export const ARENA_WORLD_WIDTH = 768;
 export const ARENA_WORLD_HEIGHT = 448;
 
 // Agent-agent avoidance uses a taller body capsule than the ground-contact
-// capsule used against architecture. The characters are 32 x 64px sprites;
-// a shadow-only circle prevented foot overlap but still let two bodies merge.
-const CAPSULE_RADIUS_PX = 13;
-const CAPSULE_SEGMENT_HALF_PX = 10;
-const CAPSULE_CLEARANCE_PX = 3;
+// capsule used against architecture. Residents render at 24 x 48px; a
+// shadow-only circle would still let bodies merge.
+const CAPSULE_RADIUS_PX = 10;
+const CAPSULE_SEGMENT_HALF_PX = 7;
+const CAPSULE_CLEARANCE_PX = 2;
 const MIN_CENTER_DISTANCE_PX = (CAPSULE_RADIUS_PX + CAPSULE_CLEARANCE_PX) * 2;
 const NEARBY_DISTANCE_PX = 72;
-const WORLD_CAPSULE_RADIUS_PX = 12;
-const WORLD_CAPSULE_SEGMENT_HALF_PX = 3;
+const WORLD_CAPSULE_RADIUS_PX = 10;
+const WORLD_CAPSULE_SEGMENT_HALF_PX = 2;
 const WORLD_CAPSULE_HALF_HEIGHT_PX =
   WORLD_CAPSULE_SEGMENT_HALF_PX + WORLD_CAPSULE_RADIUS_PX;
 

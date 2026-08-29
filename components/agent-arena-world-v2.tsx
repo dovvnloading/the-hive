@@ -27,7 +27,9 @@ const WORLD_WIDTH = 768;
 const WORLD_HEIGHT = 448;
 const BACK_WALL_HEIGHT = 64;
 const BACK_WALL_FURNITURE_OVERLAP = 4;
-const CHARACTER_SCALE = 2;
+// A 24 x 48 resident is the visual midpoint for this interior set: readable
+// at arena scale without returning to the original furniture-dwarfing 32 x 64.
+const CHARACTER_SCALE = 1.5;
 const CHARACTER_FRAME_WIDTH = 16;
 const CHARACTER_FRAME_HEIGHT = 32;
 const FACILITY_ASSET_ROOT = '/assets/facility-v3';
@@ -695,11 +697,11 @@ function drawBracket(
   y: number,
   color: string,
 ) {
-  const left = x - 19;
-  const right = x + 19;
-  const top = y - 66;
+  const left = x - 14;
+  const right = x + 14;
+  const top = y - 50;
   const bottom = y + 2;
-  const arm = 7;
+  const arm = 5;
   context.strokeStyle = color;
   context.lineWidth = 1;
   context.beginPath();
@@ -750,7 +752,7 @@ function drawAgent(
 
   context.fillStyle = 'rgba(0,0,0,.38)';
   context.beginPath();
-  context.ellipse(x, y, seated ? 17 : 11, 4, 0, 0, Math.PI * 2);
+  context.ellipse(x, y, seated ? 13 : 8, 3, 0, 0, Math.PI * 2);
   context.fill();
   context.drawImage(
     sheet,
@@ -911,7 +913,7 @@ function projectSpeechBubbles(state: AgentArenaState, now: number) {
     const overlapsEarlier = projected.some(
       (bubble) =>
         Math.abs(bubble.left - avatar.position.x) < 24 &&
-        Math.abs(bubble.top - (avatar.position.y - 13)) < 15,
+        Math.abs(bubble.top - (avatar.position.y - 10)) < 13,
     );
     projected.push({
       event,
@@ -919,7 +921,7 @@ function projectSpeechBubbles(state: AgentArenaState, now: number) {
       left: Math.max(14, Math.min(86, avatar.position.x)),
       top: Math.max(
         9,
-        Math.min(90, avatar.position.y - 13 - (overlapsEarlier ? 10 : 0)),
+        Math.min(90, avatar.position.y - 10 - (overlapsEarlier ? 9 : 0)),
       ),
     });
     roomCounts.set(roomId, roomCount + 1);
@@ -1075,12 +1077,12 @@ export function AgentArenaWorldV2({
         const seated = motion === 'sit' || motion === 'sit2';
         const x = (avatar.position.x / 100) * WORLD_WIDTH;
         const y = (avatar.position.y / 100) * WORLD_HEIGHT;
-        const halfWidth = seated ? 34 : 18;
+        const halfWidth = seated ? 25 : 13;
         return (
           point.x >= x - halfWidth &&
           point.x <= x + halfWidth &&
-          point.y >= y - 66 &&
-          point.y <= y + 3
+          point.y >= y - 50 &&
+          point.y <= y + 2
         );
       })?.agentId;
   }
