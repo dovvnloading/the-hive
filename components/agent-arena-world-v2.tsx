@@ -176,7 +176,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 633, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 697, y: 367, baseline: 389 },
-  { asset: 'plantSmall', x: 600, y: 350, baseline: 372, entityId: 'plant-build' },
+  { asset: 'plantSmall', x: 640, y: 306, baseline: 328, entityId: 'plant-build' },
 ];
 
 const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
