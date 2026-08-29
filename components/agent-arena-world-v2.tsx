@@ -493,12 +493,12 @@ const LIGHT_FIXTURES: Record<
   RoomId,
   { fixtureX: number; fixtureY: number; switchX: number; switchY: number }
 > = {
-  research: { fixtureX: 228, fixtureY: 72, switchX: 245, switchY: 87 },
-  command: { fixtureX: 422, fixtureY: 72, switchX: 439, switchY: 87 },
-  tools: { fixtureX: 708, fixtureY: 72, switchX: 725, switchY: 87 },
-  synthesis: { fixtureX: 286, fixtureY: 296, switchX: 303, switchY: 311 },
-  context: { fixtureX: 430, fixtureY: 296, switchX: 443, switchY: 311 },
-  build: { fixtureX: 706, fixtureY: 296, switchX: 723, switchY: 311 },
+  research: { fixtureX: 228, fixtureY: 72, switchX: 196, switchY: 60 },
+  command: { fixtureX: 422, fixtureY: 72, switchX: 272, switchY: 60 },
+  tools: { fixtureX: 708, fixtureY: 72, switchX: 520, switchY: 60 },
+  synthesis: { fixtureX: 286, fixtureY: 296, switchX: 202, switchY: 286 },
+  context: { fixtureX: 430, fixtureY: 296, switchX: 368, switchY: 286 },
+  build: { fixtureX: 706, fixtureY: 296, switchX: 646, switchY: 286 },
 };
 
 function runStartedAt(state: AgentArenaState) {
