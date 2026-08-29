@@ -1,17 +1,32 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import test from 'node:test';
 
+import { neighborsForLocation } from '../lib/arena/facility-protocol.mjs';
+
 const projectRoot = resolve(import.meta.dirname, '..');
 const bridgeScript = resolve(import.meta.dirname, 'arena-bridge.mjs');
+const ingressHookScript = resolve(
+  projectRoot,
+  '.codex',
+  'hooks',
+  'arena-chat-ingress.mjs',
+);
+const stopHookScript = resolve(
+  projectRoot,
+  '.codex',
+  'hooks',
+  'arena-chat-stop.mjs',
+);
 const trustedOrigin = 'http://localhost:3000';
 const hostileOrigin = 'https://untrusted.example';
 const emitterToken = 'test-emitter-token-with-at-least-thirty-two-characters';
+const chatToken = 'test-chat-hook-token-with-at-least-thirty-two-characters';
 
 async function availablePort() {
   const probe = createServer();
@@ -20,7 +35,8 @@ async function availablePort() {
     probe.listen(0, '127.0.0.1', resolveListen);
   });
   const address = probe.address();
-  const port = typeof address === 'object' && address ? address.port : undefined;
+  const port =
+    typeof address === 'object' && address ? address.port : undefined;
   await new Promise((resolveClose) => probe.close(resolveClose));
   if (!port) throw new Error('Unable to reserve a test port');
   return port;
@@ -29,7 +45,8 @@ async function availablePort() {
 async function waitForHealth(origin, child) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`Bridge exited with ${child.exitCode}`);
+    if (child.exitCode !== null)
+      throw new Error(`Bridge exited with ${child.exitCode}`);
     try {
       const response = await fetch(`${origin}/health`);
       if (response.ok) return;
@@ -57,20 +74,473 @@ function postEvent(origin, body, token = emitterToken, requestOrigin) {
   });
 }
 
-test('bridge authenticates emitters, restricts CORS, and preserves monotonic runs', async (t) => {
+function boardRequest(origin, path, agentToken, init = {}) {
+  return fetch(`${origin}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(agentToken ? { 'X-Arena-Agent-Token': agentToken } : {}),
+      ...init.headers,
+    },
+  });
+}
+
+function speechRequest(origin, agentToken, body) {
+  return boardRequest(origin, '/proximity/speech', agentToken, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+async function observe(origin, agentToken, after = 0) {
+  const response = await boardRequest(
+    origin,
+    `/agent/observation?after=${after}`,
+    agentToken,
+  );
+  assert.equal(response.status, 200);
+  return json(response);
+}
+
+function routeBetween(from, target) {
+  const queue = [[from]];
+  const visited = new Set([from]);
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const current = path.at(-1);
+    if (current === target) return path;
+    for (const neighbor of neighborsForLocation(current)) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      queue.push([...path, neighbor]);
+    }
+  }
+  throw new Error(`No facility route from ${from} to ${target}`);
+}
+
+async function walkTo(origin, agentToken, target) {
+  let observation = await observe(origin, agentToken);
+  const path = routeBetween(observation.you.locationId, target);
+  for (const step of path.slice(1)) {
+    let response;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      response = await boardRequest(origin, '/world/action', agentToken, {
+        method: 'POST',
+        body: JSON.stringify({
+          actionId: `test_move_${randomId()}`,
+          observationId: observation.observationId,
+          action: 'move',
+          targetId: step,
+        }),
+      });
+      if (response.status !== 409) break;
+      const retry = await json(response);
+      if (!retry.observation) break;
+      observation = retry.observation;
+    }
+    if (response.status !== 201) {
+      throw new Error(
+        `World move failed (${response.status}): ${await response.text()}`,
+      );
+    }
+    const payload = await json(response);
+    const waitMs = Math.max(
+      0,
+      Date.parse(payload.event.payload.arrivesAt) - Date.now() + 2,
+    );
+    if (waitMs > 0)
+      await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
+    observation = await observe(origin, agentToken, payload.event.sequence - 1);
+  }
+  assert.equal(observation.you.locationId, target);
+  return observation;
+}
+
+async function interactAt(origin, agentToken, observation, target, verb) {
+  const response = await boardRequest(origin, '/world/action', agentToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      actionId: `test_interact_${randomId()}`,
+      observationId: observation.observationId,
+      action: 'interact',
+      targetId: target,
+      verb,
+    }),
+  });
+  if (response.status !== 201) {
+    throw new Error(
+      `World interaction failed (${response.status}): ${await response.text()}`,
+    );
+  }
+  return json(response);
+}
+
+function randomId() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function chatRequest(origin, path, token, init = {}) {
+  return fetch(`${origin}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { 'X-Arena-Chat-Token': token } : {}),
+      ...init.headers,
+    },
+  });
+}
+
+async function runHook(script, input, env) {
+  const child = spawn(process.execPath, [script], {
+    cwd: projectRoot,
+    env: { ...process.env, ...env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  child.stdin.end(JSON.stringify(input));
+  const exitCode = await new Promise((resolveExit) =>
+    child.once('exit', resolveExit),
+  );
+  assert.equal(exitCode, 0, stderr);
+  return JSON.parse(stdout);
+}
+
+void test('project hooks capture offline, replay once, inject context, and guard stop', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-chat-hook-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const hookEnv = {
+    ARENA_DATA_DIR: dataDir,
+    ARENA_BRIDGE_URL: origin,
+    ARENA_CHAT_TOKEN: chatToken,
+  };
+  const hookInput = {
+    hook_event_name: 'UserPromptSubmit',
+    session_id: 'session-hook-test',
+    turn_id: 'turn-hook-test',
+    prompt: 'Unicode Ω and <script> remain inert data.\nSecond line.',
+  };
+
+  const offlineOutput = await runHook(ingressHookScript, hookInput, hookEnv);
+  assert.equal(offlineOutput.continue, true);
+  assert.equal(
+    offlineOutput.hookSpecificOutput.hookEventName,
+    'UserPromptSubmit',
+  );
+  assert.match(
+    offlineOutput.hookSpecificOutput.additionalContext,
+    /durably captured in the local outbox/u,
+  );
+  assert.equal(
+    offlineOutput.hookSpecificOutput.additionalContext.includes(
+      hookInput.prompt,
+    ),
+    false,
+  );
+  const rawLines = (
+    await readFile(resolve(dataDir, 'chat-ingress.jsonl'), 'utf8')
+  )
+    .trim()
+    .split(/\r?\n/u);
+  assert.equal(rawLines.length, 1);
+  assert.equal(JSON.parse(rawLines[0]).prompt, hookInput.prompt);
+
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+        ARENA_CHAT_TOKEN: chatToken,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  t.after(async () => {
+    if (child.exitCode === null) child.kill('SIGTERM');
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once('exit', resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await waitForHealth(origin, child);
+
+  const events = await json(await fetch(`${origin}/events?after=0`));
+  assert.deepEqual(
+    events.events.map((event) => event.kind),
+    ['run.started', 'chat.ingress'],
+  );
+  const ingressId = events.events[1].payload.ingressId;
+
+  const onlineRetry = await runHook(ingressHookScript, hookInput, hookEnv);
+  assert.match(
+    onlineRetry.hookSpecificOutput.additionalContext,
+    /already journaled by the arena bridge/u,
+  );
+  const replayedEvents = await json(await fetch(`${origin}/events?after=0`));
+  assert.equal(
+    replayedEvents.events.filter((event) => event.kind === 'chat.ingress')
+      .length,
+    1,
+  );
+
+  const blockedStop = await runHook(
+    stopHookScript,
+    { ...hookInput, hook_event_name: 'Stop', stop_hook_active: false },
+    hookEnv,
+  );
+  assert.equal(blockedStop.decision, 'block');
+  assert.match(blockedStop.reason, new RegExp(ingressId, 'u'));
+
+  const failedRelay = await fetch(`${origin}/chat/relay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Arena-Emitter-Token': emitterToken,
+    },
+    body: JSON.stringify({
+      ingressId,
+      state: 'failed',
+      summary: 'Explicitly failed in the hook contract test',
+      targetAgentIds: [],
+    }),
+  });
+  assert.equal(failedRelay.status, 201);
+  const allowedStop = await runHook(
+    stopHookScript,
+    { ...hookInput, hook_event_name: 'Stop', stop_hook_active: false },
+    hookEnv,
+  );
+  assert.deepEqual(allowedStop, { continue: true });
+});
+
+void test('Codex chat ingress is authenticated, idempotent, correlated, and terminalized', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-chat-loop-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+        ARENA_CHAT_TOKEN: chatToken,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+
+  t.after(async () => {
+    if (child.exitCode === null) child.kill('SIGTERM');
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once('exit', resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  await waitForHealth(origin, child);
+  const ingress = {
+    ingressId: 'chat_access_loop_test',
+    sessionId: 'session-test',
+    turnId: 'turn-test',
+    prompt:
+      'Relay this Codex chat turn into the real arena.\n<script>inert</script>',
+    capturedAt: '2026-08-29T12:00:00.000Z',
+  };
+
+  const unauthorized = await chatRequest(origin, '/chat/ingress', null, {
+    method: 'POST',
+    body: JSON.stringify(ingress),
+  });
+  assert.equal(unauthorized.status, 401);
+
+  const created = await chatRequest(origin, '/chat/ingress', chatToken, {
+    method: 'POST',
+    body: JSON.stringify(ingress),
+  });
+  assert.equal(created.status, 201);
+  const createdBody = await json(created);
+  assert.equal(createdBody.event.kind, 'chat.ingress');
+  assert.equal(createdBody.event.source, 'operator');
+  assert.equal(createdBody.event.correlationId, ingress.ingressId);
+
+  const retry = await chatRequest(origin, '/chat/ingress', chatToken, {
+    method: 'POST',
+    body: JSON.stringify(ingress),
+  });
+  assert.equal(retry.status, 200);
+  assert.equal((await json(retry)).event.eventId, createdBody.event.eventId);
+
+  const conflict = await chatRequest(origin, '/chat/ingress', chatToken, {
+    method: 'POST',
+    body: JSON.stringify({ ...ingress, prompt: 'conflicting retry' }),
+  });
+  assert.equal(conflict.status, 409);
+
+  const bypass = await postEvent(origin, {
+    kind: 'chat.relay',
+    payload: {
+      ingressId: ingress.ingressId,
+      state: 'claimed',
+      targetAgentIds: [],
+      summary: 'generic bypass',
+    },
+  });
+  assert.equal(bypass.status, 400);
+
+  const claim = await fetch(`${origin}/chat/relay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Arena-Emitter-Token': emitterToken,
+    },
+    body: JSON.stringify({
+      ingressId: ingress.ingressId,
+      state: 'claimed',
+      summary: 'Root claimed the actual Codex chat turn',
+      targetAgentIds: [],
+    }),
+  });
+  assert.equal(claim.status, 201);
+
+  const unknownDispatch = await fetch(`${origin}/chat/relay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Arena-Emitter-Token': emitterToken,
+    },
+    body: JSON.stringify({
+      ingressId: ingress.ingressId,
+      state: 'dispatched',
+      summary: 'not actually dispatched',
+      targetAgentIds: ['sage'],
+    }),
+  });
+  assert.equal(unknownDispatch.status, 409);
+
+  const spawned = await postEvent(origin, {
+    kind: 'agent.spawned',
+    agentId: 'sage',
+    payload: { name: 'Sage', role: 'Protocol verifier' },
+  });
+  const sageToken = (await json(spawned)).agentToken;
+  await postEvent(origin, {
+    kind: 'task.assigned',
+    agentId: 'sage',
+    correlationId: ingress.ingressId,
+    payload: { objective: 'Verify the correlated access-loop turn' },
+  });
+
+  const dispatch = await fetch(`${origin}/chat/relay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Arena-Emitter-Token': emitterToken,
+    },
+    body: JSON.stringify({
+      ingressId: ingress.ingressId,
+      state: 'dispatched',
+      summary: 'Collaboration dispatch succeeded',
+      targetAgentIds: ['sage'],
+    }),
+  });
+  assert.equal(dispatch.status, 201);
+
+  await walkTo(origin, sageToken, 'comms-board');
+  const board = await boardRequest(origin, '/board/message', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      clientMessageId: 'access-loop-result',
+      correlationId: ingress.ingressId,
+      text: 'Verified the correlated work.',
+      topic: 'Access loop',
+      messageType: 'decision',
+      audience: 'broadcast',
+      recipientAgentIds: [],
+    }),
+  });
+  assert.equal(board.status, 201);
+  assert.equal((await json(board)).event.correlationId, ingress.ingressId);
+
+  const completed = await fetch(`${origin}/chat/relay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Arena-Emitter-Token': emitterToken,
+    },
+    body: JSON.stringify({
+      ingressId: ingress.ingressId,
+      state: 'completed',
+      summary: 'Root received and synthesized the real subagent result',
+    }),
+  });
+  assert.equal(completed.status, 201);
+
+  const status = await chatRequest(
+    origin,
+    `/chat/status?ingress=${ingress.ingressId}`,
+    chatToken,
+  );
+  const statusBody = await json(status);
+  assert.equal(statusBody.state, 'completed');
+  assert.equal(statusBody.terminal, true);
+  assert.deepEqual(statusBody.targetAgentIds, ['sage']);
+
+  const regression = await fetch(`${origin}/chat/relay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Arena-Emitter-Token': emitterToken,
+    },
+    body: JSON.stringify({
+      ingressId: ingress.ingressId,
+      state: 'claimed',
+      summary: 'illegal regression',
+    }),
+  });
+  assert.equal(regression.status, 409);
+});
+
+void test('bridge authenticates emitters, restricts CORS, and preserves monotonic runs', async (t) => {
   const port = await availablePort();
   const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-bridge-'));
   const origin = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, [bridgeScript, '--port', String(port), '--data-dir', dataDir], {
-    cwd: projectRoot,
-    env: {
-      ...process.env,
-      ARENA_EMITTER_TOKEN: emitterToken,
-      ARENA_ALLOWED_ORIGINS: trustedOrigin,
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+        ARENA_ALLOWED_ORIGINS: trustedOrigin,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  );
 
   t.after(async () => {
     if (child.exitCode === null) child.kill('SIGTERM');
@@ -85,16 +555,27 @@ test('bridge authenticates emitters, restricts CORS, and preserves monotonic run
 
   const unauthorized = await postEvent(
     origin,
-    { kind: 'run.started', reset: true, payload: { objective: 'unauthorized' } },
+    {
+      kind: 'run.started',
+      reset: true,
+      payload: { objective: 'unauthorized' },
+    },
     null,
   );
   assert.equal(unauthorized.status, 401);
   assert.equal((await json(await fetch(`${origin}/health`))).latestSequence, 0);
 
-  const hostile = await fetch(`${origin}/health`, { headers: { Origin: hostileOrigin } });
+  const hostile = await fetch(`${origin}/health`, {
+    headers: { Origin: hostileOrigin },
+  });
   assert.equal(hostile.headers.get('access-control-allow-origin'), null);
-  const trusted = await fetch(`${origin}/health`, { headers: { Origin: trustedOrigin } });
-  assert.equal(trusted.headers.get('access-control-allow-origin'), trustedOrigin);
+  const trusted = await fetch(`${origin}/health`, {
+    headers: { Origin: trustedOrigin },
+  });
+  assert.equal(
+    trusted.headers.get('access-control-allow-origin'),
+    trustedOrigin,
+  );
 
   const firstRun = await postEvent(origin, {
     kind: 'run.started',
@@ -140,6 +621,906 @@ test('bridge authenticates emitters, restricts CORS, and preserves monotonic run
   assert.equal((await json(secondRun)).event.sequence, 3);
 
   const current = await json(await fetch(`${origin}/events?after=0`));
-  assert.deepEqual(current.events.map((event) => event.sequence), [3]);
+  assert.deepEqual(
+    current.events.map((event) => event.sequence),
+    [3],
+  );
   assert.equal(current.events[0].kind, 'run.started');
+
+  const journalLines = (
+    await readFile(resolve(dataDir, 'events.jsonl'), 'utf8')
+  )
+    .trim()
+    .split(/\r?\n/);
+  assert.equal(journalLines.length, 3);
+});
+
+void test('board authenticates agents and preserves threads, receipts, and visibility', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-board-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+        ARENA_ALLOWED_ORIGINS: trustedOrigin,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+
+  t.after(async () => {
+    if (child.exitCode === null) child.kill('SIGTERM');
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once('exit', resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  await waitForHealth(origin, child);
+  await postEvent(origin, {
+    kind: 'run.started',
+    reset: true,
+    payload: { objective: 'exercise the real agent board' },
+  });
+
+  const tokens = {};
+  for (const agentId of ['atlas', 'sage', 'nova']) {
+    const response = await postEvent(origin, {
+      kind: 'agent.spawned',
+      agentId,
+      payload: { name: agentId.toUpperCase(), role: 'Test agent' },
+    });
+    assert.equal(response.status, 201);
+    const body = await json(response);
+    assert.equal(typeof body.agentToken, 'string');
+    tokens[agentId] = body.agentToken;
+  }
+
+  const unauthorized = await boardRequest(origin, '/board/message', null, {
+    method: 'POST',
+    body: JSON.stringify({
+      clientMessageId: 'unauthorized-1',
+      text: 'should not be written',
+      messageType: 'update',
+      audience: 'broadcast',
+      recipientAgentIds: [],
+    }),
+  });
+  assert.equal(unauthorized.status, 401);
+
+  const bypass = await postEvent(origin, {
+    kind: 'board.message',
+    agentId: 'atlas',
+    payload: {
+      messageId: 'fake',
+      clientMessageId: 'fake',
+      threadId: 'fake',
+      topic: 'Fake',
+      messageType: 'update',
+      audience: 'broadcast',
+      recipientAgentIds: [],
+      text: 'generic event bypass',
+    },
+  });
+  assert.equal(bypass.status, 400);
+
+  await walkTo(origin, tokens.atlas, 'comms-board');
+  await walkTo(origin, tokens.sage, 'comms-board');
+
+  const directRequest = {
+    clientMessageId: 'atlas-to-sage-1',
+    agentId: 'nova',
+    text: 'Can you validate the bridge invariants?',
+    topic: 'Bridge invariants',
+    messageType: 'question',
+    audience: 'direct',
+    recipientAgentIds: ['sage'],
+  };
+  const directResponse = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    { method: 'POST', body: JSON.stringify(directRequest) },
+  );
+  assert.equal(directResponse.status, 201);
+  const direct = (await json(directResponse)).event;
+  assert.equal(direct.agentId, 'atlas');
+  assert.equal(direct.payload.audience, 'direct');
+
+  const exactRetry = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    { method: 'POST', body: JSON.stringify(directRequest) },
+  );
+  assert.equal(exactRetry.status, 200);
+  assert.equal((await json(exactRetry)).event.eventId, direct.eventId);
+
+  const conflictingRetry = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({ ...directRequest, text: 'different retry body' }),
+    },
+  );
+  assert.equal(conflictingRetry.status, 409);
+
+  const atlasBoard = await json(
+    await boardRequest(origin, '/board?after=0', tokens.atlas),
+  );
+  const sageBoard = await json(
+    await boardRequest(origin, '/board?after=0&unread=true', tokens.sage),
+  );
+  await walkTo(origin, tokens.atlas, 'command-hub');
+  await walkTo(origin, tokens.nova, 'comms-board');
+  const novaBoard = await json(
+    await boardRequest(origin, '/board?after=0', tokens.nova),
+  );
+  assert.deepEqual(
+    atlasBoard.messages.map((message) => message.payload.messageId),
+    [direct.payload.messageId],
+  );
+  assert.equal(sageBoard.messages[0].unread, true);
+  assert.equal(novaBoard.messages.length, 0);
+
+  const forbiddenAck = await boardRequest(origin, '/board/ack', tokens.nova, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageId: direct.payload.messageId,
+      state: 'read',
+    }),
+  });
+  assert.equal(forbiddenAck.status, 403);
+
+  const readAck = await boardRequest(origin, '/board/ack', tokens.sage, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageId: direct.payload.messageId,
+      state: 'read',
+    }),
+  });
+  assert.equal(readAck.status, 201);
+  const readEvent = (await json(readAck)).event;
+  const repeatedAck = await boardRequest(origin, '/board/ack', tokens.sage, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageId: direct.payload.messageId,
+      state: 'read',
+    }),
+  });
+  assert.equal(repeatedAck.status, 200);
+  assert.equal((await json(repeatedAck)).event.eventId, readEvent.eventId);
+
+  const acknowledged = await boardRequest(origin, '/board/ack', tokens.sage, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageId: direct.payload.messageId,
+      state: 'acknowledged',
+    }),
+  });
+  assert.equal(acknowledged.status, 201);
+  const regression = await boardRequest(origin, '/board/ack', tokens.sage, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageId: direct.payload.messageId,
+      state: 'read',
+    }),
+  });
+  assert.equal(regression.status, 409);
+
+  const replyResponse = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'sage-reply-1',
+        threadId: direct.payload.threadId,
+        text: 'Validated. The write and receipt paths are scoped.',
+        messageType: 'decision',
+      }),
+    },
+  );
+  assert.equal(replyResponse.status, 201);
+  const reply = (await json(replyResponse)).event;
+  assert.equal(reply.payload.threadId, direct.payload.threadId);
+  assert.equal(reply.payload.replyToMessageId, direct.payload.messageId);
+  assert.deepEqual(reply.payload.recipientAgentIds, ['atlas']);
+
+  const broadcastResponse = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.nova,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'nova-broadcast-1',
+        text: '<script>alert(1)</script> is inert board text',
+        topic: 'Implementation handoff',
+        messageType: 'handoff',
+        audience: 'broadcast',
+        recipientAgentIds: [],
+      }),
+    },
+  );
+  assert.equal(broadcastResponse.status, 201);
+  const broadcast = (await json(broadcastResponse)).event;
+  const sageAfter = await json(
+    await boardRequest(origin, '/board?after=0', tokens.sage),
+  );
+  assert.equal(
+    sageAfter.messages.some(
+      (message) => message.payload.messageId === broadcast.payload.messageId,
+    ),
+    true,
+  );
+  assert.equal(
+    sageAfter.acknowledgements.some(
+      (event) =>
+        event.agentId === 'sage' &&
+        event.payload.messageId === direct.payload.messageId,
+    ),
+    true,
+  );
+
+  const linesBeforeReset = (
+    await readFile(resolve(dataDir, 'events.jsonl'), 'utf8')
+  )
+    .trim()
+    .split(/\r?\n/).length;
+  const nextRun = await postEvent(origin, {
+    kind: 'run.started',
+    reset: true,
+    payload: { objective: 'new run keeps the prior journal' },
+  });
+  assert.equal(nextRun.status, 201);
+  const currentRunEvents = await json(await fetch(`${origin}/events?after=0`));
+  assert.deepEqual(
+    currentRunEvents.events.map((event) => event.kind),
+    ['run.started'],
+  );
+  const linesAfterReset = (
+    await readFile(resolve(dataDir, 'events.jsonl'), 'utf8')
+  )
+    .trim()
+    .split(/\r?\n/).length;
+  assert.equal(linesAfterReset, linesBeforeReset + 1);
+});
+
+void test('proximity speech is voluntary, audible, replay-safe, and cannot fabricate collaboration', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-proximity-speech-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const startProximityBridge = () =>
+    spawn(
+      process.execPath,
+      [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          ARENA_EMITTER_TOKEN: emitterToken,
+          ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+          ARENA_MIN_TRAVEL_MS: '1',
+          ARENA_SOCIAL_RANGE_PX: '70',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    );
+  let child = startProximityBridge();
+
+  t.after(async () => {
+    if (child.exitCode === null) child.kill('SIGTERM');
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once('exit', resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  await waitForHealth(origin, child);
+  await postEvent(origin, {
+    kind: 'run.started',
+    reset: true,
+    payload: { objective: 'Exercise situated social choices' },
+  });
+  const tokens = {};
+  for (const [agentId, name] of [
+    ['atlas', 'Atlas'],
+    ['sage', 'Sage'],
+  ]) {
+    const spawned = await postEvent(origin, {
+      kind: 'agent.spawned',
+      agentId,
+      payload: { name, role: 'Resident verifier' },
+    });
+    tokens[agentId] = (await json(spawned)).agentToken;
+  }
+
+  const firstScene = await observe(origin, tokens.atlas);
+  assert.deepEqual(
+    firstScene.talk.map((person) => person.id),
+    ['sage'],
+  );
+  assert.match(firstScene.text, /TALK Sage\(sage\)/u);
+
+  const sayBody = {
+    actionId: 'speech-say-one',
+    observationId: firstScene.observationId,
+    speechAct: 'say',
+    targetAgentId: 'sage',
+    text: 'I found the invariant. The full evidence remains in the journal.',
+  };
+  const unauthorized = await speechRequest(origin, null, sayBody);
+  assert.equal(unauthorized.status, 401);
+
+  const forged = await postEvent(origin, {
+    kind: 'proximity.spoken',
+    agentId: 'atlas',
+    payload: {},
+  });
+  assert.equal(forged.status, 400);
+
+  const spokenResponse = await speechRequest(origin, tokens.atlas, sayBody);
+  assert.equal(spokenResponse.status, 201);
+  const spoken = await json(spokenResponse);
+  assert.equal(spoken.event.payload.preview, 'I found the invariant…');
+  assert.equal(spoken.event.payload.text, sayBody.text);
+  assert.deepEqual(spoken.event.payload.heardByAgentIds, ['sage']);
+
+  const exactRetry = await speechRequest(origin, tokens.atlas, sayBody);
+  assert.equal(exactRetry.status, 200);
+  assert.equal((await json(exactRetry)).event.eventId, spoken.event.eventId);
+  const conflictingRetry = await speechRequest(origin, tokens.atlas, {
+    ...sayBody,
+    text: 'A conflicting use of the same action id.',
+  });
+  assert.equal(conflictingRetry.status, 409);
+
+  const sageHeard = await observe(origin, tokens.sage);
+  assert.equal(sageHeard.heard.length, 1);
+  assert.equal(sageHeard.heard[0].speechId, spoken.event.payload.speechId);
+  assert.equal(sageHeard.heard[0].text, sayBody.text);
+  assert.match(sageHeard.text, /HEARD .*I found the invariant/u);
+
+  const novaSpawn = await postEvent(origin, {
+    kind: 'agent.spawned',
+    agentId: 'nova',
+    payload: { name: 'Nova', role: 'Late arrival' },
+  });
+  tokens.nova = (await json(novaSpawn)).agentToken;
+  const novaScene = await observe(origin, tokens.nova);
+  assert.deepEqual(novaScene.heard, []);
+  assert.equal(novaScene.text.includes(spoken.event.payload.speechId), false);
+
+  const invitationScene = await observe(origin, tokens.atlas);
+  const invitationBody = {
+    actionId: 'speech-invite-one',
+    observationId: invitationScene.observationId,
+    speechAct: 'invite',
+    targetAgentId: 'sage',
+    invitationId: 'invite-replay-check',
+    invitationMode: 'collaborate',
+    objective: 'Verify the replay invariant together',
+    text: 'Would you verify the replay invariant with me?',
+  };
+  const invitationResponse = await speechRequest(
+    origin,
+    tokens.atlas,
+    invitationBody,
+  );
+  assert.equal(invitationResponse.status, 201);
+  const invitation = (await json(invitationResponse)).event;
+
+  const pendingScene = await observe(origin, tokens.sage);
+  assert.deepEqual(
+    pendingScene.invitations.map((item) => [item.invitationId, item.status]),
+    [['invite-replay-check', 'pending']],
+  );
+  const sageLocationBefore = pendingScene.you.locationId;
+  const acceptanceBody = {
+    actionId: 'speech-accept-one',
+    observationId: pendingScene.observationId,
+    speechAct: 'accept',
+    invitationId: invitation.payload.invitationId,
+    text: 'Yes. I will take the replay check.',
+  };
+  const acceptanceResponse = await speechRequest(
+    origin,
+    tokens.sage,
+    acceptanceBody,
+  );
+  assert.equal(acceptanceResponse.status, 201);
+  const acceptance = (await json(acceptanceResponse)).event;
+  assert.equal(acceptance.payload.targetAgentId, 'atlas');
+  assert.equal(acceptance.payload.invitationMode, 'collaborate');
+
+  const acceptedScene = await observe(origin, tokens.sage);
+  assert.equal(acceptedScene.you.locationId, sageLocationBefore);
+  assert.deepEqual(
+    acceptedScene.collaborations.map((item) => [
+      item.invitationId,
+      item.status,
+    ]),
+    [['invite-replay-check', 'accept']],
+  );
+  assert.match(acceptedScene.text, /shared work awaits an assignment/u);
+
+  const burst = [];
+  for (let index = 0; index < 9; index += 1) {
+    const atlasScene = await observe(origin, tokens.atlas);
+    const response = await speechRequest(origin, tokens.atlas, {
+      actionId: `speech-burst-${index}`,
+      observationId: atlasScene.observationId,
+      speechAct: 'say',
+      targetAgentId: 'sage',
+      text: `Audible burst line ${index + 1}.`,
+    });
+    assert.equal(response.status, 201);
+    burst.push((await json(response)).event);
+  }
+
+  const firstHeardPage = await observe(
+    origin,
+    tokens.sage,
+    acceptance.sequence,
+  );
+  assert.equal(firstHeardPage.heard.length, 8);
+  assert.equal(firstHeardPage.hearing.hasMore, true);
+  assert.equal(firstHeardPage.hearing.remaining, 1);
+  assert.equal(firstHeardPage.hearing.throughSequence, burst[7].sequence);
+  const secondHeardPage = await observe(
+    origin,
+    tokens.sage,
+    firstHeardPage.hearing.throughSequence,
+  );
+  assert.deepEqual(
+    secondHeardPage.heard.map((speech) => speech.speechId),
+    [burst[8].payload.speechId],
+  );
+  assert.equal(secondHeardPage.hearing.hasMore, false);
+
+  child.kill('SIGTERM');
+  await new Promise((resolveExit) => child.once('exit', resolveExit));
+  child = startProximityBridge();
+  await waitForHealth(origin, child);
+
+  const replayedScene = await observe(origin, tokens.sage);
+  assert.deepEqual(
+    replayedScene.collaborations.map((item) => [
+      item.invitationId,
+      item.status,
+    ]),
+    [['invite-replay-check', 'accept']],
+  );
+
+  const journal = await json(await fetch(`${origin}/events?after=0`));
+  assert.equal(
+    journal.events.filter((event) => event.kind === 'proximity.spoken').length,
+    12,
+  );
+  const replayedOpening = journal.events.find(
+    (event) => event.eventId === spoken.event.eventId,
+  );
+  assert.deepEqual(replayedOpening.payload.heardByAgentIds, ['sage']);
+  assert.equal(
+    journal.events.some((event) => event.kind === 'task.assigned'),
+    false,
+  );
+
+  await walkTo(origin, tokens.sage, 'context-hub');
+  const distantScene = await observe(origin, tokens.atlas);
+  assert.equal(
+    distantScene.talk.some((person) => person.id === 'sage'),
+    false,
+  );
+  const distantSpeech = await speechRequest(origin, tokens.atlas, {
+    actionId: 'speech-too-far',
+    observationId: distantScene.observationId,
+    speechAct: 'say',
+    targetAgentId: 'sage',
+    text: 'This should not cross the room at a distance.',
+  });
+  assert.equal(distantSpeech.status, 409);
+  assert.match((await json(distantSpeech)).error, /outside speaking range/u);
+});
+
+void test('research computers, artifacts, and authenticated context remain agent-authored', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-research-context-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+        ARENA_CHAT_TOKEN: chatToken,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  t.after(async () => {
+    child.kill('SIGTERM');
+    await new Promise((resolveExit) => child.once('exit', resolveExit));
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await waitForHealth(origin, child);
+
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'run.started',
+        reset: true,
+        payload: { objective: 'Research and verify an implementation path' },
+      })
+    ).status,
+    201,
+  );
+
+  async function spawnAgent(agentId, name, role) {
+    const response = await postEvent(origin, {
+      kind: 'agent.spawned',
+      agentId,
+      payload: { name, role },
+    });
+    assert.equal(response.status, 201);
+    return (await json(response)).agentToken;
+  }
+
+  const sageToken = await spawnAgent('sage', 'Sage', 'Research lead');
+  const atlasToken = await spawnAgent('atlas', 'Atlas', 'Orchestrator');
+
+  for (const [agentId, objective] of [
+    ['sage', 'Research authoritative tool orchestration patterns'],
+    ['atlas', 'Coordinate the research and synthesis'],
+  ]) {
+    assert.equal(
+      (
+        await postEvent(origin, {
+          kind: 'task.assigned',
+          agentId,
+          taskId: `task-${agentId}`,
+          payload: { objective },
+        })
+      ).status,
+      201,
+    );
+  }
+
+  const commandContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', sageToken),
+  );
+  assert.equal(commandContext.self.roomId, 'context');
+  assert.equal(commandContext.self.locationId, 'spawn-lift');
+  assert.deepEqual(commandContext.sameRoomAgentIds, ['atlas']);
+  assert.match(commandContext.brief, /AREA context/u);
+  assert.ok(commandContext.brief.length < 240);
+
+  const beforeResearchSelection = await observe(origin, sageToken);
+  const selected = await postEvent(origin, {
+    kind: 'research.topic.selected',
+    agentId: 'sage',
+    payload: {
+      topicId: 'topic-tools',
+      parentTopicId: 'technical-sources',
+      title: 'Tool orchestration',
+      question: 'Which authenticated tool boundary preserves real agent work?',
+      reason: 'The runtime needs a truthful utility model',
+    },
+  });
+  assert.equal(selected.status, 201);
+
+  const staleAssignmentScene = await boardRequest(
+    origin,
+    '/world/action',
+    sageToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'stale-after-research-selection',
+        observationId: beforeResearchSelection.observationId,
+        action: 'move',
+        targetId: neighborsForLocation(
+          beforeResearchSelection.you.locationId,
+        )[0],
+      }),
+    },
+  );
+  assert.equal(staleAssignmentScene.status, 409);
+
+  const prematureTool = await postEvent(origin, {
+    kind: 'tool.started',
+    agentId: 'sage',
+    payload: {
+      toolCallId: 'tool-too-early',
+      tool: 'web.search',
+      summary: 'Attempting remote use without approaching a computer',
+      capability: 'search',
+      topicId: 'topic-tools',
+    },
+  });
+  assert.equal(prematureTool.status, 400);
+
+  const afterResearchSelection = await observe(origin, sageToken);
+  assert.equal(afterResearchSelection.you.locationId, 'spawn-lift');
+
+  const sageAtKiosk = await walkTo(origin, sageToken, 'context-kiosk');
+  const sageUsingKiosk = await interactAt(
+    origin,
+    sageToken,
+    sageAtKiosk,
+    'context-kiosk',
+    'use',
+  );
+  assert.equal(
+    sageUsingKiosk.observation.you.engagedResourceId,
+    'context-kiosk',
+  );
+  const atlasAtKiosk = await walkTo(origin, atlasToken, 'context-kiosk');
+  const atlasUsingKiosk = await interactAt(
+    origin,
+    atlasToken,
+    atlasAtKiosk,
+    'context-kiosk',
+    'use',
+  );
+  assert.equal(
+    atlasUsingKiosk.observation.you.engagedResourceId,
+    'context-kiosk',
+  );
+
+  const atLamp = await walkTo(origin, sageToken, 'archive-lamp');
+  const inspectedLamp = await interactAt(
+    origin,
+    sageToken,
+    atLamp,
+    'archive-lamp',
+    'inspect',
+  );
+  const staleInspectionScene = await boardRequest(
+    origin,
+    '/world/action',
+    sageToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'stale-after-lamp-inspection',
+        observationId: atLamp.observationId,
+        action: 'interact',
+        targetId: 'archive-lamp',
+        verb: 'switch_on',
+      }),
+    },
+  );
+  assert.equal(staleInspectionScene.status, 409);
+  const lit = await interactAt(
+    origin,
+    sageToken,
+    inspectedLamp.observation,
+    'archive-lamp',
+    'switch_on',
+  );
+  assert.equal(
+    lit.observation.entities.find((entity) => entity.id === 'archive-lamp')
+      .state.power,
+    'on',
+  );
+  assert.equal(lit.observation.place.light, 'task-lit');
+
+  const staleSwitch = await boardRequest(origin, '/world/action', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      actionId: 'stale-lamp-switch',
+      observationId: inspectedLamp.observation.observationId,
+      action: 'interact',
+      targetId: 'archive-lamp',
+      verb: 'switch_off',
+    }),
+  });
+  assert.equal(staleSwitch.status, 409);
+
+  const conflictingRetry = await boardRequest(
+    origin,
+    '/world/action',
+    sageToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: lit.event.payload.actionId,
+        observationId: lit.event.payload.observationId,
+        action: 'interact',
+        targetId: 'archive-lamp',
+        verb: 'switch_off',
+      }),
+    },
+  );
+  assert.equal(conflictingRetry.status, 409);
+  assert.match(await conflictingRetry.text(), /different action/u);
+
+  let observation = await walkTo(origin, sageToken, 'research-computer-a');
+  const engaged = await interactAt(
+    origin,
+    sageToken,
+    observation,
+    'research-computer-a',
+    'use',
+  );
+  observation = engaged.observation;
+  assert.equal(observation.you.engagedResourceId, 'research-computer-a');
+
+  const searchStart = await postEvent(origin, {
+    kind: 'tool.started',
+    agentId: 'sage',
+    payload: {
+      toolCallId: 'tool-search-1',
+      tool: 'web.search',
+      summary: 'Searching official agent orchestration documentation',
+      capability: 'search',
+      topicId: 'topic-tools',
+    },
+  });
+  assert.equal(searchStart.status, 201);
+
+  const researchContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', sageToken),
+  );
+  assert.equal(researchContext.self.roomId, 'research');
+  assert.equal(researchContext.self.resourceId, 'research-computer-a');
+  assert.equal(researchContext.self.capability, 'search');
+  assert.equal(researchContext.self.topic.topicId, 'topic-tools');
+  assert.ok(
+    researchContext.researchTracks.some(
+      (track) => track.id === 'technical-sources',
+    ),
+  );
+
+  const artifact = await postEvent(origin, {
+    kind: 'artifact.recorded',
+    agentId: 'sage',
+    payload: {
+      artifactId: 'artifact-source-1',
+      kind: 'source-note',
+      title: 'Authenticated agent context',
+      summary:
+        'Context stays read-only while tool events remain agent-authored.',
+      uri: 'https://developers.openai.com/',
+      topicId: 'topic-tools',
+    },
+  });
+  assert.equal(artifact.status, 201);
+
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'tool.finished',
+        agentId: 'sage',
+        payload: {
+          toolCallId: 'tool-search-1',
+          outcome: 'succeeded',
+          summary: 'Captured one authoritative source note',
+          artifactIds: ['artifact-source-1'],
+        },
+      })
+    ).status,
+    201,
+  );
+
+  await walkTo(origin, sageToken, 'comms-board');
+
+  const linkedBoard = await boardRequest(origin, '/board/message', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      clientMessageId: 'research-handoff-1',
+      text: 'Source note ready for synthesis.',
+      topic: 'Research handoff',
+      messageType: 'handoff',
+      audience: 'direct',
+      recipientAgentIds: ['atlas'],
+      topicId: 'topic-tools',
+      artifactIds: ['artifact-source-1'],
+    }),
+  });
+  assert.equal(linkedBoard.status, 201);
+  const linkedPayload = (await json(linkedBoard)).event.payload;
+  assert.equal(linkedPayload.topicId, 'topic-tools');
+  assert.deepEqual(linkedPayload.artifactIds, ['artifact-source-1']);
+
+  const forgedUpdate = await postEvent(origin, {
+    kind: 'research.topic.updated',
+    agentId: 'atlas',
+    payload: {
+      topicId: 'topic-tools',
+      status: 'complete',
+      summary: 'This update is not owned by Atlas',
+    },
+  });
+  assert.equal(forgedUpdate.status, 400);
+
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'research.topic.updated',
+        agentId: 'sage',
+        payload: {
+          topicId: 'topic-tools',
+          status: 'complete',
+          summary: 'Authoritative source note delivered',
+        },
+      })
+    ).status,
+    201,
+  );
+
+  const terminalAtComputer = await walkTo(
+    origin,
+    sageToken,
+    'research-computer-b',
+  );
+  await interactAt(
+    origin,
+    sageToken,
+    terminalAtComputer,
+    'research-computer-b',
+    'use',
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'agent.completed',
+        agentId: 'sage',
+        payload: { summary: 'Research handoff complete' },
+      })
+    ).status,
+    201,
+  );
+  const atlasAtReleasedComputer = await walkTo(
+    origin,
+    atlasToken,
+    'research-computer-b',
+  );
+  const atlasEngagedReleasedComputer = await interactAt(
+    origin,
+    atlasToken,
+    atlasAtReleasedComputer,
+    'research-computer-b',
+    'use',
+  );
+  assert.equal(
+    atlasEngagedReleasedComputer.observation.you.engagedResourceId,
+    'research-computer-b',
+  );
+
+  const finalContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', atlasToken),
+  );
+  assert.ok(finalContext.activeRoster.every((agent) => agent.id !== 'sage'));
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'agent.completed',
+        agentId: 'atlas',
+        payload: { summary: 'Coordination complete' },
+      })
+    ).status,
+    201,
+  );
 });

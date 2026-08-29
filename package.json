@@ -11,6 +11,7 @@
     "arena:bridge": "node scripts/arena-bridge.mjs",
     "arena:driver": "node scripts/arena-driver.mjs",
     "test:bridge": "node --test scripts/arena-bridge.test.mjs",
+    "test:spatial": "node --experimental-strip-types --experimental-specifier-resolution=node --test scripts/arena-spatial.test.mjs",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",

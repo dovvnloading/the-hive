@@ -1,0 +1,32 @@
+{
+  "description": "Journal each Codex chat turn into Hive and require a factual relay terminal state.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/arena-chat-ingress.mjs",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command '$repo = (& git rev-parse --show-toplevel).Trim(); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; & node.exe (Join-Path $repo \".codex\\hooks\\arena-chat-ingress.mjs\")'",
+            "timeout": 5,
+            "statusMessage": "Relaying Codex chat into Hive",
+            "additionalContextLimit": 2200
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .codex/hooks/arena-chat-stop.mjs",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -Command '$repo = (& git rev-parse --show-toplevel).Trim(); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; & node.exe (Join-Path $repo \".codex\\hooks\\arena-chat-stop.mjs\")'",
+            "timeout": 5,
+            "statusMessage": "Checking Hive relay"
+          }
+        ]
+      }
+    ]
+  }
+}

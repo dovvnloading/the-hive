@@ -1,126 +1,344 @@
-import type { AgentPhase, AgentPresentation, StationDefinition, Vec2 } from './agentic-types';
+import {
+  FACILITY_COLLISION_GEOMETRY,
+  FACILITY_RESOURCES,
+  FACILITY_ROOMS,
+  FACILITY_PROPS,
+  FACILITY_WAYPOINTS,
+  PHASE_RESOURCE,
+  RESEARCH_TRACKS,
+  WORLD_EDGES,
+  WORLD_LOCATIONS,
+  inferToolCapability,
+  neighborsForLocation,
+  resourceById,
+  resourcesForCapability,
+  roomById,
+  roomForLocation,
+  roomForResource,
+  worldEntityById,
+  worldLocationById,
+} from './facility-protocol.mjs';
+import type {
+  AgentPhase,
+  AgentPresentation,
+  StationDefinition,
+  ToolCapability,
+  Vec2,
+} from './agentic-types';
+
+export {
+  FACILITY_COLLISION_GEOMETRY,
+  FACILITY_RESOURCES,
+  FACILITY_ROOMS,
+  FACILITY_PROPS,
+  FACILITY_WAYPOINTS,
+  RESEARCH_TRACKS,
+  WORLD_EDGES,
+  WORLD_LOCATIONS,
+  inferToolCapability,
+  neighborsForLocation,
+  resourceById,
+  resourcesForCapability,
+  roomById,
+  roomForLocation,
+  roomForResource,
+  worldEntityById,
+  worldLocationById,
+};
 
 export const AGENT_PRESENTATION: Record<string, AgentPresentation> = {
-  atlas: { sprite: '/assets/limezu/characters/adam', accent: '#c98b52', shortRole: 'ORCHESTRATOR' },
-  sage: { sprite: '/assets/limezu/characters/alex', accent: '#7fa478', shortRole: 'RESEARCH' },
-  nova: { sprite: '/assets/limezu/characters/amelia', accent: '#6aa6ae', shortRole: 'BUILDER' },
-  kernel: { sprite: '/assets/limezu/characters/bob', accent: '#ad6663', shortRole: 'VERIFY' },
+  atlas: {
+    sprite: '/assets/limezu/characters/adam',
+    accent: '#c98b52',
+    shortRole: 'ORCHESTRATOR',
+  },
+  sage: {
+    sprite: '/assets/limezu/characters/alex',
+    accent: '#7fa478',
+    shortRole: 'RESEARCH',
+  },
+  nova: {
+    sprite: '/assets/limezu/characters/amelia',
+    accent: '#6aa6ae',
+    shortRole: 'BUILDER',
+  },
+  kernel: {
+    sprite: '/assets/limezu/characters/bob',
+    accent: '#ad6663',
+    shortRole: 'VERIFY',
+  },
 };
 
-export const STATIONS: StationDefinition[] = [
-  {
-    id: 'command-core',
-    name: 'Command Core',
-    position: { x: 50, y: 34 },
-    slots: [{ x: 45, y: 35 }, { x: 49, y: 35 }, { x: 53, y: 35 }, { x: 57, y: 35 }],
-  },
-  {
-    id: 'research-archive',
-    name: 'Research Archive',
-    position: { x: 18, y: 35 },
-    slots: [{ x: 12, y: 35 }, { x: 17, y: 35 }, { x: 22, y: 35 }, { x: 27, y: 35 }],
-  },
-  {
-    id: 'tool-bay',
-    name: 'Tool Bay',
-    position: { x: 82, y: 36 },
-    slots: [{ x: 75, y: 36 }, { x: 80, y: 36 }, { x: 85, y: 36 }, { x: 90, y: 36 }],
-  },
-  {
-    id: 'build-lab',
-    name: 'Build Lab',
-    position: { x: 78, y: 82 },
-    slots: [{ x: 70, y: 82 }, { x: 76, y: 82 }, { x: 82, y: 82 }, { x: 88, y: 82 }],
-  },
-  {
-    id: 'synthesis-table',
-    name: 'Synthesis Table',
-    position: { x: 24, y: 83 },
-    slots: [{ x: 15, y: 83 }, { x: 21, y: 83 }, { x: 27, y: 83 }, { x: 33, y: 83 }],
-  },
-  {
-    id: 'commons',
-    name: 'Commons',
-    position: { x: 54, y: 86 },
-    slots: [{ x: 46, y: 86 }, { x: 50, y: 86 }, { x: 54, y: 86 }, { x: 58, y: 86 }],
-  },
-  {
-    id: 'spawn-lift',
-    name: 'Entry lift',
-    position: { x: 54, y: 92 },
-    slots: [{ x: 48, y: 92 }, { x: 52, y: 92 }, { x: 56, y: 92 }, { x: 60, y: 92 }],
-  },
-];
+const PRESENTATION_POOL = Object.values(AGENT_PRESENTATION);
 
-export const PHASE_STATION: Record<AgentPhase, string> = {
-  spawning: 'spawn-lift',
-  planning: 'command-core',
-  delegating: 'command-core',
-  researching: 'research-archive',
-  implementing: 'build-lab',
-  tooling: 'tool-bay',
-  verifying: 'build-lab',
-  synthesizing: 'synthesis-table',
-  waiting: 'commons',
-  completed: 'synthesis-table',
-  failed: 'commons',
-  canceled: 'commons',
-};
+export const STATIONS: StationDefinition[] = WORLD_LOCATIONS.map(
+  (location) => ({
+    id: location.id,
+    name: location.label,
+    roomId: String(location.roomId),
+    kind: location.kind,
+    capabilities: [...location.capabilities],
+    position: {
+      x: Number(location.position.x),
+      y: Number(location.position.y),
+    },
+    slots: location.slots.map((slot) => ({
+      x: Number(slot.x),
+      y: Number(slot.y),
+    })),
+  }),
+);
 
-export function presentationFor(agentId: string): AgentPresentation {
-  return AGENT_PRESENTATION[agentId] ?? {
-    sprite: AGENT_PRESENTATION.atlas.sprite,
-    accent: '#a5b7c9',
-    shortRole: 'AGENT',
-  };
-}
-
-export function stationById(stationId: string) {
-  return STATIONS.find((station) => station.id === stationId) ?? STATIONS[5];
-}
+export const PHASE_STATION = PHASE_RESOURCE as Record<AgentPhase, string>;
 
 function hashAgent(agentId: string) {
   let hash = 0;
-  for (let index = 0; index < agentId.length; index += 1) hash = (hash * 31 + agentId.charCodeAt(index)) >>> 0;
+  for (let index = 0; index < agentId.length; index += 1)
+    hash = (hash * 31 + agentId.charCodeAt(index)) >>> 0;
   return hash;
 }
 
-const KNOWN_AGENT_SLOT: Record<string, number> = {
-  atlas: 0,
-  sage: 1,
-  nova: 2,
-  kernel: 3,
+export function presentationFor(agentId: string): AgentPresentation {
+  const known = AGENT_PRESENTATION[agentId];
+  if (known) return known;
+  const base = PRESENTATION_POOL[hashAgent(agentId) % PRESENTATION_POOL.length];
+  return { ...base, shortRole: 'AGENT' };
+}
+
+export function stationById(stationId: string) {
+  return (
+    STATIONS.find((station) => station.id === stationId) ??
+    STATIONS.find((station) => station.id === 'commons')!
+  );
+}
+
+function positionReserved(position: Vec2, reserved: Vec2[]) {
+  return reserved.some(
+    (candidate) =>
+      Math.abs(candidate.x - position.x) < 0.1 &&
+      Math.abs(candidate.y - position.y) < 0.1,
+  );
+}
+
+const SPAWN_QUEUE_SLOTS: Vec2[] = [
+  { x: 43.25, y: 50 },
+  { x: 47.75, y: 50 },
+  { x: 52.25, y: 50 },
+  { x: 56.75, y: 50 },
+];
+
+const STATION_OVERFLOW_SLOTS: Record<string, Vec2[]> = {
+  // Old journals may contain arrivals accepted before a waypoint capacity was
+  // tightened. Replay queues those residents along the clear centerline rather
+  // than inventing a near-identical point that visually merges their sprites.
+  'context-hub': [
+    { x: 44.01, y: 75 },
+    { x: 55.99, y: 75 },
+  ],
+  'context-kiosk': [
+    { x: 50, y: 75 },
+    { x: 44.01, y: 75 },
+    { x: 55.99, y: 75 },
+  ],
+  commons: [
+    { x: 50, y: 75 },
+    { x: 44.01, y: 75 },
+    { x: 55.99, y: 75 },
+  ],
 };
 
-export function slotForAgent(stationId: string, agentId: string): Vec2 {
+export function slotForAgent(
+  stationId: string,
+  agentId: string,
+  reserved: Vec2[] = [],
+): Vec2 {
   const station = stationById(stationId);
-  const slotIndex = KNOWN_AGENT_SLOT[agentId] ?? hashAgent(agentId);
-  return station.slots[slotIndex % station.slots.length];
+  const start = hashAgent(agentId) % station.slots.length;
+  for (let offset = 0; offset < station.slots.length; offset += 1) {
+    const slot = station.slots[(start + offset) % station.slots.length];
+    if (!positionReserved(slot, reserved)) return { ...slot };
+  }
+
+  if (stationId === 'spawn-lift') {
+    const queueStart = hashAgent(agentId) % SPAWN_QUEUE_SLOTS.length;
+    for (let offset = 0; offset < SPAWN_QUEUE_SLOTS.length; offset += 1) {
+      const slot =
+        SPAWN_QUEUE_SLOTS[(queueStart + offset) % SPAWN_QUEUE_SLOTS.length];
+      if (!positionReserved(slot, reserved)) return { ...slot };
+    }
+  }
+
+  const overflowSlots = STATION_OVERFLOW_SLOTS[stationId] ?? [];
+  for (const slot of overflowSlots) {
+    if (!positionReserved(slot, reserved)) return { ...slot };
+  }
+
+  // Capacity overflow waits behind the owned resource rather than stacking on
+  // its working slot. The collective capsule solver provides final clearance.
+  const overflowIndex = Math.max(0, reserved.length - station.slots.length);
+  return {
+    x: station.position.x + ((overflowIndex % 3) - 1) * 2.7,
+    y: Math.min(
+      94,
+      station.position.y + 3.2 + Math.floor(overflowIndex / 3) * 2.7,
+    ),
+  };
+}
+
+export function resourceCandidatesForCapability(capability: ToolCapability) {
+  return resourcesForCapability(capability).map((resource) => resource.id);
 }
 
 function compactPath(points: Vec2[]) {
   return points.filter((point, index) => {
     if (index === 0) return true;
     const previous = points[index - 1];
-    return Math.abs(previous.x - point.x) > 0.1 || Math.abs(previous.y - point.y) > 0.1;
+    return (
+      Math.abs(previous.x - point.x) > 0.1 ||
+      Math.abs(previous.y - point.y) > 0.1
+    );
   });
 }
 
-export function buildArenaPath(from: Vec2, to: Vec2): Vec2[] {
-  const lowerFrom = from.y > 50;
-  const lowerTo = to.y > 50;
-  const points: Vec2[] = [];
+const ROOM_ROUTES: Record<
+  string,
+  { hubId: string; doorId: string; centerX: number; aisleY: number }
+> = {
+  research: {
+    hubId: 'research-hub',
+    doorId: 'door-research',
+    centerX: 18.75,
+    aisleY: 37.5,
+  },
+  command: {
+    hubId: 'command-hub',
+    doorId: 'door-command',
+    centerX: 45.833,
+    aisleY: 37.5,
+  },
+  tools: {
+    hubId: 'tools-hub',
+    doorId: 'door-tools',
+    centerX: 77.083,
+    aisleY: 37.5,
+  },
+  synthesis: {
+    hubId: 'synthesis-hub',
+    doorId: 'door-synthesis',
+    centerX: 22.917,
+    aisleY: 88,
+  },
+  context: {
+    hubId: 'context-hub',
+    doorId: 'door-context',
+    centerX: 50,
+    aisleY: 75,
+  },
+  build: {
+    hubId: 'build-hub',
+    doorId: 'door-build',
+    centerX: 77.083,
+    aisleY: 88,
+  },
+};
 
-  if (lowerFrom !== lowerTo) {
-    points.push({ x: from.x, y: 50 });
-    points.push({ x: 52, y: 50 });
-    points.push({ x: to.x, y: 50 });
-  } else if (Math.abs(from.x - to.x) > 18) {
-    const corridorY = lowerFrom ? 56 : 48;
-    points.push({ x: from.x, y: corridorY });
-    points.push({ x: to.x, y: corridorY });
+function routeBetweenRoomEntityAndHub(
+  from: Vec2,
+  to: Vec2,
+  fromStationId: string,
+  toStationId: string,
+  route: (typeof ROOM_ROUTES)[string],
+) {
+  if (fromStationId === route.hubId) {
+    return [
+      { x: route.centerX, y: from.y },
+      { x: route.centerX, y: route.aisleY },
+      { x: to.x, y: route.aisleY },
+      to,
+    ];
+  }
+  if (toStationId === route.hubId) {
+    return [
+      { x: from.x, y: route.aisleY },
+      { x: route.centerX, y: route.aisleY },
+      { x: route.centerX, y: to.y },
+      to,
+    ];
+  }
+  return [to];
+}
+
+export function buildArenaPath(
+  from: Vec2,
+  to: Vec2,
+  fromStationId?: string,
+  toStationId?: string,
+): Vec2[] {
+  if (!fromStationId || !toStationId) return compactPath([{ ...to }]);
+  if (fromStationId === toStationId) return compactPath([{ ...to }]);
+
+  const fromLocation = worldLocationById(fromStationId);
+  const toLocation = worldLocationById(toStationId);
+  if (!fromLocation || !toLocation) return compactPath([{ ...to }]);
+
+  // The lift is a portal, not a walkable hallway. The reducer projects this
+  // semantic edge as a delayed transfer between two legal endpoints, so this
+  // path intentionally contains no intermediate floor points.
+  if (
+    new Set([fromStationId, toStationId]).has('spawn-lift') &&
+    new Set([fromStationId, toStationId]).has('context-hub')
+  ) {
+    return compactPath([{ ...to }]);
   }
 
-  points.push({ ...to });
-  return compactPath(points);
+  if (fromLocation.roomId === toLocation.roomId) {
+    const route = ROOM_ROUTES[String(fromLocation.roomId)];
+    if (!route) return compactPath([{ ...to }]);
+
+    // Room hubs meet doors on the door centerline; no lateral displacement is
+    // allowed while the capsule is inside a narrow jamb span.
+    if (
+      new Set([fromStationId, toStationId]).has(route.hubId) &&
+      new Set([fromStationId, toStationId]).has(route.doorId)
+    ) {
+      return compactPath(
+        fromStationId === route.hubId
+          ? [{ x: route.centerX, y: from.y }, to]
+          : [{ x: route.centerX, y: to.y }, to],
+      );
+    }
+
+    if (
+      fromStationId === route.hubId ||
+      toStationId === route.hubId
+    ) {
+      return compactPath(
+        routeBetweenRoomEntityAndHub(
+          from,
+          to,
+          fromStationId,
+          toStationId,
+          route,
+        ),
+      );
+    }
+  }
+
+  const fromIsDoor = fromLocation.kind === 'portal';
+  const toIsDoor = toLocation.kind === 'portal';
+  const fromIsHall = fromLocation.roomId === 'corridor';
+  const toIsHall = toLocation.roomId === 'corridor';
+  if ((fromIsDoor && toIsHall) || (toIsDoor && fromIsHall)) {
+    const door = fromIsDoor ? fromLocation : toLocation;
+    return compactPath(
+      fromIsDoor
+        ? [{ x: Number(door.position.x), y: to.y }, to]
+        : [{ x: Number(door.position.x), y: from.y }, to],
+    );
+  }
+
+  // Corridor waypoints and the short threshold step between a door and its
+  // hall node are already obstacle-free; their stable slots create two-way
+  // lanes without asking a model to micromanage foot placement.
+  return compactPath([{ ...to }]);
 }

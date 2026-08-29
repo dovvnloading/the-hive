@@ -28,6 +28,26 @@ function hasOptionalString(record: JsonRecord, key: string) {
   return record[key] === undefined || isString(record[key]);
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function hasOptionalStringArray(record: JsonRecord, key: string) {
+  return record[key] === undefined || isStringArray(record[key]);
+}
+
+function isWorldState(value: unknown) {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (item) =>
+        typeof item === 'string' ||
+        typeof item === 'number' ||
+        typeof item === 'boolean',
+    )
+  );
+}
+
 const AGENT_PHASES = new Set<AgentPhase>([
   'spawning',
   'planning',
@@ -42,31 +62,143 @@ const AGENT_PHASES = new Set<AgentPhase>([
   'failed',
   'canceled',
 ]);
+const TOOL_CAPABILITIES = new Set([
+  'search',
+  'browse',
+  'read',
+  'shell',
+  'filesystem',
+  'connector',
+  'edit',
+  'build',
+  'test',
+  'review',
+  'publish',
+  'communicate',
+  'context',
+]);
+const RESEARCH_TOPIC_STATES = new Set([
+  'active',
+  'blocked',
+  'complete',
+  'dropped',
+]);
+const ARTIFACT_KINDS = new Set([
+  'source-note',
+  'change',
+  'test-result',
+  'decision',
+]);
 
 function hasValidPayload(kind: RuntimeEvent['kind'], payload: JsonRecord) {
   if (kind === 'run.started') return isString(payload.objective);
   if (kind === 'run.completed') return isString(payload.summary);
   if (kind === 'run.canceled') return isString(payload.reason);
-  if (kind === 'agent.spawned') return isString(payload.name) && isString(payload.role);
+  if (kind === 'chat.ingress') {
+    return (
+      isString(payload.ingressId) &&
+      isString(payload.sessionId) &&
+      isString(payload.turnId) &&
+      isString(payload.prompt) &&
+      isString(payload.capturedAt) &&
+      !Number.isNaN(Date.parse(payload.capturedAt))
+    );
+  }
+  if (kind === 'chat.relay') {
+    return (
+      isString(payload.ingressId) &&
+      (payload.state === 'claimed' ||
+        payload.state === 'dispatched' ||
+        payload.state === 'completed' ||
+        payload.state === 'failed') &&
+      isStringArray(payload.targetAgentIds) &&
+      isString(payload.summary)
+    );
+  }
+  if (kind === 'agent.spawned')
+    return isString(payload.name) && isString(payload.role);
   if (kind === 'task.assigned') return isString(payload.objective);
+  if (kind === 'world.navigation') {
+    return (
+      isString(payload.actionId) &&
+      isString(payload.observationId) &&
+      isString(payload.fromLocationId) &&
+      isString(payload.toLocationId) &&
+      isString(payload.startedAt) &&
+      isString(payload.arrivesAt) &&
+      !Number.isNaN(Date.parse(payload.startedAt)) &&
+      !Number.isNaN(Date.parse(payload.arrivesAt)) &&
+      hasOptionalString(payload, 'reason')
+    );
+  }
+  if (kind === 'world.interaction') {
+    return (
+      isString(payload.actionId) &&
+      isString(payload.observationId) &&
+      isString(payload.locationId) &&
+      isString(payload.entityId) &&
+      isString(payload.verb) &&
+      isString(payload.result) &&
+      typeof payload.stateVersion === 'number' &&
+      isWorldState(payload.state)
+    );
+  }
   if (kind === 'agent.activity') {
     return (
       isString(payload.phase) &&
       AGENT_PHASES.has(payload.phase as AgentPhase) &&
       isString(payload.summary) &&
-      (payload.status === 'working' || payload.status === 'idle' || payload.status === 'blocked')
+      (payload.status === 'working' ||
+        payload.status === 'idle' ||
+        payload.status === 'blocked')
     );
   }
   if (kind === 'tool.started') {
     return (
-      isString(payload.toolCallId) && isString(payload.tool) && isString(payload.summary)
+      isString(payload.toolCallId) &&
+      isString(payload.tool) &&
+      isString(payload.summary) &&
+      isString(payload.resourceId) &&
+      (payload.capability === undefined ||
+        (isString(payload.capability) &&
+          TOOL_CAPABILITIES.has(payload.capability))) &&
+      hasOptionalString(payload, 'topicId')
     );
   }
   if (kind === 'tool.finished') {
     return (
       isString(payload.toolCallId) &&
       (payload.outcome === 'succeeded' || payload.outcome === 'failed') &&
+      hasOptionalString(payload, 'summary') &&
+      hasOptionalStringArray(payload, 'artifactIds')
+    );
+  }
+  if (kind === 'research.topic.selected') {
+    return (
+      isString(payload.topicId) &&
+      hasOptionalString(payload, 'parentTopicId') &&
+      isString(payload.title) &&
+      isString(payload.question) &&
+      hasOptionalString(payload, 'reason')
+    );
+  }
+  if (kind === 'research.topic.updated') {
+    return (
+      isString(payload.topicId) &&
+      isString(payload.status) &&
+      RESEARCH_TOPIC_STATES.has(payload.status) &&
       hasOptionalString(payload, 'summary')
+    );
+  }
+  if (kind === 'artifact.recorded') {
+    return (
+      isString(payload.artifactId) &&
+      isString(payload.kind) &&
+      ARTIFACT_KINDS.has(payload.kind) &&
+      isString(payload.title) &&
+      isString(payload.summary) &&
+      hasOptionalString(payload, 'uri') &&
+      hasOptionalString(payload, 'topicId')
     );
   }
   if (kind === 'agent.message') {
@@ -74,6 +206,56 @@ function hasValidPayload(kind: RuntimeEvent['kind'], payload: JsonRecord) {
       (payload.channel === 'commentary' || payload.channel === 'final') &&
       isString(payload.text) &&
       hasOptionalString(payload, 'targetAgentId')
+    );
+  }
+  if (kind === 'proximity.spoken') {
+    return (
+      isString(payload.actionId) &&
+      isString(payload.observationId) &&
+      isString(payload.speechId) &&
+      (payload.speechAct === 'say' ||
+        payload.speechAct === 'invite' ||
+        payload.speechAct === 'accept' ||
+        payload.speechAct === 'decline') &&
+      isString(payload.speakerLocationId) &&
+      isString(payload.targetLocationId) &&
+      isString(payload.targetAgentId) &&
+      isStringArray(payload.heardByAgentIds) &&
+      typeof payload.distancePx === 'number' &&
+      isString(payload.text) &&
+      isString(payload.preview) &&
+      hasOptionalString(payload, 'replyToSpeechId') &&
+      hasOptionalString(payload, 'invitationId') &&
+      (payload.invitationMode === undefined ||
+        payload.invitationMode === 'collaborate' ||
+        payload.invitationMode === 'recruit') &&
+      hasOptionalString(payload, 'objective')
+    );
+  }
+  if (kind === 'board.message') {
+    return (
+      isString(payload.messageId) &&
+      isString(payload.clientMessageId) &&
+      isString(payload.threadId) &&
+      isString(payload.topic) &&
+      (payload.messageType === 'update' ||
+        payload.messageType === 'question' ||
+        payload.messageType === 'decision' ||
+        payload.messageType === 'handoff') &&
+      (payload.audience === 'broadcast' || payload.audience === 'direct') &&
+      isStringArray(payload.recipientAgentIds) &&
+      hasOptionalString(payload, 'replyToMessageId') &&
+      hasOptionalString(payload, 'topicId') &&
+      hasOptionalStringArray(payload, 'artifactIds') &&
+      isString(payload.text)
+    );
+  }
+  if (kind === 'board.acknowledged') {
+    return (
+      isString(payload.messageId) &&
+      (payload.state === 'read' ||
+        payload.state === 'acknowledged' ||
+        payload.state === 'resolved')
     );
   }
   if (kind === 'agent.blocked') {
@@ -108,7 +290,7 @@ function isRuntimeEvent(value: unknown): value is RuntimeEvent {
     (value.sequence as number) < 1 ||
     !isString(value.occurredAt) ||
     Number.isNaN(Date.parse(value.occurredAt)) ||
-    value.source !== 'codex' ||
+    (value.source !== 'codex' && value.source !== 'operator') ||
     !isString(value.runId) ||
     !isString(value.kind) ||
     !hasOptionalString(value, 'agentId') ||
@@ -120,7 +302,7 @@ function isRuntimeEvent(value: unknown): value is RuntimeEvent {
   }
 
   const kind = value.kind as RuntimeEvent['kind'];
-  const isAgentEvent = !kind.startsWith('run.');
+  const isAgentEvent = !kind.startsWith('run.') && !kind.startsWith('chat.');
   if (isAgentEvent && !isString(value.agentId)) return false;
   return hasValidPayload(kind, value.payload);
 }
@@ -136,7 +318,8 @@ function eventsFromResponse(value: unknown): RuntimeEvent[] | undefined {
 }
 
 function receiptFromResponse(value: unknown, expectedIntentId: string) {
-  const candidate = isRecord(value) && isRecord(value.receipt) ? value.receipt : value;
+  const candidate =
+    isRecord(value) && isRecord(value.receipt) ? value.receipt : value;
   if (
     !isRecord(candidate) ||
     candidate.intentId !== expectedIntentId ||
@@ -151,7 +334,10 @@ function receiptFromResponse(value: unknown, expectedIntentId: string) {
 }
 
 function intentId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID();
   }
   return `intent-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -222,9 +408,15 @@ export class CodexAgentRuntime implements ArenaRuntime {
       const receipt = receiptFromResponse(body, id);
       if (receipt) return receipt;
       if (!response.ok) {
-        return rejectedReceipt(id, `Codex bridge rejected the command (${response.status})`);
+        return rejectedReceipt(
+          id,
+          `Codex bridge rejected the command (${response.status})`,
+        );
       }
-      return rejectedReceipt(id, 'Codex bridge returned an invalid command receipt');
+      return rejectedReceipt(
+        id,
+        'Codex bridge returned an invalid command receipt',
+      );
     } catch (error) {
       this.setConnectionStatus('disconnected');
       const reason =
@@ -318,7 +510,11 @@ export class CodexAgentRuntime implements ArenaRuntime {
   }
 
   private acceptEvent(event: RuntimeEvent) {
-    if (event.sequence <= this.lastSequence || this.seenEventIds.has(event.eventId)) return;
+    if (
+      event.sequence <= this.lastSequence ||
+      this.seenEventIds.has(event.eventId)
+    )
+      return;
     this.lastSequence = event.sequence;
     this.rememberEvent(event.eventId);
     this.listeners.forEach((listener) => {
