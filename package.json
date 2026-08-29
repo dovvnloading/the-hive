@@ -6,7 +6,11 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vinext dev",
+    "arena:bridge": "node scripts/arena-bridge.mjs",
+    "arena:driver": "node scripts/arena-driver.mjs",
+    "test:bridge": "node --test scripts/arena-bridge.test.mjs",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",

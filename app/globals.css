@@ -383,6 +383,26 @@ button {
   text-decoration: none;
 }
 
+.delivery-note {
+  flex: 0 0 auto;
+  max-width: 36vw;
+  margin-left: auto;
+  overflow: hidden;
+  color: #9fb8b3;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delivery-note.rejected {
+  color: #d28b88;
+}
+
+.delivery-note + a {
+  margin-left: 0;
+}
+
 .event-line a:hover {
   color: #bec6c5;
 }

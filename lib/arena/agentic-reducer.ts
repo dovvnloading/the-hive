@@ -13,8 +13,8 @@ import type {
 const INITIAL_STATE: AgentArenaState = {
   runId: 'boot',
   runStatus: 'booting',
-  objective: 'Connecting to the local agent runtime…',
-  source: 'mock',
+  objective: 'Waiting for real Codex subagent events from 127.0.0.1:8787…',
+  source: 'codex',
   agents: [],
   avatars: [],
   events: [],

@@ -4,7 +4,12 @@ import { useMemo, useState, type SyntheticEvent } from 'react';
 
 import { AgentArenaWorld } from '@/components/agent-arena-world';
 import { useAgentArena } from '@/hooks/use-agent-arena';
-import type { AgentPhase, RuntimeEvent } from '@/lib/arena/agentic-types';
+import type {
+  AgentPhase,
+  CommandReceipt,
+  RuntimeConnectionStatus,
+  RuntimeEvent,
+} from '@/lib/arena/agentic-types';
 
 function timeLabel(iso: string) {
   return new Intl.DateTimeFormat('en', {
@@ -38,11 +43,21 @@ function phaseLabel(phase: AgentPhase) {
   return phase.replace('-', ' ');
 }
 
+function connectionLabel(status: RuntimeConnectionStatus) {
+  if (status === 'connected') return 'bridge live';
+  if (status === 'connecting') return 'connecting';
+  return 'bridge offline';
+}
+
+type DeliveryNotice = { kind: 'accepted' | 'rejected'; text: string };
+
 export default function Home() {
   const arena = useAgentArena();
   const { state, selectedAgent, activePrompt } = arena;
   const [objective, setObjective] = useState('');
   const [followUp, setFollowUp] = useState('');
+  const [commandPending, setCommandPending] = useState(false);
+  const [deliveryNotice, setDeliveryNotice] = useState<DeliveryNotice>();
 
   const agentNames = useMemo(
     () => new Map(state.agents.map((agent) => [agent.id, agent.name])),
@@ -55,20 +70,57 @@ export default function Home() {
     ? state.events.filter((event) => event.agentId === selectedAgent.id).slice(0, 4)
     : [];
 
+  const commandsUnavailable = arena.connectionStatus !== 'connected' || commandPending;
+
+  async function queueCommand(
+    command: () => Promise<CommandReceipt>,
+    acceptedCopy: string,
+    onAccepted?: () => void,
+  ) {
+    if (commandsUnavailable) return;
+    setCommandPending(true);
+    setDeliveryNotice(undefined);
+    try {
+      const receipt = await command();
+      if (receipt.accepted) {
+        onAccepted?.();
+        setDeliveryNotice({ kind: 'accepted', text: acceptedCopy });
+      } else {
+        setDeliveryNotice({
+          kind: 'rejected',
+          text: receipt.reason ?? 'Command was not queued',
+        });
+      }
+    } catch {
+      setDeliveryNotice({
+        kind: 'rejected',
+        text: 'Command delivery failed',
+      });
+    } finally {
+      setCommandPending(false);
+    }
+  }
+
   function submitObjective(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const next = objective.trim();
     if (!next) return;
-    void arena.submitObjective(next);
-    setObjective('');
+    void queueCommand(
+      () => arena.submitObjective(next),
+      'Objective queued for the Codex orchestrator',
+      () => setObjective(''),
+    );
   }
 
   function submitFollowUp(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const next = followUp.trim();
     if (!selectedAgent || !next) return;
-    void arena.sendFollowUp(selectedAgent.id, next);
-    setFollowUp('');
+    void queueCommand(
+      () => arena.sendFollowUp(selectedAgent.id, next),
+      `Follow-up queued for ${selectedAgent.name}`,
+      () => setFollowUp(''),
+    );
   }
 
   return (
@@ -84,6 +136,7 @@ export default function Home() {
         <div className="run-state">
           <span>{activeCount} working</span>
           {waitingCount > 0 && <span>{waitingCount} awaiting input</span>}
+          <span>{connectionLabel(arena.connectionStatus)}</span>
           <span>{state.runStatus}</span>
         </div>
       </header>
@@ -97,13 +150,25 @@ export default function Home() {
           <div className="prompt-actions">
             <button
               type="button"
-              onClick={() => void arena.approvePrompt(activePrompt.promptId, true)}
+              disabled={commandsUnavailable}
+              onClick={() =>
+                void queueCommand(
+                  () => arena.approvePrompt(activePrompt.promptId, true),
+                  'Approval queued for the Codex orchestrator',
+                )
+              }
             >
               Approve
             </button>
             <button
               type="button"
-              onClick={() => void arena.approvePrompt(activePrompt.promptId, false)}
+              disabled={commandsUnavailable}
+              onClick={() =>
+                void queueCommand(
+                  () => arena.approvePrompt(activePrompt.promptId, false),
+                  'Denial queued for the Codex orchestrator',
+                )
+              }
             >
               Deny
             </button>
@@ -155,7 +220,13 @@ export default function Home() {
             </button>
             <button
               type="button"
-              onClick={() => void arena.interruptAgent(selectedAgent.id)}
+              disabled={commandsUnavailable}
+              onClick={() =>
+                void queueCommand(
+                  () => arena.interruptAgent(selectedAgent.id),
+                  `Interrupt queued for ${selectedAgent.name}`,
+                )
+              }
             >
               Interrupt
             </button>
@@ -168,8 +239,8 @@ export default function Home() {
               placeholder={`Send ${selectedAgent.name} a follow-up`}
               aria-label={`Follow-up for ${selectedAgent.name}`}
             />
-            <button type="submit" disabled={!followUp.trim()}>
-              Send
+            <button type="submit" disabled={!followUp.trim() || commandsUnavailable}>
+              Queue
             </button>
           </form>
         </aside>
@@ -190,6 +261,14 @@ export default function Home() {
           ) : (
             <span>Waiting for the first runtime event</span>
           )}
+          {deliveryNotice && (
+            <output
+              className={`delivery-note ${deliveryNotice.kind}`}
+              aria-live="polite"
+            >
+              {deliveryNotice.text}
+            </output>
+          )}
           <a
             href="https://limezu.itch.io/moderninteriors"
             target="_blank"
@@ -207,8 +286,8 @@ export default function Home() {
             onChange={(event) => setObjective(event.target.value)}
             placeholder="Set a new objective for the runtime…"
           />
-          <button type="submit" disabled={!objective.trim()}>
-            Run
+          <button type="submit" disabled={!objective.trim() || commandsUnavailable}>
+            {commandPending ? 'Queuing' : 'Queue'}
           </button>
         </form>
       </footer>

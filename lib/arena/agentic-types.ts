@@ -15,7 +15,8 @@ export type AgentPhase =
   | 'canceled';
 
 export type RuntimeAgentStatus = 'working' | 'idle' | 'blocked' | 'completed' | 'failed' | 'canceled';
-export type RuntimeSource = 'mock' | 'codex';
+export type RuntimeSource = 'codex';
+export type RuntimeConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 type EventEnvelope<K extends string, P> = {
   schemaVersion: 1;
@@ -80,6 +81,7 @@ export interface ArenaRuntime {
   start(objective: string): void;
   command(intent: OperatorIntent): Promise<CommandReceipt>;
   subscribe(listener: (event: RuntimeEvent) => void): () => void;
+  subscribeConnection(listener: (status: RuntimeConnectionStatus) => void): () => void;
   destroy(): void;
 }
 

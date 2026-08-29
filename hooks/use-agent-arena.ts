@@ -3,15 +3,16 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 import { agentArenaReducer, createAgentArenaState } from '@/lib/arena/agentic-reducer';
-import { MockAgentRuntime } from '@/lib/arena/mock-agent-runtime';
+import { CodexAgentRuntime } from '@/lib/arena/codex-agent-runtime';
 import type {
   ArenaRuntime,
   CommandReceipt,
   OperatorIntent,
+  RuntimeConnectionStatus,
 } from '@/lib/arena/agentic-types';
 
 export const DEFAULT_AGENT_OBJECTIVE =
-  'Build the first autonomous arena: a spatial projection of subagents planning, delegating, using tools, handing off work, and completing one shared objective.';
+  'Waiting for real Codex subagent events from the local bridge.';
 
 /**
  * Adapts an agent runtime event stream into the arena's local visual projection.
@@ -20,12 +21,15 @@ export const DEFAULT_AGENT_OBJECTIVE =
  */
 export function useAgentArena() {
   const [state, dispatch] = useReducer(agentArenaReducer, undefined, createAgentArenaState);
-  const [runtime] = useState<ArenaRuntime>(() => new MockAgentRuntime());
+  const [runtime] = useState<ArenaRuntime>(() => new CodexAgentRuntime());
+  const [connectionStatus, setConnectionStatus] =
+    useState<RuntimeConnectionStatus>('connecting');
 
   useEffect(() => {
     const unsubscribe = runtime.subscribe((event) => {
       dispatch({ type: 'runtime.event', event });
     });
+    const unsubscribeConnection = runtime.subscribeConnection(setConnectionStatus);
 
     runtime.start(DEFAULT_AGENT_OBJECTIVE);
 
@@ -46,6 +50,7 @@ export function useAgentArena() {
     return () => {
       window.cancelAnimationFrame(frameId);
       unsubscribe();
+      unsubscribeConnection();
       runtime.destroy();
     };
   }, [runtime]);
@@ -117,6 +122,7 @@ export function useAgentArena() {
 
   return {
     state,
+    connectionStatus,
     selectedAgent,
     followedAgent,
     activePrompt,
