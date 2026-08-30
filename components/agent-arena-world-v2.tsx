@@ -250,7 +250,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 129,
     baseline: 156,
     seatForResourceId: 'command-table',
-    seatIndex: 0,
+    seatIndex: 1,
     seatForegroundCrop: sideChairForegroundCrop('east'),
   },
   {
@@ -262,7 +262,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 128,
     baseline: 156,
     seatForResourceId: 'command-table',
-    seatIndex: 1,
+    seatIndex: 0,
     seatForegroundCrop: sideChairForegroundCrop('west'),
   },
   {

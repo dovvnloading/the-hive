@@ -337,7 +337,7 @@ void test('every authored chair selects the matching directional seated sheet', 
   assert.deepEqual(directionsByResource, {
     'archive-desk': ['south'],
     'research-computer-b': ['north'],
-    'command-table': ['east', 'west'],
+    'command-table': ['west', 'east'],
     'shell-console-a': ['north'],
     'connector-console-b': ['north'],
     'synthesis-lounge': ['south'],
@@ -378,9 +378,18 @@ void test('every authored chair selects the matching directional seated sheet', 
   );
   assert.deepEqual(commandTable?.capabilities, ['review']);
   assert.deepEqual(commandTable?.seatedPositions, [
-    { x: 40.755, y: 33.929 },
     { x: 49.219, y: 33.929 },
+    { x: 42.188, y: 33.929 },
   ]);
+  const commandSeatPixels = commandTable.seatedPositions.map((seat) =>
+    Math.round((seat.x / 100) * 768),
+  );
+  assert.deepEqual(commandSeatPixels, [378, 324]);
+  assert.equal(
+    commandSeatPixels[0] + commandSeatPixels[1],
+    351 * 2,
+    'Command seated projections must mirror around the planning table',
+  );
   const commandWestChair = FACILITY_COLLISION_GEOMETRY.solids.find(
     (solid) => solid.id === 'chair-command-west-body',
   );
