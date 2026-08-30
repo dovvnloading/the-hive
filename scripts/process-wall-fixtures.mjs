@@ -26,9 +26,15 @@ const fixtures = [
     removeNeutralBackground: false,
   },
   {
-    source: 'sources/commons-wall-light-source-v1.png',
-    output: 'commons-wall-light-v1.png',
+    source: 'sources/wall-light-dual-source-v1.png',
+    output: 'wall-light-dual-v1.png',
     size: [48, 28],
+    removeNeutralBackground: false,
+  },
+  {
+    source: 'sources/wall-light-single-source-v1.png',
+    output: 'wall-light-single-v1.png',
+    size: [22, 26],
     removeNeutralBackground: false,
   },
 ];

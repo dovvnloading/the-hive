@@ -86,7 +86,8 @@ const FACILITY_ASSETS = {
   architectureCorridor: 'generated/slate-corridor-v1.png',
   commandRoutingBoard: 'generated/command-routing-board-v1.png',
   utilityToolsBoard: 'generated/utility-tools-board-v1.png',
-  commonsWallLight: 'generated/commons-wall-light-v1.png',
+  wallLightDual: 'generated/wall-light-dual-v1.png',
+  wallLightSingle: 'generated/wall-light-single-v1.png',
   researchDesk: furnitureAsset('research-desk.png'),
   utilityWorkstation: furnitureAsset('utility-workstation.png'),
   buildWorkbench: furnitureAsset('build-workbench.png'),
@@ -645,14 +646,56 @@ const STATEFUL_PROPS = new Map(
 
 const LIGHT_FIXTURES: Record<
   RoomId,
-  { fixtureX: number; fixtureY: number; switchX: number; switchY: number }
+  {
+    fixtureX: number;
+    fixtureY: number;
+    switchX: number;
+    switchY: number;
+    variant: 'single' | 'dual';
+  }
 > = {
-  research: { fixtureX: 228, fixtureY: 58, switchX: 196, switchY: 60 },
-  command: { fixtureX: 422, fixtureY: 58, switchX: 272, switchY: 60 },
-  tools: { fixtureX: 708, fixtureY: 58, switchX: 520, switchY: 60 },
-  synthesis: { fixtureX: 256, fixtureY: 268, switchX: 202, switchY: 286 },
-  context: { fixtureX: 408, fixtureY: 284, switchX: 368, switchY: 286 },
-  build: { fixtureX: 520, fixtureY: 268, switchX: 614, switchY: 286 },
+  research: {
+    fixtureX: 228,
+    fixtureY: 58,
+    switchX: 196,
+    switchY: 60,
+    variant: 'dual',
+  },
+  command: {
+    fixtureX: 428,
+    fixtureY: 58,
+    switchX: 272,
+    switchY: 60,
+    variant: 'single',
+  },
+  tools: {
+    fixtureX: 708,
+    fixtureY: 58,
+    switchX: 520,
+    switchY: 60,
+    variant: 'dual',
+  },
+  synthesis: {
+    fixtureX: 256,
+    fixtureY: 274,
+    switchX: 202,
+    switchY: 286,
+    variant: 'dual',
+  },
+  context: {
+    fixtureX: 408,
+    fixtureY: 284,
+    switchX: 368,
+    switchY: 286,
+    variant: 'single',
+  },
+  build: {
+    fixtureX: 520,
+    fixtureY: 274,
+    switchX: 614,
+    switchY: 286,
+    variant: 'dual',
+  },
 };
 
 function runStartedAt(state: AgentArenaState) {
@@ -718,23 +761,17 @@ function drawRoomLightFixtures(
   ROOMS.forEach((room) => {
     const fixture = LIGHT_FIXTURES[room.id];
     const powered = roomLightIsOn(state, room.id, now);
-    if (room.id === 'context') {
-      context.save();
-      context.globalAlpha = powered ? 1 : 0.4;
-      drawFacilitySprite(
-        context,
-        bank,
-        'commonsWallLight',
-        fixture.fixtureX - 24,
-        fixture.fixtureY - 14,
-      );
-      context.restore();
-    } else {
-      context.fillStyle = '#4b392c';
-      context.fillRect(fixture.fixtureX - 8, fixture.fixtureY - 3, 16, 7);
-      context.fillStyle = powered ? '#f2d58d' : '#665c4b';
-      context.fillRect(fixture.fixtureX - 5, fixture.fixtureY - 1, 10, 3);
-    }
+    const single = fixture.variant === 'single';
+    context.save();
+    context.globalAlpha = powered ? 1 : 0.4;
+    drawFacilitySprite(
+      context,
+      bank,
+      single ? 'wallLightSingle' : 'wallLightDual',
+      fixture.fixtureX - (single ? 11 : 24),
+      fixture.fixtureY - (single ? 13 : 14),
+    );
+    context.restore();
     context.fillStyle = 'rgba(35,25,18,.38)';
     context.fillRect(fixture.switchX - 2, fixture.switchY - 3, 7, 9);
     context.fillStyle = '#6d5845';
