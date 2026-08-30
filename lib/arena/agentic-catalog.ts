@@ -238,11 +238,19 @@ const ROOM_ROUTES: Record<
     hubId: 'build-hub',
     doorId: 'door-build',
     centerX: 77.083,
-    aisleY: 88,
+    // Keep the walking capsule below the four physical chair footprints. The
+    // station `use` transition performs the final seated snap afterward.
+    aisleY: 90.067,
   },
 };
 
 const ENTITY_HUB_APPROACH_PATHS: Record<string, readonly Vec2[]> = {
+  // Reach the wall board on its unobstructed east side, then fan out across
+  // the board face. The west chair beside the planning table is physical.
+  'comms-board': [
+    { x: 54.688, y: 37.5 },
+    { x: 54.688, y: 25 },
+  ],
   'plant-tools': [{ x: 77.083, y: 25 }],
 };
 
@@ -332,10 +340,7 @@ export function buildArenaPath(
       );
     }
 
-    if (
-      fromStationId === route.hubId ||
-      toStationId === route.hubId
-    ) {
+    if (fromStationId === route.hubId || toStationId === route.hubId) {
       const entityId =
         fromStationId === route.hubId ? toStationId : fromStationId;
       const approach = ENTITY_HUB_APPROACH_PATHS[entityId];

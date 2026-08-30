@@ -22,6 +22,7 @@ import type {
   AvatarProjection,
   RuntimeAgent,
   RuntimeEvent,
+  Vec2,
   WorldEntityState,
 } from '@/lib/arena/agentic-types';
 
@@ -150,57 +151,194 @@ const WALL_COLORS: Record<RoomId, { paper: string; panel: string }> = {
 
 const SCENE_PROPS: SceneProp[] = [
   // Research / Sources — full authored sprites, never arbitrary atlas cells.
-  { asset: 'bookshelfFilled', x: 47, baseline: 100, backWallRoomId: 'research', resourceId: 'archive-desk' },
+  {
+    asset: 'bookshelfFilled',
+    x: 47,
+    baseline: 100,
+    backWallRoomId: 'research',
+    resourceId: 'archive-desk',
+  },
   { asset: 'bookshelfB', x: 96, baseline: 100, backWallRoomId: 'research' },
   { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
-  { asset: 'floorLamp', x: 226, y: 88, baseline: 118, resourceId: 'archive-lamp' },
+  {
+    asset: 'floorLamp',
+    x: 226,
+    y: 88,
+    baseline: 118,
+    resourceId: 'archive-lamp',
+  },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
-  { asset: 'researchDesk', x: 122, y: 106, baseline: 140, resourceId: 'research-computer-a' },
-  { asset: 'chairNorth', x: 144, y: 137, baseline: 159 },
-  { asset: 'utilityWorkstation', x: 190, y: 124, baseline: 158, resourceId: 'research-computer-b' },
-  { asset: 'chairNorth', x: 214, y: 152, baseline: 174 },
-  { asset: 'plantSmall', x: 42, y: 158, baseline: 180, entityId: 'plant-research' },
+  {
+    asset: 'researchDesk',
+    x: 122,
+    y: 106,
+    baseline: 140,
+    resourceId: 'research-computer-a',
+  },
+  { asset: 'chairNorth', x: 144, y: 130, baseline: 152 },
+  {
+    asset: 'utilityWorkstation',
+    x: 190,
+    y: 108,
+    baseline: 142,
+    resourceId: 'research-computer-b',
+  },
+  { asset: 'chairNorth', x: 214, y: 130, baseline: 152 },
+  {
+    asset: 'plantSmall',
+    x: 42,
+    y: 158,
+    baseline: 180,
+    entityId: 'plant-research',
+  },
 
   // Command / Routing — a planning table beneath the mounted route board.
-  { asset: 'planningTable', x: 326, y: 124, baseline: 158, resourceId: 'command-table' },
+  {
+    asset: 'planningTable',
+    x: 326,
+    y: 124,
+    baseline: 158,
+    resourceId: 'command-table',
+  },
   { asset: 'chairEast', x: 307, y: 129, baseline: 156 },
   { asset: 'chairWest', x: 382, y: 128, baseline: 156 },
-  { asset: 'plantSmall', x: 420, y: 78, baseline: 100, entityId: 'plant-command' },
+  {
+    asset: 'plantSmall',
+    x: 420,
+    y: 78,
+    baseline: 100,
+    entityId: 'plant-command',
+  },
 
   // Utility / Tools — four physically distinct workstations.
-  { asset: 'utilityWorkstation', x: 456, y: 124, baseline: 158, resourceId: 'shell-console-a' },
-  { asset: 'utilityWorkstation', x: 512, y: 124, baseline: 158, resourceId: 'shell-console-b' },
-  { asset: 'utilityWorkstation', x: 610, y: 124, baseline: 158, resourceId: 'connector-console-a' },
-  { asset: 'utilityWorkstation', x: 666, y: 124, baseline: 158, resourceId: 'connector-console-b' },
-  { asset: 'chairNorth', x: 470, y: 152, baseline: 174 },
-  { asset: 'chairNorth', x: 534, y: 152, baseline: 174 },
-  { asset: 'chairNorth', x: 630, y: 152, baseline: 174 },
-  { asset: 'chairNorth', x: 686, y: 152, baseline: 174 },
-  { asset: 'plantSmall', x: 456, y: 78, baseline: 100, entityId: 'plant-tools' },
+  {
+    asset: 'utilityWorkstation',
+    x: 456,
+    y: 108,
+    baseline: 142,
+    resourceId: 'shell-console-a',
+  },
+  {
+    asset: 'utilityWorkstation',
+    x: 512,
+    y: 108,
+    baseline: 142,
+    resourceId: 'shell-console-b',
+  },
+  {
+    asset: 'utilityWorkstation',
+    x: 610,
+    y: 108,
+    baseline: 142,
+    resourceId: 'connector-console-a',
+  },
+  {
+    asset: 'utilityWorkstation',
+    x: 666,
+    y: 108,
+    baseline: 142,
+    resourceId: 'connector-console-b',
+  },
+  { asset: 'chairNorth', x: 470, y: 130, baseline: 152 },
+  { asset: 'chairNorth', x: 534, y: 130, baseline: 152 },
+  { asset: 'chairNorth', x: 630, y: 130, baseline: 152 },
+  { asset: 'chairNorth', x: 686, y: 130, baseline: 152 },
+  {
+    asset: 'plantSmall',
+    x: 584,
+    y: 78,
+    baseline: 100,
+    entityId: 'plant-tools',
+  },
 
   // Synthesis / Decisions — a small library salon and evidence table.
   { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
-  { asset: 'bookshelfFilled', x: 97, baseline: 324, backWallRoomId: 'synthesis' },
+  {
+    asset: 'bookshelfFilled',
+    x: 97,
+    baseline: 324,
+    backWallRoomId: 'synthesis',
+  },
   { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
-  { asset: 'planningTable', x: 119, y: 336, baseline: 370, resourceId: 'evidence-table' },
-  { asset: 'verificationDesk', x: 217, y: 318, baseline: 352, resourceId: 'publish-console' },
+  {
+    asset: 'planningTable',
+    x: 119,
+    y: 336,
+    baseline: 370,
+    resourceId: 'evidence-table',
+  },
+  {
+    asset: 'verificationDesk',
+    x: 217,
+    y: 318,
+    baseline: 352,
+    resourceId: 'publish-console',
+  },
   { asset: 'chairNorth', x: 237, y: 349, baseline: 371 },
-  { asset: 'plantSmall', x: 42, y: 386, baseline: 408, entityId: 'plant-synthesis' },
+  {
+    asset: 'plantSmall',
+    x: 42,
+    y: 386,
+    baseline: 408,
+    entityId: 'plant-synthesis',
+  },
 
   // Commons — a clear route from the north doorway to the anchored lift.
-  { asset: 'writingDesk', x: 328, y: 366, baseline: 398, resourceId: 'context-kiosk' },
-  { asset: 'plantSmall', x: 421, y: 386, baseline: 408, entityId: 'plant-context' },
+  {
+    asset: 'writingDesk',
+    x: 328,
+    y: 366,
+    baseline: 398,
+    resourceId: 'context-kiosk',
+  },
+  {
+    asset: 'plantSmall',
+    x: 421,
+    y: 386,
+    baseline: 408,
+    entityId: 'plant-context',
+  },
 
   // Build / Verify — workshop benches on the left, review desk on the right.
-  { asset: 'buildWorkbench', x: 456, y: 336, baseline: 370, resourceId: 'build-bench-a' },
-  { asset: 'buildWorkbench', x: 515, y: 336, baseline: 370, resourceId: 'build-bench-b' },
-  { asset: 'verificationDesk', x: 594, y: 336, baseline: 370, resourceId: 'verify-rig-a' },
-  { asset: 'verificationDesk', x: 656, y: 336, baseline: 370, resourceId: 'verify-rig-b' },
+  {
+    asset: 'buildWorkbench',
+    x: 456,
+    y: 336,
+    baseline: 370,
+    resourceId: 'build-bench-a',
+  },
+  {
+    asset: 'buildWorkbench',
+    x: 515,
+    y: 336,
+    baseline: 370,
+    resourceId: 'build-bench-b',
+  },
+  {
+    asset: 'verificationDesk',
+    x: 594,
+    y: 336,
+    baseline: 370,
+    resourceId: 'verify-rig-a',
+  },
+  {
+    asset: 'verificationDesk',
+    x: 656,
+    y: 336,
+    baseline: 370,
+    resourceId: 'verify-rig-b',
+  },
   { asset: 'chairNorth', x: 473, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 614, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 678, y: 367, baseline: 389 },
-  { asset: 'plantSmall', x: 704, y: 306, baseline: 328, entityId: 'plant-build' },
+  {
+    asset: 'plantSmall',
+    x: 574,
+    y: 306,
+    baseline: 328,
+    entityId: 'plant-build',
+  },
 ];
 
 const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
@@ -255,7 +393,12 @@ function drawWoodFloor(
     for (let seamX = x - offset; seamX < x + width; seamX += plankLength) {
       if (seamX > x) {
         context.fillStyle = 'rgba(74,38,24,.36)';
-        context.fillRect(Math.round(seamX), rowY + 1, 1, Math.max(1, rowHeight - 2));
+        context.fillRect(
+          Math.round(seamX),
+          rowY + 1,
+          1,
+          Math.max(1, rowHeight - 2),
+        );
       }
     }
   }
@@ -309,14 +452,7 @@ function drawRoom(
       128,
     );
   } else {
-    drawWoodFloor(
-      context,
-      room.x + 8,
-      floorY,
-      room.w - 16,
-      floorHeight,
-      index,
-    );
+    drawWoodFloor(context, room.x + 8, floorY, room.w - 16, floorHeight, index);
   }
 
   const colors = WALL_COLORS[room.id];
@@ -346,12 +482,7 @@ function drawRoom(
       BACK_WALL_HEIGHT - 13,
     );
     context.fillStyle = colors.panel;
-    context.fillRect(
-      room.x + 8,
-      room.y + BACK_WALL_HEIGHT - 6,
-      room.w - 16,
-      6,
-    );
+    context.fillRect(room.x + 8, room.y + BACK_WALL_HEIGHT - 6, room.w - 16, 6);
   }
   context.fillStyle = colors.panel;
   context.fillRect(room.x, room.y, 8, room.h);
@@ -377,12 +508,7 @@ function drawRoom(
   context.fillStyle = 'rgba(255,238,200,.42)';
   context.fillRect(room.x + 8, room.y + 8, room.w - 16, 1);
   context.fillStyle = 'rgba(45,25,18,.55)';
-  context.fillRect(
-    room.x + 8,
-    room.y + BACK_WALL_HEIGHT - 1,
-    room.w - 16,
-    1,
-  );
+  context.fillRect(room.x + 8, room.y + BACK_WALL_HEIGHT - 1, room.w - 16, 1);
   context.strokeStyle = '#3c251c';
   context.lineWidth = 2;
   context.strokeRect(room.x + 1, room.y + 1, room.w - 2, room.h - 2);
@@ -396,16 +522,7 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
   const height = 64;
   const corridorTexture = bank[facilityKey('architectureCorridor')];
   if (imageReady(corridorTexture)) {
-    drawTiledTexture(
-      context,
-      corridorTexture,
-      x,
-      y,
-      width,
-      height,
-      96,
-      96,
-    );
+    drawTiledTexture(context, corridorTexture, x, y, width, height, 96, 96);
   } else {
     context.fillStyle = '#706157';
     context.fillRect(x, y, width, height);
@@ -428,10 +545,7 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
   context.fillRect(42, 222, 684, 2);
 }
 
-function drawUpwardDoor(
-  context: CanvasRenderingContext2D,
-  centerX: number,
-) {
+function drawUpwardDoor(context: CanvasRenderingContext2D, centerX: number) {
   const openingLeft = centerX - 18;
   // The aperture is a shadowed cut through the back wall, not a strip of hall
   // or room tiles painted vertically across the wall face.
@@ -545,10 +659,7 @@ function drawWallDetails(context: CanvasRenderingContext2D) {
   context.stroke();
 }
 
-function drawArchitecture(
-  context: CanvasRenderingContext2D,
-  bank: ImageBank,
-) {
+function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
   drawShell(context);
   ROOMS.forEach((room, index) => drawRoom(context, bank, room, index));
   drawCorridor(context, bank);
@@ -605,7 +716,9 @@ function effectiveEntityState(
   now: number,
 ) {
   const definition = STATEFUL_PROPS.get(entityId);
-  const projected = state.worldEntities.find((entity) => entity.id === entityId);
+  const projected = state.worldEntities.find(
+    (entity) => entity.id === entityId,
+  );
   const stored = projected?.state ?? definition?.initialState ?? {};
   if (definition?.dynamics?.kind !== 'plant') return stored;
   const baseHydration = Number(
@@ -641,7 +754,9 @@ function effectiveEntityState(
 }
 
 function roomLightIsOn(state: AgentArenaState, roomId: RoomId, now: number) {
-  return effectiveEntityState(state, `room-light-${roomId}`, now).power === 'on';
+  return (
+    effectiveEntityState(state, `room-light-${roomId}`, now).power === 'on'
+  );
 }
 
 function drawRoomLightFixtures(
@@ -855,16 +970,12 @@ function drawLivingPlant(
     return;
   }
 
-  const compression = condition === 'wilted' ? 5 : condition === 'thirsty' ? 2 : 0;
+  const compression =
+    condition === 'wilted' ? 5 : condition === 'thirsty' ? 2 : 0;
   context.save();
-  context.globalAlpha = condition === 'wilted' ? 0.68 : condition === 'thirsty' ? 0.84 : 1;
-  context.drawImage(
-    image,
-    x,
-    y + compression,
-    width,
-    height - compression,
-  );
+  context.globalAlpha =
+    condition === 'wilted' ? 0.68 : condition === 'thirsty' ? 0.84 : 1;
+  context.drawImage(image, x, y + compression, width, height - compression);
   context.restore();
   if (condition !== 'healthy') {
     context.fillStyle = condition === 'wilted' ? '#9b6946' : '#b28a50';
@@ -887,10 +998,7 @@ function drawSceneProp(
     ? ROOMS.find((room) => room.id === prop.backWallRoomId)
     : undefined;
   const y = anchoredRoom
-    ? anchoredRoom.y +
-      BACK_WALL_HEIGHT -
-      height +
-      BACK_WALL_FURNITURE_OVERLAP
+    ? anchoredRoom.y + BACK_WALL_HEIGHT - height + BACK_WALL_FURNITURE_OVERLAP
     : (prop.y ?? 0);
   if (prop.entityId?.startsWith('plant-')) {
     const condition = String(
@@ -986,12 +1094,55 @@ function motionFor(agent: RuntimeAgent, avatar: AvatarProjection): Motion {
     return 'idle_anim';
   }
   const fixture = resourceById(avatar.stationId);
+  const hasStagedSeat = Boolean(
+    (fixture as SeatedResource | undefined)?.seatedPositions?.length,
+  );
   if (agent.activeTool && fixture) return 'sit2';
   if (agent.engagedResourceId === avatar.stationId) return 'sit';
-  if (fixture && new Set(['table', 'board', 'waiting']).has(fixture.kind)) {
+  if (
+    fixture &&
+    !hasStagedSeat &&
+    new Set(['table', 'board', 'waiting']).has(fixture.kind)
+  ) {
     return 'sit';
   }
   return 'idle_anim';
+}
+
+type SeatedResource = {
+  slots: readonly Vec2[];
+  seatedPositions?: readonly Vec2[];
+};
+
+/**
+ * Navigation ends at a collision-safe standing point in the aisle. Only an
+ * explicit `use` engagement projects the resident onto the matching chair.
+ * This keeps the motor capsule honest while allowing a deliberate seated pose
+ * without animating a walking body through the furniture.
+ */
+function visualPositionFor(
+  agent: RuntimeAgent,
+  avatar: AvatarProjection,
+): Vec2 {
+  if (agent.engagedResourceId !== avatar.stationId) return avatar.position;
+  const fixture = resourceById(avatar.stationId) as SeatedResource | undefined;
+  const seats = fixture?.seatedPositions;
+  if (!fixture || !seats || seats.length === 0) return avatar.position;
+  if (seats.length === 1 || fixture.slots.length === 0) return seats[0];
+
+  let slotIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  fixture.slots.forEach((slot, index) => {
+    const distance = Math.hypot(
+      slot.x - avatar.position.x,
+      slot.y - avatar.position.y,
+    );
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      slotIndex = index;
+    }
+  });
+  return seats[Math.min(slotIndex, seats.length - 1)];
 }
 
 function directionOffset(direction: AvatarDirection) {
@@ -1070,8 +1221,9 @@ function drawAgent(
       : seated
         ? seatedDirection + frame
         : directionOffset(avatar.direction) + frame;
-  const x = Math.round((avatar.position.x / 100) * WORLD_WIDTH);
-  const y = Math.round((avatar.position.y / 100) * WORLD_HEIGHT);
+  const visualPosition = visualPositionFor(agent, avatar);
+  const x = Math.round((visualPosition.x / 100) * WORLD_WIDTH);
+  const y = Math.round((visualPosition.y / 100) * WORLD_HEIGHT);
   const width = frameWidth * CHARACTER_SCALE;
   const height = CHARACTER_FRAME_HEIGHT * CHARACTER_SCALE;
 
@@ -1121,8 +1273,9 @@ function drawDepthSortedScene(
   state.avatars.forEach((avatar, index) => {
     const agent = agentsById.get(avatar.agentId);
     if (!agent) return;
+    const visualPosition = visualPositionFor(agent, avatar);
     entries.push({
-      baseline: (avatar.position.y / 100) * WORLD_HEIGHT,
+      baseline: (visualPosition.y / 100) * WORLD_HEIGHT,
       stableOrder: 1000 + index,
       draw: () =>
         drawAgent(
@@ -1182,11 +1335,13 @@ function drawLabels(
   state.avatars.forEach((avatar) => {
     const agent = agentsById.get(avatar.agentId);
     if (!agent) return;
-    if (state.selectedAgentId !== agent.id && hoveredAgentId !== agent.id) return;
+    if (state.selectedAgentId !== agent.id && hoveredAgentId !== agent.id)
+      return;
+    const visualPosition = visualPositionFor(agent, avatar);
     drawNameplate(
       context,
-      Math.round((avatar.position.x / 100) * WORLD_WIDTH),
-      Math.round((avatar.position.y / 100) * WORLD_HEIGHT),
+      Math.round((visualPosition.x / 100) * WORLD_WIDTH),
+      Math.round((visualPosition.y / 100) * WORLD_HEIGHT),
       agent,
       avatar,
     );
@@ -1228,6 +1383,7 @@ function projectSpeechBubbles(state: AgentArenaState, now: number) {
     const avatar = avatars.get(event.agentId);
     const speaker = agents.get(event.agentId);
     if (!avatar || !speaker) continue;
+    const visualPosition = visualPositionFor(speaker, avatar);
     latestBySpeaker.add(event.agentId);
     const roomId =
       roomForLocation(avatar.stationId)?.id ??
@@ -1237,16 +1393,16 @@ function projectSpeechBubbles(state: AgentArenaState, now: number) {
     if (roomCount >= 2 || projected.length >= 4) continue;
     const overlapsEarlier = projected.some(
       (bubble) =>
-        Math.abs(bubble.left - avatar.position.x) < 24 &&
-        Math.abs(bubble.top - (avatar.position.y - 10)) < 13,
+        Math.abs(bubble.left - visualPosition.x) < 24 &&
+        Math.abs(bubble.top - (visualPosition.y - 10)) < 13,
     );
     projected.push({
       event,
       speaker,
-      left: Math.max(14, Math.min(86, avatar.position.x)),
+      left: Math.max(14, Math.min(86, visualPosition.x)),
       top: Math.max(
         9,
-        Math.min(90, avatar.position.y - 10 - (overlapsEarlier ? 9 : 0)),
+        Math.min(90, visualPosition.y - 10 - (overlapsEarlier ? 9 : 0)),
       ),
     });
     roomCounts.set(roomId, roomCount + 1);
@@ -1290,16 +1446,16 @@ export function AgentArenaWorldV2({
 
   useEffect(() => {
     let canceled = false;
-    const sources: Array<[string, string]> = Object.entries(FACILITY_ASSETS).map(
-      ([key, filename]) => [
-        facilityKey(key as FacilityAssetKey),
-        encodeURI(
-          filename.startsWith('/')
-            ? filename
-            : `${FACILITY_ASSET_ROOT}/${filename}`,
-        ),
-      ],
-    );
+    const sources: Array<[string, string]> = Object.entries(
+      FACILITY_ASSETS,
+    ).map(([key, filename]) => [
+      facilityKey(key as FacilityAssetKey),
+      encodeURI(
+        filename.startsWith('/')
+          ? filename
+          : `${FACILITY_ASSET_ROOT}/${filename}`,
+      ),
+    ]);
     state.agents.forEach((agent) => {
       const folder = presentationFor(agent.id).sprite;
       MOTIONS.forEach((motion) => {
@@ -1309,7 +1465,9 @@ export function AgentArenaWorldV2({
 
     const missing = sources.filter(([key]) => !bankRef.current[key]);
     if (missing.length === 0) {
-      setAssetsReady(imageReady(bankRef.current[facilityKey('bookshelfFilled')]));
+      setAssetsReady(
+        imageReady(bankRef.current[facilityKey('bookshelfFilled')]),
+      );
       return () => {
         canceled = true;
       };
@@ -1328,7 +1486,9 @@ export function AgentArenaWorldV2({
       ),
     ).then(() => {
       if (canceled) return;
-      setAssetsReady(imageReady(bankRef.current[facilityKey('bookshelfFilled')]));
+      setAssetsReady(
+        imageReady(bankRef.current[facilityKey('bookshelfFilled')]),
+      );
       setAssetRevision((revision) => revision + 1);
     });
 
@@ -1346,26 +1506,13 @@ export function AgentArenaWorldV2({
 
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.setTransform(
-      WORLD_RENDER_SCALE,
-      0,
-      0,
-      WORLD_RENDER_SCALE,
-      0,
-      0,
-    );
+    context.setTransform(WORLD_RENDER_SCALE, 0, 0, WORLD_RENDER_SCALE, 0, 0);
     context.imageSmoothingEnabled = false;
     const bank = bankRef.current;
     const environmentNow = bubbleNow || Date.now();
     drawArchitecture(context, bank);
     drawRoomLightFixtures(context, state, environmentNow);
-    drawDepthSortedScene(
-      context,
-      bank,
-      state,
-      agentsById,
-      performance.now(),
-    );
+    drawDepthSortedScene(context, bank, state, agentsById, performance.now());
     drawEnvironmentalLighting(context, state, environmentNow);
 
     labelContext.setTransform(1, 0, 0, 1, 0, 0);
@@ -1375,7 +1522,8 @@ export function AgentArenaWorldV2({
     drawLabels(labelContext, state, agentsById, hoveredAgentId);
     if (!assetsReady) {
       labelContext.fillStyle = '#aeb8b9';
-      labelContext.font = '10px ui-monospace, SFMono-Regular, Consolas, monospace';
+      labelContext.font =
+        '10px ui-monospace, SFMono-Regular, Consolas, monospace';
       labelContext.fillText('Loading facility assets…', 31, 414);
     }
   }, [
@@ -1424,8 +1572,9 @@ export function AgentArenaWorldV2({
         const motion = motionFor(agent, avatar);
         if (!imageReady(bankRef.current[`${agent.id}:${motion}`])) return false;
         const seated = motion === 'sit' || motion === 'sit2';
-        const x = (avatar.position.x / 100) * WORLD_WIDTH;
-        const y = (avatar.position.y / 100) * WORLD_HEIGHT;
+        const visualPosition = visualPositionFor(agent, avatar);
+        const x = (visualPosition.x / 100) * WORLD_WIDTH;
+        const y = (visualPosition.y / 100) * WORLD_HEIGHT;
         const halfWidth = seated ? 25 : 13;
         return (
           point.x >= x - halfWidth &&

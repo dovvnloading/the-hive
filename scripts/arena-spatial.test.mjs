@@ -4,6 +4,7 @@ import test from 'node:test';
 import { createServer as createViteServer } from 'vite';
 
 import {
+  FACILITY_RESOURCES,
   STATIONS,
   WORLD_EDGES,
   buildArenaPath,
@@ -118,12 +119,7 @@ void test('all station slots and semantic edge routes clear static world geometr
         continue;
       }
       let previous = fromStation.slots[0];
-      const path = buildArenaPath(
-        previous,
-        toStation.slots[0],
-        fromId,
-        toId,
-      );
+      const path = buildArenaPath(previous, toStation.slots[0], fromId, toId);
       for (const target of path) {
         const dx = ((target.x - previous.x) / 100) * 768;
         const dy = ((target.y - previous.y) / 100) * 448;
@@ -150,6 +146,38 @@ void test('all station slots and semantic edge routes clear static world geometr
     const pixelY = (slot.y / 100) * 448;
     assert.equal(capsuleIsWorldLegal(slot), true);
     assert.ok(pixelY >= 339 && pixelY <= 341);
+  }
+});
+
+void test('seated resources stage walkers outside chair collision bodies', () => {
+  const seatedResources = FACILITY_RESOURCES.filter(
+    (resource) => resource.seatedPositions?.length,
+  );
+  assert.ok(seatedResources.length > 0);
+
+  for (const resource of seatedResources) {
+    assert.equal(
+      resource.slots.length,
+      resource.seatedPositions.length,
+      `${resource.id} needs one seated projection per standing slot`,
+    );
+    resource.slots.forEach((slot, index) => {
+      const seat = resource.seatedPositions[index];
+      assert.notDeepEqual(
+        slot,
+        seat,
+        `${resource.id} still walks directly onto its chair`,
+      );
+      assert.equal(
+        capsuleIsWorldLegal(slot),
+        true,
+        `${resource.id} standing approach collides with ${worldCollisionIds(slot).join(', ')}`,
+      );
+      assert.ok(
+        worldCollisionIds(seat).some((id) => id.startsWith('chair-')),
+        `${resource.id} seated projection is not anchored to a chair body`,
+      );
+    });
   }
 });
 
