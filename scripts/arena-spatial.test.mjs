@@ -48,6 +48,20 @@ void test('concurrent residents receive distinct character sheets', () => {
   assert.equal(new Set(occupied).size, 4);
 });
 
+void test('four simultaneous arrivals receive capsule-safe Commons positions', () => {
+  const occupied = [];
+  for (const agentId of ['orion', 'vesper', 'lyra', 'atlas']) {
+    const position = slotForAgent('spawn-lift', agentId, occupied);
+    assert.equal(capsuleIsWorldLegal(position), true);
+    assert.equal(
+      occupied.every((candidate) => !capsulesOverlap(position, candidate)),
+      true,
+    );
+    assert.ok(position.y > 70, 'arrival overflow remains inside Commons');
+    occupied.push(position);
+  }
+});
+
 void test('build plant remains outside the doorway opening and approach lane', () => {
   const doorway = FACILITY_COLLISION_GEOMETRY.southDoors.find(
     (door) => door.locationId === 'door-build',

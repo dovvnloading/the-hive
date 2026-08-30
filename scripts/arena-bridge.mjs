@@ -23,6 +23,7 @@ import {
   FACILITY_PROPS,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
+  FACILITY_SPAWN_QUEUE_SLOTS,
   LIGHT_SWITCH_REACH_PX,
   RESIDENT_BODY_CLEARANCE_PX,
   RESIDENT_CONVERSATION_RANGE_PX,
@@ -1641,6 +1642,7 @@ function projectAgentStates() {
         id: event.agentId,
         name: event.payload.name,
         role: event.payload.role,
+        spawnSequence: event.sequence,
         objective: 'Waiting for an assignment',
         assignmentMode: 'directed',
         taskId: undefined,
@@ -2373,6 +2375,76 @@ function metricDistance(left, right) {
   return Math.hypot(dx, dy);
 }
 
+function residentHash(agentId) {
+  let hash = 0;
+  for (const character of agentId) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  return hash;
+}
+
+function residentCapsulesOverlap(left, right) {
+  const dx = ((right.x - left.x) / 100) * 768;
+  const rawDy = Math.abs(((right.y - left.y) / 100) * 448);
+  const dy = Math.max(0, rawDy - 14);
+  return Math.hypot(dx, dy) < RESIDENT_BODY_CLEARANCE_PX;
+}
+
+function rotatedSlots(slots, start) {
+  return slots.map((_, offset) => slots[(start + offset) % slots.length]);
+}
+
+function observationSlotsFor(locationId, agentId) {
+  const location = worldLocationById(locationId);
+  if (!location?.slots?.length) return location ? [location.position] : [];
+  const authored = rotatedSlots(
+    location.slots,
+    residentHash(agentId) % location.slots.length,
+  );
+  if (locationId !== 'spawn-lift') return authored;
+  return [
+    ...authored,
+    ...rotatedSlots(
+      FACILITY_SPAWN_QUEUE_SLOTS,
+      residentHash(agentId) % FACILITY_SPAWN_QUEUE_SLOTS.length,
+    ),
+  ];
+}
+
+function projectedResidentPositions(residents, now = Date.now()) {
+  const positions = new Map();
+  const byLocation = new Map();
+  for (const resident of residents) {
+    const locationId = effectiveLocation(resident, now);
+    const group = byLocation.get(locationId) ?? [];
+    group.push(resident);
+    byLocation.set(locationId, group);
+  }
+  for (const [locationId, group] of byLocation) {
+    const reserved = [];
+    group
+      .slice()
+      .sort(
+        (left, right) =>
+          (left.spawnSequence ?? 0) - (right.spawnSequence ?? 0) ||
+          left.id.localeCompare(right.id),
+      )
+      .forEach((resident) => {
+        const candidates = observationSlotsFor(locationId, resident.id);
+        const position =
+          candidates.find((candidate) =>
+            reserved.every(
+              (occupied) => !residentCapsulesOverlap(candidate, occupied),
+            ),
+          ) ?? worldLocationById(locationId)?.position;
+        if (!position) return;
+        reserved.push(position);
+        positions.set(resident.id, position);
+      });
+  }
+  return positions;
+}
+
 function bearingLabel(left, right) {
   const dx = right.x - left.x;
   const dy = right.y - left.y;
@@ -2830,7 +2902,10 @@ function compileObservation(agentId, after = 0) {
   const roomId = location?.roomId ?? 'context';
   const room = roomForLocation(locationId);
   const navigation = activeNavigation(self, now);
-  const position = location?.position ?? { x: 50, y: 80 };
+  const active = activeResidents(agents);
+  const residentPositions = projectedResidentPositions(active, now);
+  const position = residentPositions.get(agentId) ??
+    location?.position ?? { x: 50, y: 80 };
   const perception = roomPerception(roomId, worldStates);
   const light = perception.illumination;
   const privateJournalEntriesForSelf = privateJournalForAgent(agentId);
@@ -2838,7 +2913,6 @@ function compileObservation(agentId, after = 0) {
     !navigation &&
     locationId === PRIVATE_JOURNAL_RESOURCE_ID &&
     self.engagedResourceId === PRIVATE_JOURNAL_RESOURCE_ID;
-  const active = activeResidents(agents);
   const people = active
     .filter((candidate) => {
       if (candidate.id === agentId) return false;
@@ -2853,9 +2927,9 @@ function compileObservation(agentId, after = 0) {
     })
     .map((candidate) => {
       const peerLocationId = effectiveLocation(candidate, now);
-      const peerLocation = worldLocationById(peerLocationId);
-      const peerDistance = peerLocation
-        ? metricDistance(position, peerLocation.position)
+      const peerPosition = residentPositions.get(candidate.id);
+      const peerDistance = peerPosition
+        ? metricDistance(position, peerPosition)
         : Number.POSITIVE_INFINITY;
       const peerNavigation = activeNavigation(candidate, now);
       const presence =
@@ -2875,10 +2949,10 @@ function compileObservation(agentId, after = 0) {
         role: candidate.role,
         activity: candidate.phase,
         locationId: peerLocationId,
-        bearing: peerLocation
-          ? bearingLabel(position, peerLocation.position)
+        bearing: peerPosition
+          ? bearingLabel(position, peerPosition)
           : 'unknown',
-        range: peerLocation ? rangeLabel(peerDistance) : 'unknown',
+        range: peerPosition ? rangeLabel(peerDistance) : 'unknown',
         distancePx: Number.isFinite(peerDistance)
           ? Math.round(peerDistance * 10) / 10
           : undefined,

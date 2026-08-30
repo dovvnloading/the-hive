@@ -1156,6 +1156,7 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
   assert.equal(firstScene.space.bodyClearancePx, 32);
   assert.equal(firstScene.space.conversationRangePx, 70);
   assert.equal(firstScene.people[0].proximity, 'shared-place');
+  assert.equal(firstScene.people[0].distancePx, 32);
   assert.deepEqual(
     firstScene.talk.map((person) => person.id),
     ['sage'],
@@ -1209,6 +1210,11 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
   });
   tokens.nova = (await json(novaSpawn)).agentToken;
   const novaScene = await observe(origin, tokens.nova);
+  assert.ok(
+    novaScene.people.every(
+      (person) => person.distancePx >= novaScene.space.bodyClearancePx,
+    ),
+  );
   assert.deepEqual(novaScene.heard, []);
   assert.equal(novaScene.text.includes(spoken.event.payload.speechId), false);
 

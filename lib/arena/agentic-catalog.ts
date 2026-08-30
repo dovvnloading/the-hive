@@ -3,6 +3,7 @@ import {
   FACILITY_LIGHT_LAYOUT,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
+  FACILITY_SPAWN_QUEUE_SLOTS,
   FACILITY_PROPS,
   FACILITY_WAYPOINTS,
   LIGHT_SWITCH_REACH_PX,
@@ -41,6 +42,7 @@ export {
   FACILITY_LIGHT_LAYOUT,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
+  FACILITY_SPAWN_QUEUE_SLOTS,
   FACILITY_PROPS,
   FACILITY_WAYPOINTS,
   LIGHT_SWITCH_REACH_PX,
@@ -162,13 +164,6 @@ function positionAvailable(position: Vec2, reserved: Vec2[]) {
   );
 }
 
-const SPAWN_QUEUE_SLOTS: Vec2[] = [
-  { x: 43.25, y: 50 },
-  { x: 47.75, y: 50 },
-  { x: 52.25, y: 50 },
-  { x: 56.75, y: 50 },
-];
-
 const STATION_OVERFLOW_SLOTS: Record<string, Vec2[]> = {
   // Old journals may contain arrivals accepted before a waypoint capacity was
   // tightened. Replay queues those residents along the clear centerline rather
@@ -197,10 +192,16 @@ export function slotForAgent(
   }
 
   if (stationId === 'spawn-lift') {
-    const queueStart = hashAgent(agentId) % SPAWN_QUEUE_SLOTS.length;
-    for (let offset = 0; offset < SPAWN_QUEUE_SLOTS.length; offset += 1) {
+    const queueStart = hashAgent(agentId) % FACILITY_SPAWN_QUEUE_SLOTS.length;
+    for (
+      let offset = 0;
+      offset < FACILITY_SPAWN_QUEUE_SLOTS.length;
+      offset += 1
+    ) {
       const slot =
-        SPAWN_QUEUE_SLOTS[(queueStart + offset) % SPAWN_QUEUE_SLOTS.length];
+        FACILITY_SPAWN_QUEUE_SLOTS[
+          (queueStart + offset) % FACILITY_SPAWN_QUEUE_SLOTS.length
+        ];
       if (positionAvailable(slot, reserved)) return { ...slot };
     }
   }
