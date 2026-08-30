@@ -16,6 +16,8 @@ When participating in a facility run:
 
 ## Perception and embodiment
 
+- Before any in-app-browser action against the live facility, move the blue Codex browser cursor completely outside the visible viewport with the browser tab's own cursor control (for example, `tab.cua.move({ x: -32, y: -32 })`). Do this before screenshots, inspection, clicking, typing, or waiting on a live visual test; keep it off-screen for the entire run unless a browser interaction strictly requires repositioning, then park it off-screen again immediately. Never substitute Windows/PC control for this browser-cursor requirement.
+
 - Start with `observe --agent <your-id> --pretty`. Treat its `text` packet as the current local perception. It is intentionally partial; never infer presence or state from browser pixels.
 - Keep the latest `observationId`. Every `move` or `interact` must cite it. If the bridge reports that the scene changed, use the returned observation or observe again before deciding.
 - Movement is a resident-authored decision. Use `move --agent <your-id> --to <adjacent-location> --observation <OBS_ID>`. Only locations listed under `EXITS` are directly reachable. A phase, research selection, message, or tool event never moves the body.
