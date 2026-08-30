@@ -25,6 +25,12 @@ import type {
   ToolCapability,
   Vec2,
 } from './agentic-types';
+import {
+  ARENA_WORLD_HEIGHT,
+  ARENA_WORLD_WIDTH,
+  capsuleIsWorldLegal,
+  capsulesOverlap,
+} from './agentic-spatial.ts';
 
 export {
   FACILITY_COLLISION_GEOMETRY,
@@ -112,11 +118,10 @@ export function stationById(stationId: string) {
   );
 }
 
-function positionReserved(position: Vec2, reserved: Vec2[]) {
-  return reserved.some(
-    (candidate) =>
-      Math.abs(candidate.x - position.x) < 0.1 &&
-      Math.abs(candidate.y - position.y) < 0.1,
+function positionAvailable(position: Vec2, reserved: Vec2[]) {
+  return (
+    capsuleIsWorldLegal(position) &&
+    reserved.every((candidate) => !capsulesOverlap(position, candidate))
   );
 }
 
@@ -156,7 +161,7 @@ export function slotForAgent(
   const start = hashAgent(agentId) % station.slots.length;
   for (let offset = 0; offset < station.slots.length; offset += 1) {
     const slot = station.slots[(start + offset) % station.slots.length];
-    if (!positionReserved(slot, reserved)) return { ...slot };
+    if (positionAvailable(slot, reserved)) return { ...slot };
   }
 
   if (stationId === 'spawn-lift') {
@@ -164,25 +169,38 @@ export function slotForAgent(
     for (let offset = 0; offset < SPAWN_QUEUE_SLOTS.length; offset += 1) {
       const slot =
         SPAWN_QUEUE_SLOTS[(queueStart + offset) % SPAWN_QUEUE_SLOTS.length];
-      if (!positionReserved(slot, reserved)) return { ...slot };
+      if (positionAvailable(slot, reserved)) return { ...slot };
     }
   }
 
   const overflowSlots = STATION_OVERFLOW_SLOTS[stationId] ?? [];
   for (const slot of overflowSlots) {
-    if (!positionReserved(slot, reserved)) return { ...slot };
+    if (positionAvailable(slot, reserved)) return { ...slot };
   }
 
-  // Capacity overflow waits behind the owned resource rather than stacking on
-  // its working slot. The collective capsule solver provides final clearance.
-  const overflowIndex = Math.max(0, reserved.length - station.slots.length);
-  return {
-    x: station.position.x + ((overflowIndex % 3) - 1) * 2.7,
-    y: Math.min(
-      94,
-      station.position.y + 3.2 + Math.floor(overflowIndex / 3) * 2.7,
-    ),
-  };
+  // Search an expanding deterministic ring around the owned location. Every
+  // fallback is validated against both the real world capsule and all reserved
+  // room positions, so overflow can never be projected into a wall, chair, or
+  // another resident merely because the authored station reached capacity.
+  const anchors = [...station.slots, station.position];
+  const phase = hashAgent(agentId) % 16;
+  for (const radiusPx of [28, 36, 44, 52, 60, 72, 84, 96]) {
+    for (let index = 0; index < 16; index += 1) {
+      const angle = ((index + phase) / 16) * Math.PI * 2;
+      for (const anchor of anchors) {
+        const candidate = {
+          x: anchor.x + (Math.cos(angle) * radiusPx * 100) / ARENA_WORLD_WIDTH,
+          y: anchor.y + (Math.sin(angle) * radiusPx * 100) / ARENA_WORLD_HEIGHT,
+        };
+        if (positionAvailable(candidate, reserved)) return candidate;
+      }
+    }
+  }
+
+  // The collective solver remains the final guard for pathological historical
+  // replays, but returning the known legal primary slot is safer than inventing
+  // an unchecked coordinate.
+  return { ...station.slots[0] };
 }
 
 export function resourceCandidatesForCapability(capability: ToolCapability) {

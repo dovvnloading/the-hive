@@ -19,6 +19,7 @@ import {
   resolveAvatarCollisions,
   worldCollisionIds,
 } from '../lib/arena/agentic-spatial.ts';
+import { runArenaSpatialAudit } from './arena-spatial-audit.mjs';
 
 void test('build plant remains outside the doorway opening and approach lane', () => {
   const doorway = FACILITY_COLLISION_GEOMETRY.southDoors.find(
@@ -58,11 +59,15 @@ function avatar(agentId, position, routeOrder = 0) {
   };
 }
 
-void test('station reservations never return an already reserved working slot', () => {
+void test('station reservations return distinct capsule-safe working slots', () => {
   const reserved = [];
   const assigned = ['ohm', 'dalton', 'sage', 'nova', 'kernel'].map(
     (agentId) => {
       const slot = slotForAgent('command-table', agentId, reserved);
+      assert.equal(capsuleIsWorldLegal(slot), true);
+      for (const occupied of reserved) {
+        assert.equal(capsulesOverlap(slot, occupied), false);
+      }
       reserved.push(slot);
       return slot;
     },
@@ -71,6 +76,30 @@ void test('station reservations never return an already reserved working slot', 
     new Set(assigned.map((slot) => `${slot.x}:${slot.y}`)).size,
     assigned.length,
   );
+});
+
+void test('coverage audit exercises the full navmesh, routes, doors, overflow, and swept motion', () => {
+  const { report } = runArenaSpatialAudit({ motionSweeps: 256 });
+  assert.deepEqual(report.issues, []);
+  assert.equal(report.ok, true);
+  assert.equal(report.coverage.components.length, 1);
+  assert.equal(report.coverage.unseededComponents.length, 0);
+  assert.equal(report.stationSlots.illegal.length, 0);
+  assert.equal(report.doors.length, 6);
+  assert.ok(
+    report.doors.every(
+      (door) => door.centerlineLegal && door.minimumCapsuleLaneWidthPx >= 15,
+    ),
+  );
+  assert.ok(report.routes.variants > 200);
+  assert.ok(report.routes.sampledPoints > 50_000);
+  assert.equal(report.routes.failures.length, 0);
+  assert.equal(report.reservations.placements, STATIONS.length * 4);
+  assert.equal(report.reservations.failures.length, 0);
+  assert.equal(report.motion.sweeps, 256);
+  assert.ok(report.motion.blockedChords > 0);
+  assert.ok(report.motion.clearChords > 0);
+  assert.equal(report.motion.failures.length, 0);
 });
 
 void test('Commons arrivals stage in visually separated capsule slots', () => {

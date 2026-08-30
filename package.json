@@ -10,6 +10,7 @@
     "dev:web": "vinext dev",
     "arena:bridge": "node scripts/arena-bridge.mjs",
     "arena:driver": "node scripts/arena-driver.mjs",
+    "audit:spatial": "node --experimental-strip-types scripts/arena-spatial-audit.mjs",
     "test:bridge": "node --test scripts/arena-bridge.test.mjs",
     "test:spatial": "node --experimental-strip-types --experimental-specifier-resolution=node --test scripts/arena-spatial.test.mjs",
     "build": "vinext build",
