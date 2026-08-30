@@ -155,11 +155,11 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
   { asset: 'floorLamp', x: 226, y: 88, baseline: 118, resourceId: 'archive-lamp' },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
-  { asset: 'researchDesk', x: 126, y: 106, baseline: 140, resourceId: 'research-computer-a' },
+  { asset: 'researchDesk', x: 122, y: 106, baseline: 140, resourceId: 'research-computer-a' },
   { asset: 'chairNorth', x: 144, y: 137, baseline: 159 },
-  { asset: 'utilityWorkstation', x: 190, y: 124, baseline: 158, resourceId: 'research-computer-b' },
-  { asset: 'chairNorth', x: 214, y: 155, baseline: 177 },
-  { asset: 'plantSmall', x: 37, y: 158, baseline: 180, entityId: 'plant-research' },
+  { asset: 'utilityWorkstation', x: 184, y: 124, baseline: 158, resourceId: 'research-computer-b' },
+  { asset: 'chairNorth', x: 214, y: 152, baseline: 174 },
+  { asset: 'plantSmall', x: 42, y: 158, baseline: 180, entityId: 'plant-research' },
 
   // Command / Routing — a planning table beneath the mounted route board.
   { asset: 'planningTable', x: 326, y: 124, baseline: 158, resourceId: 'command-table' },
@@ -168,14 +168,14 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'plantSmall', x: 420, y: 78, baseline: 100, entityId: 'plant-command' },
 
   // Utility / Tools — four physically distinct workstations.
-  { asset: 'utilityWorkstation', x: 453, y: 124, baseline: 158, resourceId: 'shell-console-a' },
+  { asset: 'utilityWorkstation', x: 456, y: 124, baseline: 158, resourceId: 'shell-console-a' },
   { asset: 'utilityWorkstation', x: 517, y: 124, baseline: 158, resourceId: 'shell-console-b' },
   { asset: 'utilityWorkstation', x: 613, y: 124, baseline: 158, resourceId: 'connector-console-a' },
-  { asset: 'utilityWorkstation', x: 670, y: 124, baseline: 158, resourceId: 'connector-console-b' },
-  { asset: 'chairNorth', x: 473, y: 155, baseline: 177 },
-  { asset: 'chairNorth', x: 537, y: 155, baseline: 177 },
-  { asset: 'chairNorth', x: 633, y: 155, baseline: 177 },
-  { asset: 'chairNorth', x: 694, y: 155, baseline: 177 },
+  { asset: 'utilityWorkstation', x: 664, y: 124, baseline: 158, resourceId: 'connector-console-b' },
+  { asset: 'chairNorth', x: 473, y: 152, baseline: 174 },
+  { asset: 'chairNorth', x: 537, y: 152, baseline: 174 },
+  { asset: 'chairNorth', x: 633, y: 152, baseline: 174 },
+  { asset: 'chairNorth', x: 694, y: 152, baseline: 174 },
   { asset: 'plantSmall', x: 456, y: 78, baseline: 100, entityId: 'plant-tools' },
 
   // Synthesis / Decisions — a small library salon and evidence table.
@@ -185,17 +185,17 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'planningTable', x: 119, y: 336, baseline: 370, resourceId: 'evidence-table' },
   { asset: 'verificationDesk', x: 217, y: 318, baseline: 352, resourceId: 'publish-console' },
   { asset: 'chairNorth', x: 237, y: 349, baseline: 371 },
-  { asset: 'plantSmall', x: 37, y: 386, baseline: 408, entityId: 'plant-synthesis' },
+  { asset: 'plantSmall', x: 42, y: 386, baseline: 408, entityId: 'plant-synthesis' },
 
   // Commons — a clear route from the north doorway to the anchored lift.
-  { asset: 'writingDesk', x: 323, y: 366, baseline: 398, resourceId: 'context-kiosk' },
+  { asset: 'writingDesk', x: 328, y: 366, baseline: 398, resourceId: 'context-kiosk' },
   { asset: 'plantSmall', x: 421, y: 386, baseline: 408, entityId: 'plant-context' },
 
   // Build / Verify — workshop benches on the left, review desk on the right.
-  { asset: 'buildWorkbench', x: 451, y: 336, baseline: 370, resourceId: 'build-bench-a' },
+  { asset: 'buildWorkbench', x: 456, y: 336, baseline: 370, resourceId: 'build-bench-a' },
   { asset: 'buildWorkbench', x: 515, y: 336, baseline: 370, resourceId: 'build-bench-b' },
   { asset: 'verificationDesk', x: 620, y: 336, baseline: 370, resourceId: 'verify-rig-a' },
-  { asset: 'verificationDesk', x: 670, y: 336, baseline: 370, resourceId: 'verify-rig-b' },
+  { asset: 'verificationDesk', x: 664, y: 336, baseline: 370, resourceId: 'verify-rig-b' },
   { asset: 'chairNorth', x: 473, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 633, y: 367, baseline: 389 },
