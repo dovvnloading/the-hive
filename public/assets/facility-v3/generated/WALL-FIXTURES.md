@@ -44,9 +44,9 @@ and self-authored furniture sheet were supplied as style and scale references.
   luminous core, glow, bloom, and halo; render the shades as muted smoky glass
   with non-emissive reflections on an isolated background.
 
-Research, Utility, Synthesis, and Build use the dual fixture across broad,
-uninterrupted wall spans. Command and Commons use the single fixture where
-wall space is constrained by a large panel or doorway.
+Synthesis and Build use the dual fixture across broad, uninterrupted wall
+spans. Research, Command, Utility, and Commons use the single fixture where
+wall space is constrained by shelving, a large panel, or a doorway.
 Each room swaps directly between its lit and unlit sprite when power changes;
 the unlit state is authored artwork rather than opacity-faded lit artwork.
 

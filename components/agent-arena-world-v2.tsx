@@ -657,25 +657,25 @@ const LIGHT_FIXTURES: Record<
   }
 > = {
   research: {
-    fixtureX: 228,
+    fixtureX: 224,
     fixtureY: 58,
     switchX: 196,
     switchY: 60,
-    variant: 'dual',
+    variant: 'single',
   },
   command: {
-    fixtureX: 428,
+    fixtureX: 430,
     fixtureY: 58,
     switchX: 272,
     switchY: 60,
     variant: 'single',
   },
   tools: {
-    fixtureX: 708,
+    fixtureX: 700,
     fixtureY: 58,
     switchX: 520,
     switchY: 60,
-    variant: 'dual',
+    variant: 'single',
   },
   synthesis: {
     fixtureX: 256,
