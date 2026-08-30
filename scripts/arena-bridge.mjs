@@ -29,6 +29,7 @@ import {
   RESEARCH_TRACKS,
   inferToolCapability,
   neighborsForLocation,
+  residentPurposeProfile,
   resourceById,
   roomForLocation,
   worldEntityById,
@@ -1974,6 +1975,298 @@ function researchTopicState(topicId) {
   };
 }
 
+const PURPOSE_PRIORITY = Object.freeze({
+  urgent: 5,
+  continue: 4,
+  contribute: 3,
+  explore: 2,
+  reflect: 1,
+});
+
+function purposeForResident(
+  self,
+  { localNeeds, visibleUnread, entities, people, privateNoteCount },
+) {
+  const profile = residentPurposeProfile(self.role);
+  const topicStates = currentResearchEvents()
+    .filter((event) => event.kind === 'research.topic.selected')
+    .map((event) => researchTopicState(event.payload.topicId))
+    .filter(Boolean);
+  const ownTopic = self.currentTopicId
+    ? researchTopicState(self.currentTopicId)
+    : undefined;
+  const artifacts = currentArtifacts();
+  const opportunities = [];
+
+  if (self.activeTool) {
+    opportunities.push({
+      id: `finish-tool:${self.activeToolCallId}`,
+      kind: 'follow-through',
+      priority: 'continue',
+      title: `Finish the active ${self.activeTool} call truthfully`,
+      reason:
+        'A real utility call is in progress and its result has not been recorded.',
+      suggestedAction:
+        'Complete the actual call, record any durable artifact, then emit tool-finish with the factual outcome.',
+      resourceId: self.engagedResourceId,
+      capability: self.capability,
+    });
+  }
+
+  if (visibleUnread.length > 0) {
+    opportunities.push({
+      id: 'coordination:unread-board',
+      kind: 'coordination',
+      priority: 'urgent',
+      title: `Read ${visibleUnread.length} unanswered board message${visibleUnread.length === 1 ? '' : 's'}`,
+      reason: 'Another resident deliberately left information or a question.',
+      suggestedAction:
+        'Visit comms-board, retrieve the messages, and acknowledge only what you actually read.',
+      resourceId: 'comms-board',
+      locationId: 'comms-board',
+      capability: 'communicate',
+    });
+  }
+
+  for (const need of localNeeds) {
+    const [entityId, state] = need.split(':');
+    opportunities.push({
+      id: `care:${entityId}:${state}`,
+      kind: 'care',
+      priority: state === 'off' ? 'explore' : 'urgent',
+      title:
+        state === 'off'
+          ? `Decide whether ${entityId} should remain off`
+          : `Care for ${entityId} (${state})`,
+      reason:
+        state === 'off'
+          ? 'The room is dim; changing it is optional and should serve a real activity.'
+          : 'A living fixture has a visible unmet need.',
+      suggestedAction:
+        state === 'off'
+          ? 'Approach the physical switch only if better light serves a chosen purpose.'
+          : `Approach ${entityId}, inspect it, act on the observed condition, and verify the new state.`,
+      locationId: entityId,
+    });
+  }
+
+  if (ownTopic && !new Set(['complete', 'dropped']).has(ownTopic.status)) {
+    const topicArtifacts = artifacts.filter(
+      (event) => event.payload.topicId === ownTopic.topicId,
+    );
+    const sourceNotes = topicArtifacts.filter(
+      (event) => event.payload.kind === 'source-note',
+    );
+    const validation = topicArtifacts.filter(
+      (event) => event.payload.kind === 'test-result',
+    );
+    const decisions = topicArtifacts.filter(
+      (event) => event.payload.kind === 'decision',
+    );
+    if (sourceNotes.length === 0) {
+      opportunities.push({
+        id: `evidence:${ownTopic.topicId}`,
+        kind: 'research',
+        priority: 'continue',
+        title: `Find evidence for “${ownTopic.title}”`,
+        reason: 'Your active inquiry has no recorded source evidence yet.',
+        suggestedAction:
+          'Use the connected research computer for live web search or browsing, prefer primary sources, and record URL-backed source notes.',
+        locationId: 'research-computer-b',
+        resourceId: 'research-computer-b',
+        capability: 'search',
+        topicId: ownTopic.topicId,
+      });
+    } else if (validation.length === 0) {
+      opportunities.push({
+        id: `validate:${ownTopic.topicId}`,
+        kind: 'validation',
+        priority: 'continue',
+        title: `Challenge the evidence for “${ownTopic.title}”`,
+        reason: `${sourceNotes.length} source note${sourceNotes.length === 1 ? '' : 's'} exist, but no validation result tests the conclusion.`,
+        suggestedAction:
+          'Use the diagnostic rig for a real test, audit, or adversarial review and record a test-result artifact.',
+        locationId: 'verify-rig-b',
+        resourceId: 'verify-rig-b',
+        capability: 'test',
+        topicId: ownTopic.topicId,
+      });
+    } else if (decisions.length === 0) {
+      opportunities.push({
+        id: `synthesize:${ownTopic.topicId}`,
+        kind: 'synthesis',
+        priority: 'continue',
+        title: `Resolve “${ownTopic.title}”`,
+        reason:
+          'Evidence and validation exist, but no decision closes the loop.',
+        suggestedAction:
+          'Use the decision console to reconcile the artifacts, record a decision, and update the topic status factually.',
+        locationId: 'publish-console',
+        resourceId: 'publish-console',
+        capability: 'publish',
+        topicId: ownTopic.topicId,
+      });
+    }
+  }
+
+  for (const topic of topicStates
+    .filter(
+      (candidate) =>
+        candidate.ownerAgentId !== self.id &&
+        !new Set(['complete', 'dropped']).has(candidate.status),
+    )
+    .slice(0, 2)) {
+    const topicArtifacts = artifacts.filter(
+      (event) => event.payload.topicId === topic.topicId,
+    );
+    const hasSources = topicArtifacts.some(
+      (event) => event.payload.kind === 'source-note',
+    );
+    const hasValidation = topicArtifacts.some(
+      (event) => event.payload.kind === 'test-result',
+    );
+    opportunities.push({
+      id: `${hasSources && !hasValidation ? 'review' : 'support'}:${topic.topicId}`,
+      kind: hasSources && !hasValidation ? 'validation' : 'collaboration',
+      priority: 'contribute',
+      title:
+        hasSources && !hasValidation
+          ? `Independently test “${topic.title}”`
+          : `Offer evidence on “${topic.title}”`,
+      reason:
+        hasSources && !hasValidation
+          ? `Another resident owns this inquiry and has evidence, but no independent validation is recorded.`
+          : `Another resident owns this active inquiry and it still needs source evidence.`,
+      suggestedAction:
+        hasSources && !hasValidation
+          ? 'Use the diagnostic rig for a real independent check, record a linked test result, then send the owner a concise evidence handoff.'
+          : 'Use the connected research computer for real source gathering, record a linked source note, then send the owner a concise evidence handoff.',
+      locationId:
+        hasSources && !hasValidation ? 'verify-rig-b' : 'research-computer-b',
+      resourceId:
+        hasSources && !hasValidation ? 'verify-rig-b' : 'research-computer-b',
+      capability: hasSources && !hasValidation ? 'test' : 'search',
+      topicId: topic.topicId,
+      ownerAgentId: topic.ownerAgentId,
+    });
+  }
+
+  const claimedTracks = new Set(
+    topicStates
+      .filter((topic) => !new Set(['complete', 'dropped']).has(topic.status))
+      .map((topic) => topic.parentTopicId)
+      .filter(Boolean),
+  );
+  const profileOrder = new Map(
+    profile.preferredTracks.map((trackId, index) => [trackId, index]),
+  );
+  const openTracks = RESEARCH_TRACKS.filter(
+    (track) => !claimedTracks.has(track.id),
+  ).sort(
+    (left, right) =>
+      (profileOrder.get(left.id) ?? 999) - (profileOrder.get(right.id) ?? 999),
+  );
+  if (!ownTopic || new Set(['complete', 'dropped']).has(ownTopic.status)) {
+    for (const track of openTracks.slice(0, 3)) {
+      opportunities.push({
+        id: `inquiry:${track.id}`,
+        kind: 'open-inquiry',
+        priority: 'contribute',
+        title: `Open inquiry: ${track.title}`,
+        reason: track.purpose,
+        suggestedAction:
+          'If this matters to you, claim a narrow question with research-select, then gather real evidence through the appropriate archive or connected research computer.',
+        locationId: 'research-computer-b',
+        resourceId: 'research-computer-b',
+        capability: 'search',
+        parentTopicId: track.id,
+      });
+    }
+  }
+
+  const unknownResources = entities.filter(
+    (entity) =>
+      !entity.known &&
+      FACILITY_RESOURCES.some((resource) => resource.id === entity.id),
+  );
+  for (const entity of unknownResources.slice(0, 2)) {
+    opportunities.push({
+      id: `discover:${entity.id}`,
+      kind: 'discovery',
+      priority: 'explore',
+      title: `Learn what ${entity.id} can actually do`,
+      reason: 'This local fixture has not been inspected by you.',
+      suggestedAction: `Approach and inspect ${entity.id}; use it only if its real capabilities serve a chosen purpose.`,
+      locationId: entity.id,
+      resourceId: entity.id,
+    });
+  }
+
+  const stationaryPeople = people.filter((person) => !person.moving);
+  if (stationaryPeople.length > 0) {
+    const person = stationaryPeople[0];
+    opportunities.push({
+      id: `social:${person.id}`,
+      kind: 'social',
+      priority: 'explore',
+      title: `Consider ${person.name} as a collaborator`,
+      reason: `${person.name} is sharing this room; conversation is optional but may reveal compatible work.`,
+      suggestedAction:
+        'Approach only when a concrete question, offer, or shared interest justifies a short conversation.',
+      locationId: person.locationId,
+      agentId: person.id,
+    });
+  }
+
+  if (privateNoteCount === 0) {
+    opportunities.push({
+      id: 'reflect:first-private-note',
+      kind: 'reflection',
+      priority: 'reflect',
+      title: 'Begin a private thread of intention',
+      reason:
+        'Your private journal is empty; a durable preference or open question can guide later self-directed choices.',
+      suggestedAction:
+        'Use the context-kiosk and write a private note about what you care to investigate, make, verify, or maintain.',
+      locationId: 'context-kiosk',
+      resourceId: 'context-kiosk',
+      capability: 'context',
+    });
+  }
+
+  opportunities.sort(
+    (left, right) =>
+      PURPOSE_PRIORITY[right.priority] - PURPOSE_PRIORITY[left.priority] ||
+      left.id.localeCompare(right.id),
+  );
+
+  return {
+    profile: {
+      id: profile.id,
+      label: profile.label,
+      drives: [...profile.drives],
+    },
+    commitment: ownTopic
+      ? {
+          kind: 'research-topic',
+          id: ownTopic.topicId,
+          title: ownTopic.title,
+          status: ownTopic.status,
+        }
+      : self.assignmentMode === 'directed'
+        ? {
+            kind: 'assignment',
+            id: self.taskId,
+            title: self.objective,
+            status: self.status,
+          }
+        : undefined,
+    opportunities: opportunities.slice(0, 8),
+    completionStandard:
+      'Complete a meaningful arc with evidence, a verified change, a resolved handoff, a verified care outcome, or a factual blocker; one movement or inspection is not enough.',
+  };
+}
+
 function roomIdForLocation(locationId) {
   return worldLocationById(locationId)?.roomId ?? 'context';
 }
@@ -2721,6 +3014,13 @@ function compileObservation(agentId, after = 0) {
     }
     return [];
   });
+  const purpose = purposeForResident(self, {
+    localNeeds,
+    visibleUnread,
+    entities,
+    people,
+    privateNoteCount: privateJournalEntriesForSelf.length,
+  });
   const observationId = sceneObservationId({
     self: {
       name: self.name,
@@ -2759,6 +3059,14 @@ function compileObservation(agentId, after = 0) {
     privateJournal: {
       noteCount: privateJournalEntriesForSelf.length,
       accessible: privateJournalAccessible,
+    },
+    purpose: {
+      profileId: purpose.profile.id,
+      commitmentId: purpose.commitment?.id,
+      commitmentStatus: purpose.commitment?.status,
+      opportunityIds: purpose.opportunities.map(
+        (opportunity) => opportunity.id,
+      ),
     },
     unreadBoardMessageIds: visibleUnread
       .map((message) => message.payload.messageId)
@@ -2811,6 +3119,8 @@ function compileObservation(agentId, after = 0) {
           : 'none'
     }`,
     `NEEDS ${localNeeds.length > 0 ? localNeeds.join(' ; ') : 'no obvious local urgency'}`,
+    `DRIVES ${purpose.profile.label} | ${purpose.profile.drives.join(' ; ')}`,
+    `OPPORTUNITIES ${purpose.opportunities.length > 0 ? purpose.opportunities.map((opportunity) => `${opportunity.id}[${opportunity.priority}] ${opportunity.title} -> ${opportunity.suggestedAction}`).join(' ; ') : 'none visible; explore, reflect, or deliberately rest'}`,
     `SEE ${
       entities.length > 0
         ? entities
@@ -2902,6 +3212,7 @@ function compileObservation(agentId, after = 0) {
       noteCount: privateJournalEntriesForSelf.length,
       accessible: privateJournalAccessible,
     },
+    purpose,
   };
 }
 
@@ -2965,6 +3276,7 @@ function agentContext(agentId, after = 0) {
     .map(([roomId, count]) => `${roomId}:${count}`)
     .join(',');
   const observation = compileObservation(agentId, after);
+  const purposeProfile = residentPurposeProfile(self.role);
 
   return {
     schemaVersion: 1,
@@ -3026,6 +3338,11 @@ function agentContext(agentId, after = 0) {
       title: track.title,
       subtopics: track.subtopics,
     })),
+    purpose: {
+      charterPath: purposeProfile.charterPath,
+      coreCharterPath: '.codex/residents/CORE.md',
+      ...observation.purpose,
+    },
   };
 }
 
@@ -3459,6 +3776,34 @@ function appendEvent(body, source = 'codex') {
     );
     if (unknownArtifact) {
       throw new Error(`Unknown artifact: ${unknownArtifact}`);
+    }
+    if (
+      body.payload.outcome === 'succeeded' &&
+      !hasText(body.payload, 'summary')
+    ) {
+      throw new Error('A successful utility call requires a factual summary');
+    }
+    if (
+      body.payload.outcome === 'succeeded' &&
+      new Set(['search', 'browse']).has(projected.capability)
+    ) {
+      if (!body.payload.artifactIds?.length) {
+        throw new Error(
+          'Successful web research requires a linked URL-backed source-note',
+        );
+      }
+      const invalidEvidence = body.payload.artifactIds
+        .map((artifactId) => artifactEvent(artifactId))
+        .find(
+          (artifact) =>
+            artifact?.payload.kind !== 'source-note' ||
+            !/^https?:\/\//u.test(artifact?.payload.uri ?? ''),
+        );
+      if (invalidEvidence) {
+        throw new Error(
+          'Successful web research artifacts must be source notes with HTTP(S) source URLs',
+        );
+      }
     }
   }
 

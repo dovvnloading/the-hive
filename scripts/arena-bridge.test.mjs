@@ -144,13 +144,22 @@ async function walkTo(origin, agentToken, target) {
       );
     }
     const payload = await json(response);
-    const waitMs = Math.max(
-      0,
-      Date.parse(payload.event.payload.arrivesAt) - Date.now() + 2,
+    const arrivesAt = Date.parse(payload.event.payload.arrivesAt);
+    const arrivalDeadline = arrivesAt + 1_000;
+    do {
+      const waitMs = Math.max(5, arrivesAt - Date.now() + 5);
+      await new Promise((resolveWait) =>
+        setTimeout(resolveWait, Math.min(waitMs, 100)),
+      );
+      observation = await observe(
+        origin,
+        agentToken,
+        payload.event.sequence - 1,
+      );
+    } while (
+      observation.you.locationId !== step &&
+      Date.now() < arrivalDeadline
     );
-    if (waitMs > 0)
-      await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
-    observation = await observe(origin, agentToken, payload.event.sequence - 1);
   }
   assert.equal(observation.you.locationId, target);
   return observation;
@@ -1428,6 +1437,10 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.deepEqual(commandContext.sameRoomAgentIds, ['atlas']);
   assert.match(commandContext.brief, /AREA context/u);
   assert.ok(commandContext.brief.length < 240);
+  assert.equal(
+    commandContext.purpose.charterPath,
+    '.codex/residents/EXPLORER.md',
+  );
 
   const selfDirectedContext = await json(
     await boardRequest(origin, '/agent/context?after=0', atlasToken),
@@ -1435,8 +1448,27 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.equal(selfDirectedContext.self.assignmentMode, 'self-directed');
   assert.match(selfDirectedContext.brief, /MODE SELF-DIRECTED/u);
   assert.match(selfDirectedContext.directive, /No task has been imposed/u);
+  assert.equal(
+    selfDirectedContext.purpose.charterPath,
+    '.codex/residents/STEWARD.md',
+  );
+  assert.equal(
+    selfDirectedContext.purpose.coreCharterPath,
+    '.codex/residents/CORE.md',
+  );
+  assert.ok(selfDirectedContext.purpose.opportunities.length >= 3);
+  assert.ok(
+    selfDirectedContext.purpose.opportunities.some(
+      (opportunity) =>
+        opportunity.kind === 'open-inquiry' &&
+        opportunity.capability === 'search' &&
+        /real evidence/u.test(opportunity.suggestedAction),
+    ),
+  );
 
   const beforeResearchSelection = await observe(origin, sageToken);
+  assert.match(beforeResearchSelection.text, /^DRIVES /mu);
+  assert.match(beforeResearchSelection.text, /^OPPORTUNITIES /mu);
   const selected = await postEvent(origin, {
     kind: 'research.topic.selected',
     agentId: 'sage',
@@ -1449,6 +1481,18 @@ void test('research computers, artifacts, and authenticated context remain agent
     },
   });
   assert.equal(selected.status, 201);
+
+  const collaboratorContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', atlasToken),
+  );
+  assert.ok(
+    collaboratorContext.purpose.opportunities.some(
+      (opportunity) =>
+        opportunity.id === 'support:topic-tools' &&
+        opportunity.ownerAgentId === 'sage' &&
+        opportunity.capability === 'search',
+    ),
+  );
 
   const staleAssignmentScene = await boardRequest(
     origin,
@@ -1684,6 +1728,18 @@ void test('research computers, artifacts, and authenticated context remain agent
   });
   assert.equal(searchStart.status, 201);
 
+  const evidenceFreeFinish = await postEvent(origin, {
+    kind: 'tool.finished',
+    agentId: 'sage',
+    payload: {
+      toolCallId: 'tool-search-1',
+      outcome: 'succeeded',
+      summary: 'Claimed success without preserving any source evidence',
+    },
+  });
+  assert.equal(evidenceFreeFinish.status, 400);
+  assert.match(await evidenceFreeFinish.text(), /URL-backed source-note/u);
+
   const researchContext = await json(
     await boardRequest(origin, '/agent/context?after=0', sageToken),
   );
@@ -1691,6 +1747,12 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.equal(researchContext.self.resourceId, 'research-computer-b');
   assert.equal(researchContext.self.capability, 'search');
   assert.equal(researchContext.self.topic.topicId, 'topic-tools');
+  assert.equal(researchContext.purpose.commitment.id, 'topic-tools');
+  assert.ok(
+    researchContext.purpose.opportunities.some(
+      (opportunity) => opportunity.id === 'evidence:topic-tools',
+    ),
+  );
   assert.ok(
     researchContext.researchTracks.some(
       (track) => track.id === 'technical-sources',

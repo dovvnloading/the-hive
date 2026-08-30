@@ -80,6 +80,41 @@ npx tsc --noEmit
 npm run build
 ```
 
+## Resident purpose system
+
+Resident initiative is driven by durable charters and live state, not by a
+sequence of operator-authored micro-prompts. Every resident reads
+`.codex/residents/CORE.md` plus one role profile before acting. The profile
+supplies stable drives; `/agent/context` supplies an unfinished commitment and
+ranked opportunities derived from the actual run:
+
+- unanswered board messages and accepted collaboration;
+- living environmental needs and unknown local fixtures;
+- owned research topics that still lack evidence, validation, or a decision;
+- unclaimed research tracks ordered by the resident's interests;
+- nearby people who may be useful collaborators;
+- an empty private journal that can hold a longer-lived intention.
+
+The resident chooses among these or forms another grounded goal. One movement
+or inspection is explicitly below the meaningful-work threshold.
+
+Facility tools are causal gates to real Codex capabilities:
+
+| Facility resource           | Real work                                           |
+| --------------------------- | --------------------------------------------------- |
+| Connected research computer | live web search/browse with URL-backed source notes |
+| Source archive              | local evidence and prior decisions                  |
+| Shell console               | actual shell and filesystem operations              |
+| Connector console           | configured connectors, APIs, and services           |
+| Fabrication bench           | file edits and builds                               |
+| Diagnostic rig              | tests, audits, builds, and reviews                  |
+| Decision console            | artifact review and published decisions             |
+| Context desk                | situated context and owner-private journal notes    |
+
+`tool-start`/`tool-finish` bracket a real call; they do not count as the call.
+The bridge rejects a successful search/browse finish unless it links at least
+one HTTP(S) source-note artifact.
+
 ## Agent contract
 
 An orchestrator starts a run, registers actual collaboration subagents with

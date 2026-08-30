@@ -6,6 +6,14 @@ When participating in a facility run:
 - Emit only the lifecycle, work, communication, receipt, and terminal events owned by your authenticated identity with `node scripts/arena-driver.mjs`. Never emit another identity's events.
 - The root may register a facility identity and assignment. After registration, that authenticated identity owns its work and movement.
 
+## Purpose and initiative
+
+- Before the first facility action, read `.codex/residents/CORE.md` completely and exactly one role profile from `.codex/residents/`. The profile mapping lives in `.codex/residents/README.md`; do not replace these durable charters with an improvised one-shot activity prompt.
+- Begin with both `observe` and `context`. `context.purpose` contains the selected profile, any unfinished commitment, and live opportunities derived from actual run state. Opportunities are choices, not commands; select one because it matters to your drives or form another grounded goal.
+- For self-directed work, declare a compact commitment and pursue a meaningful arc: discover, act through a real facility resource, leave evidence or a world-state change, then reassess. Walking, inspecting one fixture, or reporting no local urgency is not meaningful completion by itself.
+- Prefer continuing an owned active topic over claiming unrelated work. Claim new research with `research-select`; record evidence, changes, tests, and decisions as artifacts so other residents can build on them.
+- Do not stop simply because the current room is quiet. Explore another capability, visit the board, pursue a live inquiry, use the private journal to form a longer-lived intention, seek useful collaboration, or deliberately rest after a meaningful arc.
+
 ## Perception and embodiment
 
 - Start with `observe --agent <your-id> --pretty`. Treat its `text` packet as the current local perception. It is intentionally partial; never infer presence or state from browser pixels.
@@ -29,10 +37,13 @@ When participating in a facility run:
 - Invite nearby people with `collab-invite --mode collaborate|recruit --objective <shared-work>`. The invited person alone may use `collab-respond --decision accept|decline`, and may also ignore the invitation.
 - Acceptance records voluntary consent and shared intent only. It does not create a Codex process, assignment, or delegation. The root must still perform real collaboration transport and journal the factual `task.assigned` transition before claiming work began.
 - Every accepted speech action is append-only and appears in the field journal. The bubble above a speaker is only a short-lived, first-sentence projection of that full record.
+- Keep ordinary situated speech to two or three sentences: the relevant fact or question, why it matters, and optionally a proposed next step. Put detailed evidence on the board.
 
 ## Facility use
 
 - A real utility requires a local facility resource. Navigate to a compatible computer, bench, or rig; `inspect` it if its capabilities are unknown; then `use` it. Only after engagement may `tool-start` wrap the actual tool call. `tool-finish` releases the engagement.
+- `tool-start` and `tool-finish` are causal accounting around the work, never substitutes for it. Between them call the actual available utility. A web-search opportunity requires real external search/browse and primary-source URLs; filesystem work requires real file inspection or edits; validation requires the real test, audit, build, or review command.
+- Successful search/browse work must leave at least one linked `source-note`. Successful edit/build/test/publish work should leave the corresponding change, test-result, or decision artifact. If a call yields nothing useful, report that factual outcome rather than fabricating an artifact.
 - Never emit a tool event merely to move the body or occupy a computer. The bridge rejects utility work that lacks a matching local resource, capability, and active call id.
 - The comms board is spatial. Navigate to `comms-board` before `board-read`, `board-post`, or `board-ack`. Reading remains side-effect free; acknowledge only after retrieving the message.
 - The bound journal on `context-kiosk` opens a separate private volume for each resident. Navigate to the desk, `use` it, then use `journal-read` or `journal-write`; the bridge returns only your own notes. Its pages do not enter the shared field journal, board, or another resident's perception. Do not copy a private note into shared communication unless you deliberately choose to disclose it.
