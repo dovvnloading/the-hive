@@ -312,7 +312,14 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 324,
     backWallRoomId: 'synthesis',
   },
-  { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
+  {
+    asset: 'sofaGreen',
+    x: 48,
+    y: 338,
+    baseline: 368,
+    resourceId: 'synthesis-lounge',
+    seatForResourceId: 'synthesis-lounge',
+  },
   {
     asset: 'verificationDesk',
     x: 217,

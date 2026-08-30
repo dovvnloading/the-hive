@@ -233,7 +233,7 @@ void test('all station slots and semantic edge routes clear static world geometr
   }
 });
 
-void test('seated resources stage walkers outside chair collision bodies', () => {
+void test('seated resources stage walkers outside their seat collision bodies', () => {
   const seatedResources = FACILITY_RESOURCES.filter(
     (resource) => resource.seatedPositions?.length,
   );
@@ -263,8 +263,10 @@ void test('seated resources stage walkers outside chair collision bodies', () =>
         `${resource.id} standing approach collides with ${worldCollisionIds(slot).join(', ')}`,
       );
       assert.ok(
-        worldCollisionIds(seat).some((id) => id.startsWith('chair-')),
-        `${resource.id} seated projection is not anchored to a chair body`,
+        worldCollisionIds(seat).some(
+          (id) => id.startsWith('chair-') || id.endsWith('-sofa-body'),
+        ),
+        `${resource.id} seated projection is not anchored to a seat body`,
       );
     });
   }
@@ -337,6 +339,7 @@ void test('every authored chair selects the matching directional seated sheet', 
     'command-table': ['east', 'west'],
     'shell-console-a': ['north'],
     'connector-console-b': ['north'],
+    'synthesis-lounge': ['south'],
     'publish-console': ['north'],
     'build-bench-a': ['north'],
     'verify-rig-b': ['north'],
@@ -361,6 +364,11 @@ void test('every authored chair selects the matching directional seated sheet', 
     (resource) => resource.id === 'publish-console',
   );
   assert.deepEqual(publish?.seatedPositions, [{ x: 32.161, y: 81.027 }]);
+
+  const lounge = FACILITY_RESOURCES.find(
+    (resource) => resource.id === 'synthesis-lounge',
+  );
+  assert.deepEqual(lounge?.seatedPositions, [{ x: 9.635, y: 83.036 }]);
 });
 
 void test('only authored chairs seat residents and every light switch has a reachable standing point', () => {
