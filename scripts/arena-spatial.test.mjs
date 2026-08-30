@@ -4,6 +4,7 @@ import test from 'node:test';
 import { createServer as createViteServer } from 'vite';
 
 import {
+  FACILITY_COLLISION_GEOMETRY,
   FACILITY_RESOURCES,
   STATIONS,
   WORLD_EDGES,
@@ -18,6 +19,31 @@ import {
   resolveAvatarCollisions,
   worldCollisionIds,
 } from '../lib/arena/agentic-spatial.ts';
+
+void test('build plant remains outside the doorway opening and approach lane', () => {
+  const doorway = FACILITY_COLLISION_GEOMETRY.southDoors.find(
+    (door) => door.locationId === 'door-build',
+  );
+  const plant = FACILITY_COLLISION_GEOMETRY.solids.find(
+    (solid) => solid.id === 'build-plant-body',
+  );
+
+  assert.ok(doorway);
+  assert.ok(plant);
+
+  const openingLeft = doorway.centerX - doorway.width / 2;
+  const openingRight = doorway.centerX + doorway.width / 2;
+  const plantRight = plant.x + plant.w;
+  const plantOutsideOpening =
+    plantRight <= openingLeft || plant.x >= openingRight;
+  assert.equal(plantOutsideOpening, true);
+
+  const approachCenter = { x: doorway.centerX / 7.68, y: 74.107 };
+  assert.equal(
+    worldCollisionIds(approachCenter).includes('build-plant-body'),
+    false,
+  );
+});
 
 function avatar(agentId, position, routeOrder = 0) {
   return {

@@ -334,7 +334,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairNorth', x: 678, y: 367, baseline: 389 },
   {
     asset: 'plantSmall',
-    x: 574,
+    x: 554,
     y: 306,
     baseline: 328,
     entityId: 'plant-build',
