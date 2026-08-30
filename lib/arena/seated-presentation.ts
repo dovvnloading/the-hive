@@ -2,7 +2,7 @@ import type { AvatarDirection } from './agentic-types';
 
 export type SeatedMotion = 'sit' | 'sit2' | 'sit_back' | 'sit_front';
 
-export const NORTH_CHAIR_BACKREST_HEIGHT = 13;
+export const NORTH_CHAIR_FOREGROUND_HEIGHT = 32;
 
 export function isSeatedMotion(motion: string): motion is SeatedMotion {
   return (

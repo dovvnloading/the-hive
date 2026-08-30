@@ -28,7 +28,7 @@ import type {
 } from '@/lib/arena/agentic-types';
 import {
   isSeatedMotion,
-  NORTH_CHAIR_BACKREST_HEIGHT,
+  NORTH_CHAIR_FOREGROUND_HEIGHT,
   seatedFrameOffset,
   seatedFrameHeight,
   seatedFrameWidth,
@@ -155,7 +155,7 @@ type SceneProp = {
   entityId?: string;
   seatForResourceId?: string;
   seatIndex?: number;
-  seatBackrestHeight?: number;
+  seatForegroundHeight?: number;
 };
 
 const CONTEXT_KIOSK_PROP = {
@@ -223,7 +223,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 130,
     baseline: 152,
     seatForResourceId: 'research-computer-b',
-    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -286,7 +286,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 130,
     baseline: 152,
     seatForResourceId: 'shell-console-a',
-    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
   },
   {
     asset: 'chairNorth',
@@ -294,7 +294,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 130,
     baseline: 152,
     seatForResourceId: 'connector-console-b',
-    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -326,7 +326,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 349,
     baseline: 371,
     seatForResourceId: 'publish-console',
-    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -367,7 +367,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 367,
     baseline: 389,
     seatForResourceId: 'build-bench-a',
-    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
   },
   {
     asset: 'chairNorth',
@@ -375,7 +375,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 367,
     baseline: 389,
     seatForResourceId: 'verify-rig-b',
-    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -1015,25 +1015,24 @@ function drawSceneProp(
   drawSurfaceDetail(context, prop, width, y);
 }
 
-function drawOccupiedSeatBackrest(
+function drawOccupiedSeatForeground(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
   prop: SceneProp,
 ) {
-  if (prop.seatBackrestHeight === undefined) return;
+  if (prop.seatForegroundHeight === undefined) return;
   const image = bank[facilityKey(prop.asset)];
   if (!imageReady(image)) return;
   const height = Math.max(
     0,
-    Math.min(prop.seatBackrestHeight, image.naturalHeight),
+    Math.min(prop.seatForegroundHeight, image.naturalHeight),
   );
   if (height === 0) return;
   const y = prop.y ?? 0;
 
-  // The complete chair is rendered behind its occupant. Repainting only the
-  // authored upper backrest puts that rail between the viewer and the seated
-  // torso without pulling the chair legs or the adjacent desk into the
-  // foreground.
+  // The complete chair is rendered behind its occupant first. Repainting the
+  // whole authored chair silhouette in front avoids a hard horizontal seam in
+  // its side rails while keeping the adjacent desk out of this layer.
   context.drawImage(
     image,
     0,
@@ -1350,8 +1349,8 @@ function drawDepthSortedScene(
           ?.find((occupant) => occupant.seatIndex === (prop.seatIndex ?? 0))
       : undefined;
     return {
-      // The chair body begins behind its resident. A separate occupied-seat
-      // entry restores only the upper backrest in front of the torso.
+      // The chair is initially present behind its resident. A separate
+      // occupied-seat entry restores its complete silhouette in front.
       baseline: occupiedSeat
         ? Math.min(prop.baseline, occupiedSeat.baseline - 0.5)
         : prop.baseline,
@@ -1381,7 +1380,7 @@ function drawDepthSortedScene(
   });
 
   SCENE_PROPS.forEach((prop, index) => {
-    if (!prop.seatForResourceId || prop.seatBackrestHeight === undefined) {
+    if (!prop.seatForResourceId || prop.seatForegroundHeight === undefined) {
       return;
     }
     const occupiedSeat = occupiedSeats
@@ -1391,7 +1390,7 @@ function drawDepthSortedScene(
     entries.push({
       baseline: occupiedSeat.baseline + 0.5,
       stableOrder: 2000 + index,
-      draw: () => drawOccupiedSeatBackrest(context, bank, prop),
+      draw: () => drawOccupiedSeatForeground(context, bank, prop),
     });
   });
 

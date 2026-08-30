@@ -23,7 +23,7 @@ import {
   worldCollisionIds,
 } from '../lib/arena/agentic-spatial.ts';
 import {
-  NORTH_CHAIR_BACKREST_HEIGHT,
+  NORTH_CHAIR_FOREGROUND_HEIGHT,
   seatedFrameOffset,
   seatedFrameHeight,
   seatedFrameWidth,
@@ -299,7 +299,7 @@ void test('every authored chair selects the matching directional seated sheet', 
   assert.equal(seatedFrameOffset('sit_front', 'south'), 18);
   assert.equal(seatedFrameOffset('sit', 'east'), 0);
   assert.equal(seatedFrameOffset('sit2', 'west'), 6);
-  assert.equal(NORTH_CHAIR_BACKREST_HEIGHT, 13);
+  assert.equal(NORTH_CHAIR_FOREGROUND_HEIGHT, 32);
 });
 
 void test('only authored chairs seat residents and every light switch has a reachable standing point', () => {
