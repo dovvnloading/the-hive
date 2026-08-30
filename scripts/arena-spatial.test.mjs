@@ -11,6 +11,7 @@ import {
   LIGHT_SWITCH_REACH_PX,
   STATIONS,
   WORLD_EDGES,
+  allocatePresentationIndex,
   buildArenaPath,
   doorwayTraversalDistancePx,
   isFacilityPortalTransfer,
@@ -33,6 +34,19 @@ import {
   sideChairForegroundCrop,
 } from '../lib/arena/seated-presentation.ts';
 import { runArenaSpatialAudit } from './arena-spatial-audit.mjs';
+
+void test('concurrent residents receive distinct character sheets', () => {
+  const occupied = [];
+  for (const agentId of [
+    'orion_live_02',
+    'vesper_live_02',
+    'lyra_live_02',
+    'atlas',
+  ]) {
+    occupied.push(allocatePresentationIndex(agentId, occupied));
+  }
+  assert.equal(new Set(occupied).size, 4);
+});
 
 void test('build plant remains outside the doorway opening and approach lane', () => {
   const doorway = FACILITY_COLLISION_GEOMETRY.southDoors.find(

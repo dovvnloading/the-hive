@@ -1,5 +1,6 @@
 import {
   FACILITY_PROPS,
+  allocatePresentationIndex,
   buildArenaPath,
   inferToolCapability,
   isFacilityPortalTransfer,
@@ -75,13 +76,11 @@ function reservedStationPositions(
 ) {
   const targetRoomId = stationById(stationId).roomId;
   return state.avatars
-    .filter(
-      (avatar) => {
-        if (avatar.agentId === exceptAgentId) return false;
-        const occupiedStationId = avatar.targetStationId ?? avatar.stationId;
-        return stationById(occupiedStationId).roomId === targetRoomId;
-      },
-    )
+    .filter((avatar) => {
+      if (avatar.agentId === exceptAgentId) return false;
+      const occupiedStationId = avatar.targetStationId ?? avatar.stationId;
+      return stationById(occupiedStationId).roomId === targetRoomId;
+    })
     .map((avatar) =>
       avatar.targetStationId === stationId && avatar.path.length > 0
         ? avatar.path[avatar.path.length - 1]
@@ -468,6 +467,17 @@ function applyRuntimeEvent(
       id: event.agentId,
       name: event.payload.name,
       role: event.payload.role,
+      presentationIndex: allocatePresentationIndex(
+        event.agentId,
+        next.avatars.flatMap((avatar) => {
+          const resident = next.agents.find(
+            (candidate) => candidate.id === avatar.agentId,
+          );
+          return resident?.presentationIndex === undefined
+            ? []
+            : [resident.presentationIndex];
+        }),
+      ),
       parentAgentId: event.parentAgentId,
       objective: 'Waiting for an assignment',
       phase: 'spawning',

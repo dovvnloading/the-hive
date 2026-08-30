@@ -12,7 +12,8 @@ import {
   FACILITY_LIGHT_LAYOUT,
   FACILITY_PROPS,
   FACILITY_ROOMS,
-  presentationFor,
+  presentationAt,
+  presentationIndexFor,
   resourceById,
   roomForLocation,
 } from '@/lib/arena/agentic-catalog';
@@ -1097,8 +1098,14 @@ function statusColor(agent: RuntimeAgent) {
   if (agent.status === 'failed') return '#c86c65';
   if (agent.status === 'blocked') return '#d2a05d';
   if (agent.status === 'completed') return '#769b78';
-  if (agent.status === 'working') return presentationFor(agent.id).accent;
+  if (agent.status === 'working') return presentationForAgent(agent).accent;
   return '#7d898e';
+}
+
+function presentationForAgent(agent: RuntimeAgent) {
+  return presentationAt(
+    agent.presentationIndex ?? presentationIndexFor(agent.id),
+  );
 }
 
 function roomAgents(state: AgentArenaState, roomId: RoomId) {
@@ -1128,14 +1135,14 @@ function drawPlaque(
   const width = room.w - 10;
   const agents = roomAgents(state, room.id);
   const activity = roomActivityLabel(agents);
-  const accent = agents.find((agent) => agent.status === 'working')?.id;
+  const accent = agents.find((agent) => agent.status === 'working');
 
   context.fillStyle = 'rgba(28,20,15,.97)';
   context.fillRect(left, top, width, 21);
   context.strokeStyle = '#795b41';
   context.lineWidth = 1;
   context.strokeRect(left + 0.5, top + 0.5, width - 1, 20);
-  context.fillStyle = accent ? presentationFor(accent).accent : '#a67a4d';
+  context.fillStyle = accent ? presentationForAgent(accent).accent : '#a67a4d';
   context.fillRect(left, top, 3, 21);
   context.fillStyle = '#f0e3c8';
   context.font = `${room.id === 'context' ? 9 : 10}px ui-monospace, SFMono-Regular, Consolas, monospace`;
@@ -1611,7 +1618,7 @@ export function AgentArenaWorldV2({
       ),
     ]);
     state.agents.forEach((agent) => {
-      const folder = presentationFor(agent.id).sprite;
+      const folder = presentationForAgent(agent).sprite;
       ASSET_MOTIONS.forEach((motion) => {
         sources.push([`${agent.id}:${motion}`, `${folder}/${motion}.png`]);
       });
@@ -1778,7 +1785,7 @@ export function AgentArenaWorldV2({
                 {
                   left: `${left}%`,
                   top: `${top}%`,
-                  '--speaker-accent': presentationFor(speaker.id).accent,
+                  '--speaker-accent': presentationForAgent(speaker).accent,
                 } as CSSProperties
               }
               onClick={(clickEvent) => {

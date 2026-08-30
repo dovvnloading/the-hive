@@ -100,10 +100,7 @@ export type RuntimeEvent =
       }
     >
   | EventEnvelope<'agent.spawned', { name: string; role: string }>
-  | EventEnvelope<
-      'task.assigned',
-      { objective: string; mode?: AssignmentMode }
-    >
+  | EventEnvelope<'task.assigned', { objective: string; mode?: AssignmentMode }>
   | EventEnvelope<
       'world.navigation',
       {
@@ -269,6 +266,7 @@ export type RuntimeAgent = {
   id: string;
   name: string;
   role: string;
+  presentationIndex?: number;
   parentAgentId?: string;
   taskId?: string;
   assignmentMode?: AssignmentMode;

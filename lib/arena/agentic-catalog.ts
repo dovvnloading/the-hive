@@ -112,10 +112,39 @@ function hashAgent(agentId: string) {
   return hash;
 }
 
-export function presentationFor(agentId: string): AgentPresentation {
+export function presentationIndexFor(agentId: string) {
   const known = AGENT_PRESENTATION[agentId];
-  if (known) return known;
-  const base = PRESENTATION_POOL[hashAgent(agentId) % PRESENTATION_POOL.length];
+  if (known) {
+    const index = PRESENTATION_POOL.findIndex(
+      (presentation) => presentation.sprite === known.sprite,
+    );
+    if (index >= 0) return index;
+  }
+  return hashAgent(agentId) % PRESENTATION_POOL.length;
+}
+
+export function allocatePresentationIndex(
+  agentId: string,
+  occupiedIndices: Iterable<number>,
+) {
+  const occupied = new Set(occupiedIndices);
+  const preferred = presentationIndexFor(agentId);
+  for (let offset = 0; offset < PRESENTATION_POOL.length; offset += 1) {
+    const candidate = (preferred + offset) % PRESENTATION_POOL.length;
+    if (!occupied.has(candidate)) return candidate;
+  }
+  // The facility currently exposes four resident processes and four complete
+  // character sheets. This fallback preserves deterministic rendering for a
+  // historical over-capacity journal while active runs remain collision-free.
+  return preferred;
+}
+
+export function presentationAt(index: number): AgentPresentation {
+  return PRESENTATION_POOL[index % PRESENTATION_POOL.length];
+}
+
+export function presentationFor(agentId: string): AgentPresentation {
+  const base = presentationAt(presentationIndexFor(agentId));
   return { ...base, shortRole: 'AGENT' };
 }
 
