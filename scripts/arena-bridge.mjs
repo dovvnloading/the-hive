@@ -2323,13 +2323,41 @@ function preciseInteractionVisible(entity, perception) {
   );
 }
 
+function stationaryPortalApproachesRoom(candidate, roomId, now = Date.now()) {
+  const portalId = `door-${roomId}`;
+  if (
+    effectiveLocation(candidate, now) !== portalId ||
+    activeNavigation(candidate, now)
+  ) {
+    return false;
+  }
+  const arrival = currentRunEvents()
+    .slice()
+    .reverse()
+    .find(
+      (event) =>
+        event.kind === 'world.navigation' &&
+        event.agentId === candidate.id &&
+        event.payload.toLocationId === portalId,
+    );
+  return (
+    Boolean(arrival) &&
+    Date.parse(arrival.payload.arrivesAt) <= now &&
+    roomIdForLocation(arrival.payload.fromLocationId) === 'corridor'
+  );
+}
+
 function residentTouchesRoom(candidate, roomId, now = Date.now()) {
   const currentRoomId = roomIdForLocation(effectiveLocation(candidate, now));
   const navigation = activeNavigation(candidate, now);
   const destinationRoomId = navigation
     ? roomIdForLocation(navigation.toLocationId)
     : undefined;
-  return currentRoomId === roomId || destinationRoomId === roomId;
+  return (
+    currentRoomId === roomId ||
+    destinationRoomId === roomId ||
+    stationaryPortalApproachesRoom(candidate, roomId, now)
+  );
 }
 
 function metricDistance(left, right) {
@@ -3682,6 +3710,22 @@ function performWorldAction(agentId, body) {
         throw httpError(
           409,
           `${entity.label} switch is outside physical reach; move beside the wall control`,
+        );
+      }
+    }
+    if (entity.kind === 'room-light' && verb === 'switch_off') {
+      const otherRoomUsers = activeResidents(agents).filter(
+        (candidate) =>
+          candidate.id !== agentId &&
+          residentTouchesRoom(candidate, entity.roomId),
+      );
+      if (otherRoomUsers.length > 0) {
+        const names = otherRoomUsers
+          .map((candidate) => candidate.name)
+          .join(', ');
+        throw httpError(
+          409,
+          `${names} remains in or is entering ${entity.roomId}; leave ${entity.id} on and transfer light responsibility`,
         );
       }
     }

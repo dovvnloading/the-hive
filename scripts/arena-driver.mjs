@@ -32,6 +32,29 @@ const AGENT_PHASES = [
   'canceled',
 ];
 const AGENT_ACTIVITY_STATUSES = ['working', 'idle', 'blocked'];
+const TOOL_CAPABILITIES = [
+  'search',
+  'browse',
+  'read',
+  'shell',
+  'filesystem',
+  'connector',
+  'edit',
+  'build',
+  'test',
+  'review',
+  'publish',
+  'communicate',
+  'context',
+];
+const TOOL_OUTCOMES = ['succeeded', 'failed'];
+const RESEARCH_TOPIC_STATES = ['active', 'blocked', 'complete', 'dropped'];
+const ARTIFACT_KINDS = ['source-note', 'change', 'test-result', 'decision'];
+const MESSAGE_CHANNELS = ['commentary', 'final'];
+const BOARD_MESSAGE_TYPES = ['update', 'question', 'decision', 'handoff'];
+const BOARD_ACK_STATES = ['read', 'acknowledged', 'resolved'];
+const BLOCK_REASONS = ['approval', 'question', 'error'];
+const CHAT_RELAY_STATES = ['claimed', 'dispatched', 'completed', 'failed'];
 
 const HELP = `Arena driver — write real Codex subagent activity to the local arena bridge.
 
@@ -286,6 +309,12 @@ function required(flags, ...names) {
   }
 }
 
+function oneOf(flags, name, values) {
+  if (flags[name] !== undefined && !values.includes(flags[name])) {
+    throw new Error(`--${name} must be one of: ${values.join(', ')}`);
+  }
+}
+
 function commaIds(value) {
   return value
     ? value
@@ -534,6 +563,7 @@ async function execute(command, args, flags, baseUrl) {
   }
   if (command === 'chat-relay') {
     required(flags, 'ingress', 'state', 'summary');
+    oneOf(flags, 'state', CHAT_RELAY_STATES);
     const targets = flags.targets
       ? flags.targets
           .split(',')
@@ -561,6 +591,7 @@ async function execute(command, args, flags, baseUrl) {
   }
   if (command === 'board-post') {
     required(flags, 'agent', 'text');
+    oneOf(flags, 'type', BOARD_MESSAGE_TYPES);
     const recipients =
       flags.to && flags.to !== 'all'
         ? flags.to
@@ -615,6 +646,7 @@ async function execute(command, args, flags, baseUrl) {
   }
   if (command === 'board-ack') {
     required(flags, 'agent', 'message', 'state');
+    oneOf(flags, 'state', BOARD_ACK_STATES);
     return request(baseUrl, '/board/ack', {
       method: 'POST',
       body: JSON.stringify({
@@ -704,6 +736,7 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'tool-start':
       required(flags, 'agent', 'tool', 'summary');
+      oneOf(flags, 'capability', TOOL_CAPABILITIES);
       body = emitBody(
         'tool.started',
         {
@@ -718,6 +751,7 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'tool-finish':
       required(flags, 'agent', 'call-id', 'outcome');
+      oneOf(flags, 'outcome', TOOL_OUTCOMES);
       body = emitBody(
         'tool.finished',
         {
@@ -749,6 +783,7 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'research-update':
       required(flags, 'agent', 'topic-id', 'state');
+      oneOf(flags, 'state', RESEARCH_TOPIC_STATES);
       body = emitBody(
         'research.topic.updated',
         {
@@ -761,6 +796,7 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'artifact-record':
       required(flags, 'agent', 'artifact-id', 'kind', 'title', 'summary');
+      oneOf(flags, 'kind', ARTIFACT_KINDS);
       body = emitBody(
         'artifact.recorded',
         {
@@ -776,6 +812,7 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'message':
       required(flags, 'agent', 'text');
+      oneOf(flags, 'channel', MESSAGE_CHANNELS);
       body = emitBody(
         'agent.message',
         {
@@ -788,6 +825,7 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'block':
       required(flags, 'agent', 'reason', 'request');
+      oneOf(flags, 'reason', BLOCK_REASONS);
       body = emitBody(
         'agent.blocked',
         {

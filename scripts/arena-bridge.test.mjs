@@ -334,6 +334,64 @@ void test('arena driver rejects invalid activity enums before contacting the bri
   assert.doesNotMatch(invalidStatus.stderr, /Bridge unavailable/u);
 });
 
+void test('arena driver rejects invalid event enums before contacting the bridge', async () => {
+  const cases = [
+    {
+      args: [
+        'tool-finish',
+        '--agent',
+        'kernel',
+        '--call-id',
+        'tool-kernel',
+        '--outcome',
+        'invented',
+      ],
+      expected: /--outcome must be one of: succeeded, failed/u,
+    },
+    {
+      args: [
+        'research-update',
+        '--agent',
+        'kernel',
+        '--topic-id',
+        'topic-kernel',
+        '--state',
+        'invented',
+      ],
+      expected: /--state must be one of: active, blocked, complete, dropped/u,
+    },
+    {
+      args: [
+        'artifact-record',
+        '--agent',
+        'kernel',
+        '--artifact-id',
+        'artifact-kernel',
+        '--kind',
+        'invented',
+        '--title',
+        'invalid artifact',
+        '--summary',
+        'invalid kind',
+      ],
+      expected:
+        /--kind must be one of: source-note, change, test-result, decision/u,
+    },
+  ];
+
+  for (const item of cases) {
+    const result = await runDriver([
+      ...item.args,
+      '--url',
+      'http://127.0.0.1:1',
+    ]);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, item.expected);
+    assert.doesNotMatch(result.stderr, /Bridge unavailable/u);
+  }
+});
+
 void test('project hooks capture offline, replay once, inject context, and guard stop', async (t) => {
   const port = await availablePort();
   const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-chat-hook-'));
@@ -1427,7 +1485,18 @@ void test('shared social space stays approachable while in-use paths require yie
     ),
   );
 
-  sageScene = await observe(origin, tokens.sage);
+  const sageArrivalDeadline =
+    Date.parse(sageToHubBody.event.payload.arrivesAt) + 1_000;
+  do {
+    sageScene = await observe(origin, tokens.sage);
+    if (sageScene.you.locationId !== 'context-hub') {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+    }
+  } while (
+    sageScene.you.locationId !== 'context-hub' &&
+    Date.now() < sageArrivalDeadline
+  );
+  assert.equal(sageScene.you.locationId, 'context-hub');
   const sharedExit = sageScene.exits.find((exit) => exit.to === 'commons');
   assert.equal(sharedExit.status, 'shared');
   assert.equal(sharedExit.available, true);
@@ -1505,6 +1574,7 @@ void test('shared social space stays approachable while in-use paths require yie
     },
   );
   assert.equal(atlasClearsPortal.status, 201);
+  const atlasClearsPortalBody = await json(atlasClearsPortal);
 
   const sageWhileThresholdMoves = await observe(origin, tokens.sage);
   const thresholdExit = sageWhileThresholdMoves.exits.find(
@@ -1534,6 +1604,80 @@ void test('shared social space stays approachable while in-use paths require yie
   assert.match(
     (await json(thresholdConflict)).error,
     /path is in use by Atlas/u,
+  );
+
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(atlasClearsPortalBody.event.payload.arrivesAt) -
+          Date.now() +
+          5,
+      ),
+    ),
+  );
+  const atlasInHall = await observe(origin, tokens.atlas);
+  const atlasStagesInbound = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'atlas-stages-inbound-at-context',
+        observationId: atlasInHall.observationId,
+        action: 'move',
+        targetId: 'door-context',
+        reason: 'Stage beside the doorway before entering Commons.',
+      }),
+    },
+  );
+  assert.equal(atlasStagesInbound.status, 201);
+  const atlasStagesInboundBody = await json(atlasStagesInbound);
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(atlasStagesInboundBody.event.payload.arrivesAt) -
+          Date.now() +
+          5,
+      ),
+    ),
+  );
+
+  const sageAtContextSwitch = await walkTo(
+    origin,
+    tokens.sage,
+    'room-light-context',
+  );
+  const contextLightOn = await interactAt(
+    origin,
+    tokens.sage,
+    sageAtContextSwitch,
+    'room-light-context',
+    'switch_on',
+  );
+  const prematureDarkening = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'sage-does-not-darken-room-before-handoff',
+        observationId: contextLightOn.observation.observationId,
+        action: 'interact',
+        targetId: 'room-light-context',
+        verb: 'switch_off',
+      }),
+    },
+  );
+  assert.equal(prematureDarkening.status, 409);
+  assert.match(
+    (await json(prematureDarkening)).error,
+    /Atlas remains in or is entering context; leave room-light-context on/u,
   );
 });
 
