@@ -716,9 +716,12 @@ export function ArenaFieldJournal({
     >
       <header className="journal-heading">
         <h2 id="hive-field-journal-title">Field journal</h2>
-        <button type="button" onClick={() => onCloseRef.current()}>
-          Close
-        </button>
+        <button
+          type="button"
+          aria-label="Close field journal"
+          title="Close field journal"
+          onClick={() => onCloseRef.current()}
+        />
       </header>
 
       <nav className="journal-tabs" aria-label="Field journal sections">
