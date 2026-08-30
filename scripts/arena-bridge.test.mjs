@@ -751,6 +751,7 @@ void test('bridge authenticates emitters, restricts CORS, and preserves monotoni
   const hostile = await fetch(`${origin}/health`, {
     headers: { Origin: hostileOrigin },
   });
+  assert.equal(hostile.status, 403);
   assert.equal(hostile.headers.get('access-control-allow-origin'), null);
   const trusted = await fetch(`${origin}/health`, {
     headers: { Origin: trustedOrigin },
@@ -758,6 +759,21 @@ void test('bridge authenticates emitters, restricts CORS, and preserves monotoni
   assert.equal(
     trusted.headers.get('access-control-allow-origin'),
     trustedOrigin,
+  );
+
+  const hostileIntent = await fetch(`${origin}/intent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain', Origin: hostileOrigin },
+    body: JSON.stringify({
+      intentId: 'intent-hostile-origin',
+      sentAt: new Date().toISOString(),
+      intent: { type: 'SendFollowUp', agentId: 'kernel', content: 'forge' },
+    }),
+  });
+  assert.equal(hostileIntent.status, 403);
+  assert.deepEqual(
+    (await json(await fetch(`${origin}/intents?after=0`))).intents,
+    [],
   );
 
   const firstRun = await postEvent(origin, {

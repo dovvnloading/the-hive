@@ -619,6 +619,11 @@ function corsHeaders(request) {
   };
 }
 
+function hasDisallowedBrowserOrigin(request) {
+  const origin = request.headers.origin;
+  return typeof origin === 'string' && !options.allowedOrigins.has(origin);
+}
+
 function writeJson(request, response, status, body, extraHeaders = {}) {
   const serialized = JSON.stringify(body);
   response.writeHead(status, {
@@ -4131,6 +4136,11 @@ persistState();
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${HOST}:${options.port}`);
+
+  if (hasDisallowedBrowserOrigin(request)) {
+    writeJson(request, response, 403, { error: 'Browser origin is not allowed' });
+    return;
+  }
 
   if (request.method === 'OPTIONS') {
     writeJson(request, response, 204, {});
