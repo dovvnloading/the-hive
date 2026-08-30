@@ -28,6 +28,7 @@ import type {
 } from '@/lib/arena/agentic-types';
 import {
   isSeatedMotion,
+  NORTH_CHAIR_BACKREST_HEIGHT,
   seatedFrameOffset,
   seatedFrameHeight,
   seatedFrameWidth,
@@ -154,6 +155,7 @@ type SceneProp = {
   entityId?: string;
   seatForResourceId?: string;
   seatIndex?: number;
+  seatBackrestHeight?: number;
 };
 
 const CONTEXT_KIOSK_PROP = {
@@ -221,6 +223,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 130,
     baseline: 152,
     seatForResourceId: 'research-computer-b',
+    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -283,6 +286,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 130,
     baseline: 152,
     seatForResourceId: 'shell-console-a',
+    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
   },
   {
     asset: 'chairNorth',
@@ -290,6 +294,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 130,
     baseline: 152,
     seatForResourceId: 'connector-console-b',
+    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -321,6 +326,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 349,
     baseline: 371,
     seatForResourceId: 'publish-console',
+    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -361,6 +367,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 367,
     baseline: 389,
     seatForResourceId: 'build-bench-a',
+    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
   },
   {
     asset: 'chairNorth',
@@ -368,6 +375,7 @@ const SCENE_PROPS: SceneProp[] = [
     y: 367,
     baseline: 389,
     seatForResourceId: 'verify-rig-b',
+    seatBackrestHeight: NORTH_CHAIR_BACKREST_HEIGHT,
   },
   {
     asset: 'plantSmall',
@@ -1007,6 +1015,38 @@ function drawSceneProp(
   drawSurfaceDetail(context, prop, width, y);
 }
 
+function drawOccupiedSeatBackrest(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  prop: SceneProp,
+) {
+  if (prop.seatBackrestHeight === undefined) return;
+  const image = bank[facilityKey(prop.asset)];
+  if (!imageReady(image)) return;
+  const height = Math.max(
+    0,
+    Math.min(prop.seatBackrestHeight, image.naturalHeight),
+  );
+  if (height === 0) return;
+  const y = prop.y ?? 0;
+
+  // The complete chair is rendered behind its occupant. Repainting only the
+  // authored upper backrest puts that rail between the viewer and the seated
+  // torso without pulling the chair legs or the adjacent desk into the
+  // foreground.
+  context.drawImage(
+    image,
+    0,
+    0,
+    image.naturalWidth,
+    height,
+    Math.round(prop.x),
+    Math.round(y),
+    image.naturalWidth,
+    height,
+  );
+}
+
 function statusColor(agent: RuntimeAgent) {
   if (agent.status === 'failed') return '#c86c65';
   if (agent.status === 'blocked') return '#d2a05d';
@@ -1310,9 +1350,8 @@ function drawDepthSortedScene(
           ?.find((occupant) => occupant.seatIndex === (prop.seatIndex ?? 0))
       : undefined;
     return {
-      // A chair back belongs behind its resident. The ordinary prop baseline
-      // remains authoritative while empty; occupation only tightens ordering
-      // for the one explicitly associated seat.
+      // The chair body begins behind its resident. A separate occupied-seat
+      // entry restores only the upper backrest in front of the torso.
       baseline: occupiedSeat
         ? Math.min(prop.baseline, occupiedSeat.baseline - 0.5)
         : prop.baseline,
@@ -1338,6 +1377,21 @@ function drawDepthSortedScene(
           state.followedAgentId === agent.id,
           now,
         ),
+    });
+  });
+
+  SCENE_PROPS.forEach((prop, index) => {
+    if (!prop.seatForResourceId || prop.seatBackrestHeight === undefined) {
+      return;
+    }
+    const occupiedSeat = occupiedSeats
+      .get(prop.seatForResourceId)
+      ?.find((occupant) => occupant.seatIndex === (prop.seatIndex ?? 0));
+    if (!occupiedSeat) return;
+    entries.push({
+      baseline: occupiedSeat.baseline + 0.5,
+      stableOrder: 2000 + index,
+      draw: () => drawOccupiedSeatBackrest(context, bank, prop),
     });
   });
 
