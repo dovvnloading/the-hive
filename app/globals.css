@@ -1018,7 +1018,7 @@ button {
 .journal-heading h2 {
   position: absolute;
   top: 9.25%;
-  left: 9.45%;
+  left: 11.8%;
   margin: 0;
   color: #49301f;
   font-family: Georgia, 'Times New Roman', serif;
@@ -1076,7 +1076,7 @@ button {
   width: 100%;
   min-width: 0;
   min-height: 0;
-  padding: 0 8%;
+  padding: 0 0 0 20%;
   overflow: hidden;
   color: #293329;
   font-family: Georgia, 'Times New Roman', serif;
