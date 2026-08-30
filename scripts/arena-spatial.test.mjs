@@ -360,6 +360,11 @@ void test('every authored chair selects the matching directional seated sheet', 
   assert.equal(seatedFrameOffset('sit2', 'west'), 6);
   assert.equal(NORTH_CHAIR_FOREGROUND_HEIGHT, 32);
 
+  const commandTable = FACILITY_RESOURCES.find(
+    (resource) => resource.id === 'command-table',
+  );
+  assert.deepEqual(commandTable?.capabilities, ['review']);
+
   const publish = FACILITY_RESOURCES.find(
     (resource) => resource.id === 'publish-console',
   );
