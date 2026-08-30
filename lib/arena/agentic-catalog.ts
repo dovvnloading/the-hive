@@ -262,6 +262,13 @@ const ROOM_ROUTES: Record<
 };
 
 const ENTITY_HUB_APPROACH_PATHS: Record<string, readonly Vec2[]> = {
+  // The Research switch is reachable from the clear west side of the large
+  // workstation. Never route through the monitor bank to reach the wall.
+  'room-light-research': [
+    { x: FACILITY_LIGHT_LAYOUT.research.standPosition.x, y: 37.5 },
+    FACILITY_LIGHT_LAYOUT.research.standPosition,
+  ],
+  'archive-lamp': [{ x: 22.917, y: 37.5 }],
   // Reach the wall board on its unobstructed east side, then fan out across
   // the board face. The west chair beside the planning table is physical.
   'comms-board': [

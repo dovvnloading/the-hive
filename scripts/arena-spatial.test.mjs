@@ -270,6 +270,61 @@ void test('seated resources stage walkers outside chair collision bodies', () =>
   }
 });
 
+void test('Research workstation routes stay west of the full desk body', () => {
+  const workstation = FACILITY_COLLISION_GEOMETRY.solids.find(
+    (solid) => solid.id === 'research-desk-b-body',
+  );
+  const hub = stationById('research-hub');
+  const light = stationById('room-light-research');
+  const computer = stationById('research-computer-b');
+
+  assert.deepEqual(workstation, {
+    id: 'research-desk-b-body',
+    x: 190,
+    y: 108,
+    w: 54,
+    h: 40,
+  });
+  assert.ok(light.slots[0].x < (190 / 768) * 100);
+  assert.ok(computer.slots[0].x < (190 / 768) * 100);
+
+  for (const { target, targetId } of [
+    { target: light.slots[0], targetId: 'room-light-research' },
+    { target: computer.slots[0], targetId: 'research-computer-b' },
+  ]) {
+    let previous = hub.slots[0];
+    for (const point of buildArenaPath(
+      previous,
+      target,
+      'research-hub',
+      targetId,
+    )) {
+      const samples = Math.max(
+        1,
+        Math.ceil(
+          Math.hypot(
+            ((point.x - previous.x) / 100) * 768,
+            ((point.y - previous.y) / 100) * 448,
+          ),
+        ),
+      );
+      for (let sample = 0; sample <= samples; sample += 1) {
+        const progress = sample / samples;
+        const candidate = {
+          x: previous.x + (point.x - previous.x) * progress,
+          y: previous.y + (point.y - previous.y) * progress,
+        };
+        assert.equal(
+          worldCollisionIds(candidate).includes('research-desk-b-body'),
+          false,
+          `${targetId} route enters the Research workstation`,
+        );
+      }
+      previous = point;
+    }
+  }
+});
+
 void test('every authored chair selects the matching directional seated sheet', () => {
   const directionsByResource = Object.fromEntries(
     FACILITY_RESOURCES.filter(
@@ -301,6 +356,11 @@ void test('every authored chair selects the matching directional seated sheet', 
   assert.equal(seatedFrameOffset('sit', 'east'), 0);
   assert.equal(seatedFrameOffset('sit2', 'west'), 6);
   assert.equal(NORTH_CHAIR_FOREGROUND_HEIGHT, 32);
+
+  const publish = FACILITY_RESOURCES.find(
+    (resource) => resource.id === 'publish-console',
+  );
+  assert.deepEqual(publish?.seatedPositions, [{ x: 32.161, y: 81.027 }]);
 });
 
 void test('only authored chairs seat residents and every light switch has a reachable standing point', () => {
