@@ -75,7 +75,7 @@ const ROOMS = FACILITY_ROOMS.map((room) => ({
 })) satisfies Room[];
 
 const FURNITURE_ASSET_ROOT = '/assets/facility-v4/furniture';
-const FURNITURE_ASSET_REVISION = '20260830-4';
+const FURNITURE_ASSET_REVISION = '20260830-5';
 const furnitureAsset = (filename: string) =>
   `${FURNITURE_ASSET_ROOT}/${filename}?rev=${FURNITURE_ASSET_REVISION}`;
 
@@ -157,7 +157,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
   { asset: 'researchDesk', x: 122, y: 106, baseline: 140, resourceId: 'research-computer-a' },
   { asset: 'chairNorth', x: 144, y: 137, baseline: 159 },
-  { asset: 'utilityWorkstation', x: 184, y: 124, baseline: 158, resourceId: 'research-computer-b' },
+  { asset: 'utilityWorkstation', x: 190, y: 124, baseline: 158, resourceId: 'research-computer-b' },
   { asset: 'chairNorth', x: 214, y: 152, baseline: 174 },
   { asset: 'plantSmall', x: 42, y: 158, baseline: 180, entityId: 'plant-research' },
 
@@ -169,13 +169,13 @@ const SCENE_PROPS: SceneProp[] = [
 
   // Utility / Tools — four physically distinct workstations.
   { asset: 'utilityWorkstation', x: 456, y: 124, baseline: 158, resourceId: 'shell-console-a' },
-  { asset: 'utilityWorkstation', x: 517, y: 124, baseline: 158, resourceId: 'shell-console-b' },
-  { asset: 'utilityWorkstation', x: 613, y: 124, baseline: 158, resourceId: 'connector-console-a' },
-  { asset: 'utilityWorkstation', x: 664, y: 124, baseline: 158, resourceId: 'connector-console-b' },
-  { asset: 'chairNorth', x: 473, y: 152, baseline: 174 },
-  { asset: 'chairNorth', x: 537, y: 152, baseline: 174 },
-  { asset: 'chairNorth', x: 633, y: 152, baseline: 174 },
-  { asset: 'chairNorth', x: 694, y: 152, baseline: 174 },
+  { asset: 'utilityWorkstation', x: 512, y: 124, baseline: 158, resourceId: 'shell-console-b' },
+  { asset: 'utilityWorkstation', x: 610, y: 124, baseline: 158, resourceId: 'connector-console-a' },
+  { asset: 'utilityWorkstation', x: 666, y: 124, baseline: 158, resourceId: 'connector-console-b' },
+  { asset: 'chairNorth', x: 470, y: 152, baseline: 174 },
+  { asset: 'chairNorth', x: 534, y: 152, baseline: 174 },
+  { asset: 'chairNorth', x: 630, y: 152, baseline: 174 },
+  { asset: 'chairNorth', x: 686, y: 152, baseline: 174 },
   { asset: 'plantSmall', x: 456, y: 78, baseline: 100, entityId: 'plant-tools' },
 
   // Synthesis / Decisions — a small library salon and evidence table.
@@ -194,12 +194,12 @@ const SCENE_PROPS: SceneProp[] = [
   // Build / Verify — workshop benches on the left, review desk on the right.
   { asset: 'buildWorkbench', x: 456, y: 336, baseline: 370, resourceId: 'build-bench-a' },
   { asset: 'buildWorkbench', x: 515, y: 336, baseline: 370, resourceId: 'build-bench-b' },
-  { asset: 'verificationDesk', x: 620, y: 336, baseline: 370, resourceId: 'verify-rig-a' },
-  { asset: 'verificationDesk', x: 664, y: 336, baseline: 370, resourceId: 'verify-rig-b' },
+  { asset: 'verificationDesk', x: 594, y: 336, baseline: 370, resourceId: 'verify-rig-a' },
+  { asset: 'verificationDesk', x: 656, y: 336, baseline: 370, resourceId: 'verify-rig-b' },
   { asset: 'chairNorth', x: 473, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 537, y: 367, baseline: 389 },
-  { asset: 'chairNorth', x: 633, y: 367, baseline: 389 },
-  { asset: 'chairNorth', x: 694, y: 367, baseline: 389 },
+  { asset: 'chairNorth', x: 614, y: 367, baseline: 389 },
+  { asset: 'chairNorth', x: 678, y: 367, baseline: 389 },
   { asset: 'plantSmall', x: 704, y: 306, baseline: 328, entityId: 'plant-build' },
 ];
 

@@ -18,7 +18,7 @@ const sourcePath = path.join(
 
 const sprites = [
   { name: 'research-desk', cell: [0, 0], size: [62, 40] },
-  { name: 'utility-workstation', cell: [1, 0], size: [62, 40] },
+  { name: 'utility-workstation', cell: [1, 0], size: [54, 40] },
   { name: 'build-workbench', cell: [2, 0], size: [70, 40] },
   { name: 'verification-desk', cell: [3, 0], size: [62, 40] },
   { name: 'writing-desk', cell: [0, 1], size: [50, 38] },
