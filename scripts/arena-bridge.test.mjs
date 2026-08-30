@@ -1595,3 +1595,175 @@ void test('research computers, artifacts, and authenticated context remain agent
     201,
   );
 });
+
+void test('resident journals are situated, append-only, and private to each authenticated identity', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-private-journal-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+        ARENA_CHAT_TOKEN: chatToken,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  t.after(async () => {
+    child.kill('SIGTERM');
+    await new Promise((resolveExit) => child.once('exit', resolveExit));
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await waitForHealth(origin, child);
+
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'run.started',
+        reset: true,
+        payload: { objective: 'Keep private situated notes' },
+      })
+    ).status,
+    201,
+  );
+
+  async function spawnAssigned(agentId, name) {
+    const spawned = await postEvent(origin, {
+      kind: 'agent.spawned',
+      agentId,
+      payload: { name, role: 'Resident' },
+    });
+    assert.equal(spawned.status, 201);
+    const token = (await json(spawned)).agentToken;
+    assert.equal(
+      (
+        await postEvent(origin, {
+          kind: 'task.assigned',
+          agentId,
+          taskId: `task-${agentId}`,
+          payload: { objective: 'Choose and pursue a private line of thought' },
+        })
+      ).status,
+      201,
+    );
+    return token;
+  }
+
+  const sageToken = await spawnAssigned('sage', 'Sage');
+  const atlasToken = await spawnAssigned('atlas', 'Atlas');
+
+  assert.equal(
+    (await boardRequest(origin, '/journal?after=0', null)).status,
+    401,
+  );
+  assert.equal(
+    (await boardRequest(origin, '/journal?after=0', sageToken)).status,
+    409,
+  );
+
+  const sageAtDesk = await walkTo(origin, sageToken, 'context-kiosk');
+  const sageUsingDesk = await interactAt(
+    origin,
+    sageToken,
+    sageAtDesk,
+    'context-kiosk',
+    'use',
+  );
+  assert.equal(sageUsingDesk.observation.journal.accessible, true);
+  assert.equal(sageUsingDesk.observation.journal.noteCount, 0);
+  assert.match(
+    sageUsingDesk.observation.text,
+    /JOURNAL private-to-you \| notes:0 \| open at this writing desk/u,
+  );
+
+  const privateText =
+    'SENTINEL_SAGE_PRIVATE_7f4c I want to revisit the west archive quietly.';
+  const beforeWriteObservationId = sageUsingDesk.observation.observationId;
+  const writeResponse = await boardRequest(origin, '/journal/note', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      clientNoteId: 'sage-note-01',
+      observationId: beforeWriteObservationId,
+      title: 'Unresolved thought',
+      text: privateText,
+    }),
+  });
+  assert.equal(writeResponse.status, 201);
+  const written = await json(writeResponse);
+  assert.equal(written.created, true);
+  assert.equal(written.note.text, privateText);
+  assert.match(written.privacyNotice, /Other residents cannot read/u);
+  assert.equal(written.observation.journal.noteCount, 1);
+  assert.doesNotMatch(written.observation.text, /SENTINEL_SAGE_PRIVATE/u);
+
+  const staleWrite = await boardRequest(origin, '/journal/note', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      clientNoteId: 'sage-note-stale',
+      observationId: beforeWriteObservationId,
+      text: 'This must be rejected because the private scene changed.',
+    }),
+  });
+  assert.equal(staleWrite.status, 409);
+
+  const exactRetry = await boardRequest(origin, '/journal/note', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      clientNoteId: 'sage-note-01',
+      observationId: written.observation.observationId,
+      title: 'Unresolved thought',
+      text: privateText,
+    }),
+  });
+  assert.equal(exactRetry.status, 200);
+  assert.equal((await json(exactRetry)).created, false);
+
+  const sageJournal = await json(
+    await boardRequest(origin, '/journal?after=0', sageToken),
+  );
+  assert.equal(sageJournal.notes.length, 1);
+  assert.equal(sageJournal.notes[0].text, privateText);
+
+  const atlasAtDesk = await walkTo(origin, atlasToken, 'context-kiosk');
+  const atlasUsingDesk = await interactAt(
+    origin,
+    atlasToken,
+    atlasAtDesk,
+    'context-kiosk',
+    'use',
+  );
+  assert.equal(atlasUsingDesk.observation.journal.accessible, true);
+  assert.equal(atlasUsingDesk.observation.journal.noteCount, 0);
+  assert.doesNotMatch(
+    atlasUsingDesk.observation.text,
+    /SENTINEL_SAGE_PRIVATE/u,
+  );
+
+  const atlasJournal = await json(
+    await boardRequest(origin, '/journal?after=0', atlasToken),
+  );
+  assert.deepEqual(atlasJournal.notes, []);
+
+  const atlasContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', atlasToken),
+  );
+  const publicEvents = await json(await fetch(`${origin}/events?after=0`));
+  const publicHealth = await json(await fetch(`${origin}/health`));
+  assert.doesNotMatch(JSON.stringify(atlasContext), /SENTINEL_SAGE_PRIVATE/u);
+  assert.doesNotMatch(JSON.stringify(publicEvents), /SENTINEL_SAGE_PRIVATE/u);
+  assert.doesNotMatch(JSON.stringify(publicHealth), /SENTINEL_SAGE_PRIVATE/u);
+
+  const privateFile = await readFile(
+    resolve(dataDir, 'private-journals.jsonl'),
+    'utf8',
+  );
+  assert.match(privateFile, /SENTINEL_SAGE_PRIVATE/u);
+  assert.equal(privateFile.trim().split('\n').length, 1);
+});

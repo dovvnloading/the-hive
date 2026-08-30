@@ -709,11 +709,25 @@ function drawSurfaceDetail(
   }
 
   if (resourceId === 'context-kiosk') {
-    context.fillStyle = '#eee1c2';
-    context.fillRect(centerX - 10, y + 6, 9, 9);
-    context.fillRect(centerX + 1, y + 6, 9, 9);
-    context.fillStyle = '#86735a';
-    context.fillRect(centerX, y + 6, 1, 9);
+    // A visibly bound, open journal rather than generic loose paper. The
+    // bridge presents a different private volume to each resident who uses
+    // this physical desk.
+    context.fillStyle = '#5b3030';
+    context.fillRect(centerX - 11, y + 5, 22, 12);
+    context.fillStyle = '#d5bd87';
+    context.fillRect(centerX - 9, y + 6, 8, 9);
+    context.fillRect(centerX + 1, y + 6, 8, 9);
+    context.fillStyle = '#f1e1b8';
+    context.fillRect(centerX - 8, y + 6, 7, 8);
+    context.fillRect(centerX + 1, y + 6, 7, 8);
+    context.fillStyle = '#80694d';
+    context.fillRect(centerX, y + 5, 1, 11);
+    context.fillRect(centerX - 6, y + 9, 4, 1);
+    context.fillRect(centerX + 2, y + 9, 4, 1);
+    context.fillRect(centerX - 6, y + 12, 3, 1);
+    context.fillRect(centerX + 2, y + 12, 5, 1);
+    context.fillStyle = '#c69b4a';
+    context.fillRect(centerX + 10, y + 8, 1, 5);
   }
 }
 

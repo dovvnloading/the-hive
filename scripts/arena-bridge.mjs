@@ -127,6 +127,11 @@ const ARTIFACT_KINDS = new Set([
 const MAX_BOARD_TEXT_LENGTH = 2_000;
 const MAX_BOARD_TOPIC_LENGTH = 80;
 const MAX_BOARD_RECIPIENTS = 8;
+const MAX_PRIVATE_NOTE_TITLE_LENGTH = 120;
+const MAX_PRIVATE_NOTE_TEXT_LENGTH = 4_000;
+const PRIVATE_JOURNAL_RESOURCE_ID = 'context-kiosk';
+const PRIVATE_JOURNAL_NOTICE =
+  'This volume is private to you. Other residents cannot read its pages.';
 const MAX_PROXIMITY_TEXT_LENGTH = 1_600;
 const MAX_COLLABORATION_OBJECTIVE_LENGTH = 800;
 const SOCIAL_RANGE_PX = Math.max(
@@ -691,6 +696,7 @@ const chatIngressPath = resolve(options.dataDir, 'chat-ingress.jsonl');
 const emitterTokenPath = resolve(options.dataDir, 'emitter-token');
 const chatTokenPath = resolve(options.dataDir, 'chat-token');
 const agentCredentialsPath = resolve(options.dataDir, 'agent-credentials.json');
+const privateJournalPath = resolve(options.dataDir, 'private-journals.jsonl');
 
 function loadLocalToken(path, configuredValue) {
   const configured = configuredValue?.trim();
@@ -798,6 +804,7 @@ function agentAuthority(request) {
 
 const events = readJsonLines(eventsPath);
 const intents = readJsonLines(intentsPath);
+const privateJournalEntries = readJsonLines(privateJournalPath);
 const state = readState(statePath, events, intents);
 
 function persistState() {
@@ -833,6 +840,16 @@ function currentBoardMessages() {
 function currentBoardAcknowledgements() {
   return currentRunEvents().filter(
     (event) => event.kind === 'board.acknowledged',
+  );
+}
+
+function privateJournalForAgent(agentId) {
+  return privateJournalEntries.filter(
+    (entry) =>
+      isRecord(entry) &&
+      entry.schemaVersion === 1 &&
+      entry.runId === state.runId &&
+      entry.agentId === agentId,
   );
 }
 
@@ -1748,6 +1765,111 @@ function assertLocalBoardAccess(agentId) {
   }
 }
 
+function assertLocalPrivateJournalAccess(agentId) {
+  const self = projectAgentStates().get(agentId);
+  if (!self) throw httpError(403, 'Identity is not present in this run');
+  if (activeNavigation(self)) {
+    throw httpError(409, 'The journal cannot be used while moving');
+  }
+  if (
+    effectiveLocation(self) !== PRIVATE_JOURNAL_RESOURCE_ID ||
+    self.engagedResourceId !== PRIVATE_JOURNAL_RESOURCE_ID
+  ) {
+    throw httpError(
+      409,
+      'The private journal is outside reach; move to context-kiosk and use the writing desk first',
+    );
+  }
+}
+
+function privateJournalRequestMatches(entry, normalized) {
+  return (
+    entry.title === normalized.title &&
+    entry.text === normalized.text &&
+    entry.clientNoteId === normalized.clientNoteId
+  );
+}
+
+function writePrivateJournalNote(agentId, body) {
+  assertActiveAgent(agentId);
+  assertLocalPrivateJournalAccess(agentId);
+  if (!isRecord(body)) throw httpError(400, 'Request body must be an object');
+  if (!hasText(body, 'observationId')) {
+    throw httpError(400, 'observationId is required');
+  }
+  assertFreshObservation(agentId, body.observationId.trim());
+
+  const normalized = {
+    clientNoteId: assertChatIdentifier(body.clientNoteId, 'clientNoteId'),
+    title: body.title
+      ? assertSafeBoardText(body.title, 'title', MAX_PRIVATE_NOTE_TITLE_LENGTH)
+      : undefined,
+    text: assertSafeBoardText(body.text, 'text', MAX_PRIVATE_NOTE_TEXT_LENGTH),
+  };
+  const ownEntries = privateJournalForAgent(agentId);
+  const prior = ownEntries.find(
+    (entry) => entry.clientNoteId === normalized.clientNoteId,
+  );
+  if (prior) {
+    if (!privateJournalRequestMatches(prior, normalized)) {
+      throw httpError(
+        409,
+        'clientNoteId was already used for a different private note',
+      );
+    }
+    return {
+      note: prior,
+      created: false,
+      privacyNotice: PRIVATE_JOURNAL_NOTICE,
+      observation: compileObservation(agentId, 0),
+    };
+  }
+
+  const sequence =
+    ownEntries.reduce(
+      (latest, entry) => Math.max(latest, Number(entry.sequence) || 0),
+      0,
+    ) + 1;
+  const entry = {
+    schemaVersion: 1,
+    noteId: `note_${randomUUID()}`,
+    clientNoteId: normalized.clientNoteId,
+    runId: state.runId,
+    agentId,
+    sequence,
+    createdAt: new Date().toISOString(),
+    ...(normalized.title ? { title: normalized.title } : {}),
+    text: normalized.text,
+  };
+  privateJournalEntries.push(entry);
+  appendFileSync(privateJournalPath, `${JSON.stringify(entry)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+  return {
+    note: entry,
+    created: true,
+    privacyNotice: PRIVATE_JOURNAL_NOTICE,
+    observation: compileObservation(agentId, 0),
+  };
+}
+
+function readPrivateJournal(agentId, url) {
+  assertActiveAgent(agentId);
+  assertLocalPrivateJournalAccess(agentId);
+  const after = parseAfter(url);
+  if (after === undefined) {
+    throw httpError(400, 'after must be a non-negative integer');
+  }
+  const ownEntries = privateJournalForAgent(agentId);
+  return {
+    schemaVersion: 1,
+    privacyNotice: PRIVATE_JOURNAL_NOTICE,
+    notes: ownEntries.filter((entry) => entry.sequence > after),
+    latestSequence: ownEntries.at(-1)?.sequence ?? 0,
+  };
+}
+
 function plantCondition(hydration) {
   if (hydration <= 0) return 'dead';
   if (hydration < 25) return 'wilted';
@@ -2169,6 +2291,11 @@ function compileObservation(agentId, after = 0) {
   const room = roomForLocation(locationId);
   const navigation = activeNavigation(self, now);
   const position = location?.position ?? { x: 50, y: 80 };
+  const privateJournalEntriesForSelf = privateJournalForAgent(agentId);
+  const privateJournalAccessible =
+    !navigation &&
+    locationId === PRIVATE_JOURNAL_RESOURCE_ID &&
+    self.engagedResourceId === PRIVATE_JOURNAL_RESOURCE_ID;
   const active = [...agents.values()].filter(
     (candidate) =>
       !new Set(['completed', 'failed', 'canceled']).has(candidate.status),
@@ -2410,6 +2537,10 @@ function compileObservation(agentId, after = 0) {
       .sort((left, right) => left.id.localeCompare(right.id)),
     exits,
     entities,
+    privateJournal: {
+      noteCount: privateJournalEntriesForSelf.length,
+      accessible: privateJournalAccessible,
+    },
     unreadBoardMessageIds: visibleUnread
       .map((message) => message.payload.messageId)
       .sort((left, right) => left.localeCompare(right)),
@@ -2458,6 +2589,7 @@ function compileObservation(agentId, after = 0) {
     }`,
     `CHANGED ${worldChanges.length > 0 ? worldChanges.join(' ; ') : 'nothing locally since cursor'}`,
     `BOARD ${locationId === 'comms-board' ? `unread:${visibleUnread.length} accessible here` : visibleUnread.length > 0 ? `chime:${visibleUnread.length} unread; contents are at comms-board` : 'quiet'}`,
+    `JOURNAL private-to-you | notes:${privateJournalEntriesForSelf.length} | ${privateJournalAccessible ? 'open at this writing desk' : 'bound volume at context-kiosk; use the desk to open it'}`,
     `MEM ${
       self.inspectedEntityIds.has('facility-plan')
         ? 'facility plan memorized'
@@ -2517,6 +2649,11 @@ function compileObservation(agentId, after = 0) {
     board: {
       unreadCount: visibleUnread.length,
       accessible: locationId === 'comms-board',
+    },
+    journal: {
+      privacy: 'owner-only',
+      noteCount: privateJournalEntriesForSelf.length,
+      accessible: privateJournalAccessible,
     },
   };
 }
@@ -3280,6 +3417,45 @@ const server = createServer(async (request, response) => {
         return;
       }
       writeJson(request, response, 200, compileObservation(agentId, after));
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/journal') {
+      const agentId = agentAuthority(request);
+      if (!agentId) {
+        writeJson(request, response, 401, {
+          error: 'Identity authentication required',
+        });
+        return;
+      }
+      writeJson(request, response, 200, readPrivateJournal(agentId, url));
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/journal/note') {
+      const agentId = agentAuthority(request);
+      if (!agentId) {
+        writeJson(request, response, 401, {
+          error: 'Identity authentication required',
+        });
+        return;
+      }
+      const body = await readJsonBody(request);
+      try {
+        const result = writePrivateJournalNote(agentId, body);
+        writeJson(request, response, result.created ? 201 : 200, result);
+      } catch (error) {
+        let observation;
+        try {
+          observation = compileObservation(agentId, 0);
+        } catch {
+          observation = undefined;
+        }
+        writeJson(request, response, error.status ?? 400, {
+          error: error.message,
+          ...(observation ? { observation } : {}),
+        });
+      }
       return;
     }
 

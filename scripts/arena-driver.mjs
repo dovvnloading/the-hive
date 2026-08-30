@@ -75,6 +75,9 @@ Tools and communication:
                  [--topic-id ID] [--artifact-ids ID,ID]
   board-read     --agent ID [--after N] [--unread true|false] [--thread ID]
   board-ack      --agent ID --message MESSAGE_ID --state read|acknowledged|resolved
+  journal-read   --agent ID [--after N]
+  journal-write  --agent ID --text TEXT --observation OBS_ID [--title TEXT]
+                 [--client-id ID]
   block          --agent ID --reason approval|question|error --request TEXT [--prompt-id ID]
   resume         --agent ID --prompt-id ID [--response TEXT]
 
@@ -190,6 +193,8 @@ const COMMAND_FLAGS = {
   ],
   'board-read': ['agent', 'after', 'unread', 'thread'],
   'board-ack': ['agent', 'message', 'state'],
+  'journal-read': ['agent', 'after'],
+  'journal-write': ['agent', 'text', 'title', 'observation', 'client-id'],
   block: ['agent', 'prompt-id', 'reason', 'request', 'task', 'correlation'],
   resume: ['agent', 'prompt-id', 'response', 'task', 'correlation'],
   complete: ['agent', 'summary', 'task', 'correlation'],
@@ -598,6 +603,29 @@ async function execute(command, args, flags, baseUrl) {
       body: JSON.stringify({
         messageId: flags.message,
         state: flags.state,
+      }),
+      headers: { 'X-Arena-Agent-Token': await agentToken(flags.agent) },
+    });
+  }
+  if (command === 'journal-read') {
+    required(flags, 'agent');
+    const after = flags.after ?? '0';
+    if (!/^\d+$/.test(after)) {
+      throw new Error('--after must be a non-negative integer');
+    }
+    return request(baseUrl, `/journal?after=${after}`, {
+      headers: { 'X-Arena-Agent-Token': await agentToken(flags.agent) },
+    });
+  }
+  if (command === 'journal-write') {
+    required(flags, 'agent', 'text', 'observation');
+    return request(baseUrl, '/journal/note', {
+      method: 'POST',
+      body: JSON.stringify({
+        clientNoteId: flags['client-id'] || identifier('note'),
+        observationId: flags.observation,
+        text: flags.text,
+        ...(flags.title ? { title: flags.title } : {}),
       }),
       headers: { 'X-Arena-Agent-Token': await agentToken(flags.agent) },
     });
