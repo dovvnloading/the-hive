@@ -679,24 +679,24 @@ const LIGHT_FIXTURES: Record<
   },
   synthesis: {
     fixtureX: 256,
-    fixtureY: 274,
+    fixtureY: 288,
     switchX: 202,
     switchY: 286,
-    variant: 'dual',
+    variant: 'single',
   },
   context: {
     fixtureX: 408,
-    fixtureY: 284,
+    fixtureY: 288,
     switchX: 368,
     switchY: 286,
     variant: 'single',
   },
   build: {
     fixtureX: 520,
-    fixtureY: 274,
+    fixtureY: 288,
     switchX: 614,
     switchY: 286,
-    variant: 'dual',
+    variant: 'single',
   },
 };
 
