@@ -161,6 +161,22 @@ type SceneProp = {
   seatForegroundCrop?: SeatForegroundCrop;
 };
 
+function northWorkstationChair(
+  resourceId: string,
+  x: number,
+  y: number,
+  baseline: number,
+): SceneProp {
+  return {
+    asset: 'chairNorth',
+    x,
+    y,
+    baseline,
+    seatForResourceId: resourceId,
+    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
+  };
+}
+
 const CONTEXT_KIOSK_PROP = {
   asset: 'writingDesk',
   x: 354,
@@ -220,14 +236,7 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 142,
     resourceId: 'research-computer-b',
   },
-  {
-    asset: 'chairNorth',
-    x: 214,
-    y: 130,
-    baseline: 152,
-    seatForResourceId: 'research-computer-b',
-    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
-  },
+  northWorkstationChair('research-computer-b', 214, 130, 152),
   {
     asset: 'plantSmall',
     x: 42,
@@ -288,22 +297,8 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 142,
     resourceId: 'connector-console-b',
   },
-  {
-    asset: 'chairNorth',
-    x: 470,
-    y: 130,
-    baseline: 152,
-    seatForResourceId: 'shell-console-a',
-    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
-  },
-  {
-    asset: 'chairNorth',
-    x: 686,
-    y: 130,
-    baseline: 152,
-    seatForResourceId: 'connector-console-b',
-    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
-  },
+  northWorkstationChair('shell-console-a', 470, 130, 152),
+  northWorkstationChair('connector-console-b', 686, 130, 152),
   {
     asset: 'plantSmall',
     x: 584,
@@ -376,22 +371,8 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 370,
     resourceId: 'verify-rig-b',
   },
-  {
-    asset: 'chairNorth',
-    x: 473,
-    y: 367,
-    baseline: 389,
-    seatForResourceId: 'build-bench-a',
-    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
-  },
-  {
-    asset: 'chairNorth',
-    x: 678,
-    y: 367,
-    baseline: 389,
-    seatForResourceId: 'verify-rig-b',
-    seatForegroundHeight: NORTH_CHAIR_FOREGROUND_HEIGHT,
-  },
+  northWorkstationChair('build-bench-a', 473, 367, 389),
+  northWorkstationChair('verify-rig-b', 678, 367, 389),
   {
     asset: 'plantSmall',
     x: 554,

@@ -414,6 +414,29 @@ void test('every authored chair selects the matching directional seated sheet', 
     (resource) => resource.id === 'synthesis-lounge',
   );
   assert.deepEqual(lounge?.seatedPositions, [{ x: 9.635, y: 83.036 }]);
+
+  const clonedNorthWorkstations = [
+    ['research-computer-b', 214],
+    ['shell-console-a', 470],
+    ['connector-console-b', 686],
+  ];
+  for (const [resourceId, chairX] of clonedNorthWorkstations) {
+    const resource = FACILITY_RESOURCES.find(
+      (candidate) => candidate.id === resourceId,
+    );
+    assert.ok(resource);
+    assert.deepEqual(resource.seatedDirections, ['north']);
+    assert.equal(
+      Math.round((resource.seatedPositions[0].x / 100) * 768),
+      chairX + 10,
+      `${resourceId} must retain the proven north-chair horizontal anchor`,
+    );
+    assert.equal(
+      Math.round((resource.seatedPositions[0].y / 100) * 448),
+      144,
+      `${resourceId} must retain the proven north-chair vertical anchor`,
+    );
+  }
 });
 
 void test('only authored chairs seat residents and every light switch has a reachable standing point', () => {
