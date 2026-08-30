@@ -682,7 +682,7 @@ const LIGHT_FIXTURES: Record<
     fixtureY: 288,
     switchX: 202,
     switchY: 286,
-    variant: 'single',
+    variant: 'dual',
   },
   context: {
     fixtureX: 408,
@@ -696,7 +696,7 @@ const LIGHT_FIXTURES: Record<
     fixtureY: 288,
     switchX: 614,
     switchY: 286,
-    variant: 'single',
+    variant: 'dual',
   },
 };
 
