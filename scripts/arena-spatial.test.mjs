@@ -294,6 +294,7 @@ void test('every authored chair selects the matching directional seated sheet', 
   assert.equal(seatedFrameWidth('sit_back'), 16);
   assert.equal(seatedFrameWidth('sit'), 32);
   assert.equal(seatedFrameHeight('sit_back'), 27);
+  assert.equal(seatedFrameHeight('sit_front'), 32);
   assert.equal(seatedSheetMotion('sit_back'), 'idle_anim');
   assert.equal(seatedFrameOffset('sit_back', 'north'), 6);
   assert.equal(seatedFrameOffset('sit_front', 'south'), 18);

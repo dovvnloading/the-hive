@@ -27,10 +27,11 @@ export function seatedFrameWidth(motion: SeatedMotion) {
 }
 
 export function seatedFrameHeight(motion: SeatedMotion) {
-  // Back/front source frames come from the canonical standing sheet. Cropping
-  // the five foot rows preserves the authored identity and creates the hidden
-  // lower body expected when the resident is actually in a chair.
-  return motion === 'sit_back' || motion === 'sit_front' ? 27 : 32;
+  // The north-facing pose sits behind a chair back, so its lower five source
+  // rows are deliberately hidden. A south-facing resident is visible in front
+  // of the seat and must retain the complete frame; sharing the north crop was
+  // visibly cutting off the feet and shifting the whole body downward.
+  return motion === 'sit_back' ? 27 : 32;
 }
 
 export function seatedSheetMotion(motion: SeatedMotion) {
