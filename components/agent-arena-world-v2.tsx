@@ -74,6 +74,9 @@ const ROOMS = FACILITY_ROOMS.map((room) => ({
 })) satisfies Room[];
 
 const FACILITY_ASSETS = {
+  architectureFloor: 'generated/oak-floor-v1.png',
+  architectureWall: 'generated/plaster-wall-v1.png',
+  architectureCorridor: 'generated/slate-corridor-v1.png',
   bookshelfA: 'cozy-cabin/sprites/bookcase-a.png',
   bookshelfB: 'cozy-cabin/sprites/bookcase-b.png',
   bookshelfC: 'cozy-cabin/sprites/bookcase-c.png',
@@ -237,8 +240,31 @@ function drawWoodFloor(
   }
 }
 
+function drawTiledTexture(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  tileWidth: number,
+  tileHeight: number,
+) {
+  context.save();
+  context.beginPath();
+  context.rect(x, y, width, height);
+  context.clip();
+  for (let tileY = y; tileY < y + height; tileY += tileHeight) {
+    for (let tileX = x; tileX < x + width; tileX += tileWidth) {
+      context.drawImage(image, tileX, tileY, tileWidth, tileHeight);
+    }
+  }
+  context.restore();
+}
+
 function drawRoom(
   context: CanvasRenderingContext2D,
+  bank: ImageBank,
   room: Room,
   index: number,
 ) {
@@ -248,35 +274,65 @@ function drawRoom(
   context.clip();
   const north = room.y < 200;
   const floorY = room.y + BACK_WALL_HEIGHT;
-  drawWoodFloor(
-    context,
-    room.x + 8,
-    floorY,
-    room.w - 16,
-    room.h - BACK_WALL_HEIGHT - (north ? 0 : 8),
-    index,
-  );
+  const floorHeight = room.h - BACK_WALL_HEIGHT - (north ? 0 : 8);
+  const floorTexture = bank[facilityKey('architectureFloor')];
+  if (imageReady(floorTexture)) {
+    drawTiledTexture(
+      context,
+      floorTexture,
+      room.x + 8,
+      floorY,
+      room.w - 16,
+      floorHeight,
+      128,
+      128,
+    );
+  } else {
+    drawWoodFloor(
+      context,
+      room.x + 8,
+      floorY,
+      room.w - 16,
+      floorHeight,
+      index,
+    );
+  }
 
   const colors = WALL_COLORS[room.id];
   // A real back-wall assembly: dark cap, plaster face, and a wood baseboard.
   // Floor-standing sprites overlap the baseboard by their own authored depth;
   // wall-mounted pieces stay entirely inside this forty-pixel plane.
+  const wallTexture = bank[facilityKey('architectureWall')];
+  if (imageReady(wallTexture)) {
+    drawTiledTexture(
+      context,
+      wallTexture,
+      room.x + 8,
+      room.y,
+      room.w - 16,
+      BACK_WALL_HEIGHT,
+      128,
+      BACK_WALL_HEIGHT,
+    );
+  } else {
+    context.fillStyle = colors.panel;
+    context.fillRect(room.x, room.y, room.w, 7);
+    context.fillStyle = colors.paper;
+    context.fillRect(
+      room.x + 8,
+      room.y + 7,
+      room.w - 16,
+      BACK_WALL_HEIGHT - 13,
+    );
+    context.fillStyle = colors.panel;
+    context.fillRect(
+      room.x + 8,
+      room.y + BACK_WALL_HEIGHT - 6,
+      room.w - 16,
+      6,
+    );
+  }
   context.fillStyle = colors.panel;
-  context.fillRect(room.x, room.y, room.w, 7);
-  context.fillStyle = colors.paper;
-  context.fillRect(
-    room.x + 8,
-    room.y + 7,
-    room.w - 16,
-    BACK_WALL_HEIGHT - 13,
-  );
-  context.fillStyle = colors.panel;
-  context.fillRect(
-    room.x + 8,
-    room.y + BACK_WALL_HEIGHT - 6,
-    room.w - 16,
-    6,
-  );
   context.fillRect(room.x, room.y, 8, room.h);
   context.fillRect(room.x + room.w - 8, room.y, 8, room.h);
   if (north) {
@@ -312,22 +368,36 @@ function drawRoom(
   context.restore();
 }
 
-function drawCorridor(context: CanvasRenderingContext2D) {
+function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
   const x = 32;
   const y = 192;
   const width = 704;
   const height = 64;
-  context.fillStyle = '#706157';
-  context.fillRect(x, y, width, height);
-  for (let row = 0; row < 4; row += 1) {
-    const tileY = y + row * 16;
-    const offset = row % 2 === 0 ? 0 : 24;
-    context.fillStyle = row % 2 === 0 ? '#75665b' : '#6b5c53';
-    context.fillRect(x, tileY, width, 15);
-    context.fillStyle = '#4d423b';
-    context.fillRect(x, tileY + 15, width, 1);
-    for (let tileX = x - offset; tileX < x + width; tileX += 48) {
-      if (tileX > x) context.fillRect(tileX, tileY, 1, 16);
+  const corridorTexture = bank[facilityKey('architectureCorridor')];
+  if (imageReady(corridorTexture)) {
+    drawTiledTexture(
+      context,
+      corridorTexture,
+      x,
+      y,
+      width,
+      height,
+      96,
+      96,
+    );
+  } else {
+    context.fillStyle = '#706157';
+    context.fillRect(x, y, width, height);
+    for (let row = 0; row < 4; row += 1) {
+      const tileY = y + row * 16;
+      const offset = row % 2 === 0 ? 0 : 24;
+      context.fillStyle = row % 2 === 0 ? '#75665b' : '#6b5c53';
+      context.fillRect(x, tileY, width, 15);
+      context.fillStyle = '#4d423b';
+      context.fillRect(x, tileY + 15, width, 1);
+      for (let tileX = x - offset; tileX < x + width; tileX += 48) {
+        if (tileX > x) context.fillRect(tileX, tileY, 1, 16);
+      }
     }
   }
   context.fillStyle = '#513325';
@@ -454,10 +524,13 @@ function drawWallDetails(context: CanvasRenderingContext2D) {
   context.stroke();
 }
 
-function drawArchitecture(context: CanvasRenderingContext2D) {
+function drawArchitecture(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+) {
   drawShell(context);
-  ROOMS.forEach((room, index) => drawRoom(context, room, index));
-  drawCorridor(context);
+  ROOMS.forEach((room, index) => drawRoom(context, bank, room, index));
+  drawCorridor(context, bank);
   drawPartitions(context);
   drawDoorways(context);
   drawWallDetails(context);
@@ -1248,7 +1321,7 @@ export function AgentArenaWorldV2({
     context.imageSmoothingEnabled = false;
     const bank = bankRef.current;
     const environmentNow = bubbleNow || Date.now();
-    drawArchitecture(context);
+    drawArchitecture(context, bank);
     drawRoomLightFixtures(context, state, environmentNow);
     drawDepthSortedScene(
       context,

@@ -29,3 +29,20 @@ not use the earlier sci-fi/side-wall kit.
 The Zedpxl interior pack linked during art direction was used only as a visual
 reference. Its published license excludes AI-related uses, so none of its files
 are included in this project.
+
+## Generated architecture surfaces
+
+- Created for this project on 2026-08-29 with OpenAI's built-in image generator.
+- No external image was supplied as an input or style reference.
+- Project files: `generated/oak-floor-v1.png`,
+  `generated/plaster-wall-v1.png`, and
+  `generated/slate-corridor-v1.png`.
+- The generated masters were reduced to 192 × 192 with nearest-neighbor
+  resampling so the renderer receives compact, deliberately pixelated tiles.
+- Prompt summaries:
+  - A seamless, flat top-down honey-oak plank floor with muted natural grain.
+  - A horizontally seamless front-elevation wall with a walnut cap, calm cream
+    plaster field, and substantial walnut baseboard.
+  - A seamless, flat top-down warm slate corridor in a staggered running bond.
+- All prompts excluded objects, text, logos, trademarks, watermarks,
+  perspective, and sci-fi or laboratory styling.
