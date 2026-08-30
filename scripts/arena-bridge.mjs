@@ -27,6 +27,7 @@ import {
   RESIDENT_BODY_CLEARANCE_PX,
   RESIDENT_CONVERSATION_RANGE_PX,
   RESEARCH_TRACKS,
+  doorwayTraversalDistancePx,
   inferToolCapability,
   neighborsForLocation,
   residentPurposeProfile,
@@ -3686,7 +3687,9 @@ function performWorldAction(agentId, body) {
             : `${target.label} is occupied by ${names}; observe or choose another local step`;
       throw httpError(409, message);
     }
-    const distance = from ? metricDistance(from.position, target.position) : 48;
+    const distance =
+      doorwayTraversalDistancePx(locationId, target.id) ??
+      (from ? metricDistance(from.position, target.position) : 48);
     const durationMs = Math.max(
       MIN_TRAVEL_MS,
       Math.min(4_000, (distance / TRAVEL_SPEED_PX_PER_SECOND) * 1_000),
@@ -4138,7 +4141,9 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${HOST}:${options.port}`);
 
   if (hasDisallowedBrowserOrigin(request)) {
-    writeJson(request, response, 403, { error: 'Browser origin is not allowed' });
+    writeJson(request, response, 403, {
+      error: 'Browser origin is not allowed',
+    });
     return;
   }
 

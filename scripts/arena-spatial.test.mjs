@@ -12,6 +12,7 @@ import {
   STATIONS,
   WORLD_EDGES,
   buildArenaPath,
+  doorwayTraversalDistancePx,
   isFacilityPortalTransfer,
   slotForAgent,
   stationById,
@@ -73,6 +74,39 @@ void test('portal residents stage beside every doorway instead of inside its ope
       horizontalClearancePx >= 31,
       `${door.id} staging bay clears the 36px doorway and 10px body capsule`,
     );
+  }
+});
+
+void test('every room doorway uses a continuous centerline traversal in both directions', () => {
+  const doorEdges = WORLD_EDGES.filter(([left, right]) => {
+    const leftStation = stationById(left);
+    const rightStation = stationById(right);
+    return (
+      (leftStation.kind === 'portal' && right.endsWith('-hub')) ||
+      (rightStation.kind === 'portal' && left.endsWith('-hub'))
+    );
+  });
+  assert.equal(doorEdges.length, 6);
+
+  for (const [left, right] of doorEdges) {
+    for (const [fromId, toId] of [
+      [left, right],
+      [right, left],
+    ]) {
+      assert.equal(isFacilityPortalTransfer(fromId, toId), false);
+      const from = stationById(fromId);
+      const to = stationById(toId);
+      const path = buildArenaPath(from.slots[0], to.slots[0], fromId, toId);
+      assert.ok(
+        path.length >= 5,
+        `${fromId}->${toId} needs staged jamb points`,
+      );
+      assert.ok(
+        (doorwayTraversalDistancePx(fromId, toId) ?? 0) >= 72,
+        `${fromId}->${toId} must budget the visible threshold distance`,
+      );
+      assert.deepEqual(path.at(-1), to.slots[0]);
+    }
   }
 });
 
@@ -653,8 +687,9 @@ void test('navigation owns location until arrival and reassignment restores the 
         { agentId: 'sage' },
       ),
     });
-    assert.equal(state.avatars[0].portalTransfer, true);
-    assert.equal(state.avatars[0].routeDelayMs, 260);
+    assert.equal(state.avatars[0].portalTransfer, false);
+    assert.equal(state.avatars[0].routeDelayMs, undefined);
+    assert.ok(state.avatars[0].path.length >= 5);
     assert.equal(capsuleIsWorldLegal(state.avatars[0].position), true);
   } finally {
     await vite.close();

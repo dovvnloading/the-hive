@@ -10,6 +10,8 @@ import {
   RESEARCH_TRACKS,
   WORLD_EDGES,
   WORLD_LOCATIONS,
+  doorwayTraversalDistancePx,
+  doorwayTraversalPoints,
   inferToolCapability,
   neighborsForLocation,
   resourceById,
@@ -45,6 +47,8 @@ export {
   RESEARCH_TRACKS,
   WORLD_EDGES,
   WORLD_LOCATIONS,
+  doorwayTraversalDistancePx,
+  doorwayTraversalPoints,
   inferToolCapability,
   neighborsForLocation,
   resourceById,
@@ -303,15 +307,7 @@ const ENTITY_HUB_APPROACH_PATHS: Record<string, readonly Vec2[]> = {
   ],
 };
 
-const PORTAL_TRANSFER_PAIRS = [
-  ['spawn-lift', 'context-hub'],
-  ['door-research', 'research-hub'],
-  ['door-command', 'command-hub'],
-  ['door-tools', 'tools-hub'],
-  ['door-synthesis', 'synthesis-hub'],
-  ['door-context', 'context-hub'],
-  ['door-build', 'build-hub'],
-] as const;
+const PORTAL_TRANSFER_PAIRS = [['spawn-lift', 'context-hub']] as const;
 
 const PORTAL_TRANSFER_KEYS = new Set(
   PORTAL_TRANSFER_PAIRS.map(([left, right]) => [left, right].sort().join('|')),
@@ -366,8 +362,13 @@ export function buildArenaPath(
   const toLocation = worldLocationById(toStationId);
   if (!fromLocation || !toLocation) return compactPath([{ ...to }]);
 
-  // Doors and the lift are semantic portals, not walkable strips painted over
-  // wall art. The reducer delays then transfers between two legal endpoints.
+  const doorwayPoints = doorwayTraversalPoints(fromStationId, toStationId);
+  if (doorwayPoints.length > 0) {
+    return compactPath([...doorwayPoints, { ...to }]);
+  }
+
+  // The arrival lift is the only remaining semantic transfer. Room doorways
+  // use explicit centerline paths above so bodies visibly cross each jamb.
   if (isFacilityPortalTransfer(fromStationId, toStationId)) {
     return compactPath([{ ...to }]);
   }

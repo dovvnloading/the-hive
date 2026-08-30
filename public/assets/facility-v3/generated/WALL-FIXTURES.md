@@ -50,6 +50,28 @@ wall space is constrained by shelving, a large panel, or a doorway.
 Each room swaps directly between its lit and unlit sprite when power changes;
 the unlit state is authored artwork rather than opacity-faded lit artwork.
 
+## Doorways
+
+- Front-wall source: `sources/doorway-front-source-v1.png`
+- Front-wall runtime asset: `doorway-front-v1.png` (44 x 64)
+- Front prompt: an isolated straight-on open walnut doorway with an
+  unobstructed transparent aperture, substantial header and jambs, a narrow
+  fully-open door edge, and restrained brass hardware.
+- The generated asset is intentionally limited to lower rooms, which expose a
+  full back-wall doorway. Upper rooms expose only their south-wall cutaway;
+  those openings use a shallow code-rendered U-frame embedded directly in the
+  eight-pixel wall seam, with no door leaf or perspective projection.
+
+## Build and Verify diagnostics chart
+
+- Source: `sources/build-verification-chart-source-v1.png`
+- Runtime asset: `build-verification-chart-v1.png` (68 x 34)
+- Prompt: a substantial walnut-and-brass wall frame holding parchment, a
+  technical grid, three colored performance traces, pinned verification
+  markers, and inspection tags; no text, monitor, or science-fiction styling.
+- This replaces the former code-drawn plain line chart on the Build/Verify
+  east wall.
+
 Run `node scripts/process-wall-fixtures.mjs` after replacing a source.
 The processor removes connected neutral backdrops from generated sources that
 need extraction, crops to visible alpha, resamples with Lanczos, sharpens

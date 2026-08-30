@@ -49,6 +49,18 @@ const fixtures = [
     size: [22, 26],
     removeNeutralBackground: true,
   },
+  {
+    source: 'sources/doorway-front-source-v1.png',
+    output: 'doorway-front-v1.png',
+    size: [44, 64],
+    removeNeutralBackground: false,
+  },
+  {
+    source: 'sources/build-verification-chart-source-v1.png',
+    output: 'build-verification-chart-v1.png',
+    size: [68, 34],
+    removeNeutralBackground: false,
+  },
 ];
 
 function neutralBackdropPixel(data, index) {

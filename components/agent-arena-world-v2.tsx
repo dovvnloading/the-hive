@@ -95,6 +95,9 @@ const FACILITY_ASSETS = {
   architectureFloor: 'generated/oak-floor-v1.png',
   architectureWall: 'generated/plaster-wall-v1.png',
   architectureCorridor: 'generated/slate-corridor-v1.png',
+  doorwayFront: 'generated/doorway-front-v1.png?rev=20260830-1',
+  buildVerificationChart:
+    'generated/build-verification-chart-v1.png?rev=20260830-1',
   commandRoutingBoard: 'generated/command-routing-board-v1.png',
   utilityToolsBoard: 'generated/utility-tools-board-v1.png',
   wallLightDual: 'generated/wall-light-dual-v1.png',
@@ -586,24 +589,65 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
   context.fillRect(42, 222, 684, 2);
 }
 
-function drawUpwardDoor(context: CanvasRenderingContext2D, centerX: number) {
+function drawUpwardDoor(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  centerX: number,
+) {
   const openingLeft = centerX - 18;
-  // The aperture is a shadowed cut through the back wall, not a strip of hall
-  // or room tiles painted vertically across the wall face.
+  // Keep a real shadowed opening behind the transparent generated frame. The
+  // aperture remains clear; only the substantial walnut jambs occupy pixels.
   context.fillStyle = '#241c18';
   context.fillRect(openingLeft, 256, 36, BACK_WALL_HEIGHT);
   context.fillStyle = '#3b2a20';
   context.fillRect(openingLeft + 3, 260, 30, BACK_WALL_HEIGHT - 4);
   context.fillStyle = 'rgba(0,0,0,.3)';
   context.fillRect(openingLeft + 3, 260, 30, 5);
-  context.fillStyle = '#6f4a31';
-  context.fillRect(openingLeft, 256, 3, BACK_WALL_HEIGHT);
-  context.fillRect(openingLeft + 33, 256, 3, BACK_WALL_HEIGHT);
+  drawFacilitySprite(context, bank, 'doorwayFront', centerX - 22, 256);
 }
 
-function drawDoorways(context: CanvasRenderingContext2D) {
+function drawDownwardDoor(context: CanvasRenderingContext2D, centerX: number) {
+  // Upper rooms expose only the south-wall cutaway: embed a shallow U-frame
+  // in that seam without a door leaf, loose sprite, or corridor projection.
+  context.fillStyle = '#241c18';
+  context.fillRect(centerX - 18, 184, 36, 8);
+  drawDownwardDoorFrame(context, centerX);
+}
+
+function drawDownwardDoorFrame(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+) {
+  context.fillStyle = '#3e281d';
+  context.fillRect(centerX - 21, 181, 4, 11);
+  context.fillRect(centerX + 17, 181, 4, 11);
+  context.fillRect(centerX - 21, 181, 42, 4);
+  context.fillStyle = '#835536';
+  context.fillRect(centerX - 18, 182, 36, 2);
+  context.fillRect(centerX - 20, 184, 2, 7);
+  context.fillRect(centerX + 18, 184, 2, 7);
+}
+
+function drawDoorwayForegrounds(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+) {
+  // Repaint only frame pixels after residents. Transparent apertures preserve
+  // the body while jambs and headers correctly occlude a crossing resident.
+  [144, 352, 592].forEach((centerX) => {
+    drawDownwardDoorFrame(context, centerX);
+  });
   [176, 344, 592].forEach((centerX) => {
-    drawUpwardDoor(context, centerX);
+    drawFacilitySprite(context, bank, 'doorwayFront', centerX - 22, 256);
+  });
+}
+
+function drawDoorways(context: CanvasRenderingContext2D, bank: ImageBank) {
+  [144, 352, 592].forEach((centerX) => {
+    drawDownwardDoor(context, centerX);
+  });
+  [176, 344, 592].forEach((centerX) => {
+    drawUpwardDoor(context, bank, centerX);
   });
 }
 
@@ -635,17 +679,7 @@ function drawWallDetails(context: CanvasRenderingContext2D, bank: ImageBank) {
   // Every wall mark describes an in-world resource; none are dashboard chrome.
   drawFacilitySprite(context, bank, 'commandRoutingBoard', 284, 38);
   drawFacilitySprite(context, bank, 'utilityToolsBoard', 528, 38);
-  context.fillStyle = '#493126';
-  context.fillRect(670, 263, 48, 27);
-  context.fillStyle = '#bcae91';
-  context.fillRect(676, 268, 36, 17);
-  context.strokeStyle = '#6e8069';
-  context.beginPath();
-  context.moveTo(680, 281);
-  context.lineTo(689, 273);
-  context.lineTo(698, 279);
-  context.lineTo(708, 270);
-  context.stroke();
+  drawFacilitySprite(context, bank, 'buildVerificationChart', 650, 262);
 }
 
 function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
@@ -653,7 +687,7 @@ function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
   ROOMS.forEach((room, index) => drawRoom(context, bank, room, index));
   drawCorridor(context, bank);
   drawPartitions(context);
-  drawDoorways(context);
+  drawDoorways(context, bank);
   drawWallDetails(context, bank);
 }
 
@@ -1633,6 +1667,7 @@ export function AgentArenaWorldV2({
     drawArchitecture(context, bank);
     drawRoomLightFixtures(context, bank, state, environmentNow);
     drawDepthSortedScene(context, bank, state, agentsById, performance.now());
+    drawDoorwayForegrounds(context, bank);
     drawEnvironmentalLighting(context, state, environmentNow);
 
     labelContext.setTransform(1, 0, 0, 1, 0, 0);
