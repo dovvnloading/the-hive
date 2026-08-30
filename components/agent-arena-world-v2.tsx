@@ -84,6 +84,8 @@ const FACILITY_ASSETS = {
   architectureFloor: 'generated/oak-floor-v1.png',
   architectureWall: 'generated/plaster-wall-v1.png',
   architectureCorridor: 'generated/slate-corridor-v1.png',
+  commandRoutingBoard: 'generated/command-routing-board-v1.png',
+  utilityToolsBoard: 'generated/utility-tools-board-v1.png',
   researchDesk: furnitureAsset('research-desk.png'),
   utilityWorkstation: furnitureAsset('utility-workstation.png'),
   buildWorkbench: furnitureAsset('build-workbench.png'),
@@ -590,30 +592,6 @@ function drawPartitions(context: CanvasRenderingContext2D) {
   [319, 447].forEach((x) => context.fillRect(x, 259, 2, 154));
 }
 
-function drawPlanBoard(context: CanvasRenderingContext2D) {
-  context.fillStyle = '#513b29';
-  context.fillRect(284, 41, 132, 27);
-  context.fillStyle = '#d6c7a5';
-  context.fillRect(291, 46, 86, 17);
-  context.strokeStyle = '#7d6f58';
-  context.lineWidth = 1;
-  context.strokeRect(296, 49, 27, 6);
-  context.strokeRect(323, 49, 45, 6);
-  context.strokeRect(296, 55, 45, 5);
-  context.strokeRect(341, 55, 27, 5);
-  context.fillStyle = '#b46c4f';
-  context.fillRect(318, 52, 3, 2);
-  context.fillStyle = '#728f76';
-  context.fillRect(348, 57, 3, 2);
-
-  context.fillStyle = '#32271f';
-  context.fillRect(382, 44, 27, 21);
-  context.fillStyle = '#d7caa8';
-  context.fillRect(387, 49, 17, 2);
-  context.fillRect(387, 54, 13, 2);
-  context.fillRect(387, 59, 15, 2);
-}
-
 function drawLift(context: CanvasRenderingContext2D) {
   // The lift is inset into Commons' north wall, rather than floating below
   // the building. Its approach remains open on the room side.
@@ -635,17 +613,10 @@ function drawLift(context: CanvasRenderingContext2D) {
   context.fillRect(x - 6, y + 58, 80, 7);
 }
 
-function drawWallDetails(context: CanvasRenderingContext2D) {
+function drawWallDetails(context: CanvasRenderingContext2D, bank: ImageBank) {
   // Every wall mark describes an in-world resource; none are dashboard chrome.
-  drawPlanBoard(context);
-  context.fillStyle = '#72533a';
-  context.fillRect(528, 41, 140, 27);
-  context.fillStyle = '#d8c69f';
-  context.fillRect(536, 46, 124, 17);
-  context.strokeStyle = '#795b3e';
-  for (let x = 543; x < 651; x += 24) {
-    context.strokeRect(x, 49, 10, 9);
-  }
+  drawFacilitySprite(context, bank, 'commandRoutingBoard', 284, 38);
+  drawFacilitySprite(context, bank, 'utilityToolsBoard', 528, 38);
   context.fillStyle = '#493126';
   context.fillRect(670, 263, 48, 27);
   context.fillStyle = '#bcae91';
@@ -665,7 +636,7 @@ function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
   drawCorridor(context, bank);
   drawPartitions(context);
   drawDoorways(context);
-  drawWallDetails(context);
+  drawWallDetails(context, bank);
   drawLift(context);
 }
 
