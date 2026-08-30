@@ -1,9 +1,11 @@
 import {
   FACILITY_COLLISION_GEOMETRY,
+  FACILITY_LIGHT_LAYOUT,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
   FACILITY_PROPS,
   FACILITY_WAYPOINTS,
+  LIGHT_SWITCH_REACH_PX,
   PHASE_RESOURCE,
   RESEARCH_TRACKS,
   WORLD_EDGES,
@@ -34,10 +36,12 @@ import {
 
 export {
   FACILITY_COLLISION_GEOMETRY,
+  FACILITY_LIGHT_LAYOUT,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
   FACILITY_PROPS,
   FACILITY_WAYPOINTS,
+  LIGHT_SWITCH_REACH_PX,
   RESEARCH_TRACKS,
   WORLD_EDGES,
   WORLD_LOCATIONS,
@@ -136,19 +140,14 @@ const STATION_OVERFLOW_SLOTS: Record<string, Vec2[]> = {
   // Old journals may contain arrivals accepted before a waypoint capacity was
   // tightened. Replay queues those residents along the clear centerline rather
   // than inventing a near-identical point that visually merges their sprites.
-  'context-hub': [
-    { x: 49.1, y: 75.893 },
-    { x: 44.792, y: 83.1 },
-  ],
+  'context-hub': [{ x: 44.661, y: 89.286 }],
   'context-kiosk': [
-    { x: 43.75, y: 89.286 },
-    { x: 47.917, y: 89.286 },
-    { x: 43.75, y: 95 },
+    { x: 47.135, y: 85.714 },
+    { x: 51.302, y: 85.714 },
   ],
   commons: [
-    { x: 48.958, y: 86.607 },
-    { x: 53.125, y: 86.607 },
-    { x: 53.125, y: 94 },
+    { x: 43.75, y: 89.286 },
+    { x: 47.917, y: 89.286 },
   ],
 };
 
@@ -249,7 +248,7 @@ const ROOM_ROUTES: Record<
   context: {
     hubId: 'context-hub',
     doorId: 'door-context',
-    centerX: 50,
+    centerX: 52.083,
     aisleY: 89.286,
   },
   build: {
@@ -270,6 +269,31 @@ const ENTITY_HUB_APPROACH_PATHS: Record<string, readonly Vec2[]> = {
     { x: 54.688, y: 25 },
   ],
   'plant-tools': [{ x: 77.083, y: 25 }],
+  // Commons furniture fills the strip directly below the doorway. Stay in
+  // the clear left lane until below the raised journal desk, then cross the
+  // room along the open south aisle.
+  commons: [
+    { x: 44.661, y: 89.286 },
+    { x: 52.083, y: 89.286 },
+  ],
+  'plant-context': [
+    { x: 44.661, y: 89.286 },
+    { x: 52.083, y: 89.286 },
+  ],
+  'context-kiosk': [
+    { x: 44.661, y: 89.286 },
+    { x: 52.083, y: 89.286 },
+  ],
+  // The Commons switch is above the journal desk. Reach it directly from the
+  // landing instead of dropping into the occupied furniture aisle.
+  'room-light-context': [{ x: 45.833, y: 71.875 }],
+  // The Build switch sits above the verification bank. Use the clear gap
+  // between the bench and rigs, then turn along the wall-side floor strip.
+  'room-light-build': [
+    { x: 77.083, y: 90.067 },
+    { x: 77.083, y: 71.875 },
+    { x: 78.125, y: 71.875 },
+  ],
 };
 
 const PORTAL_TRANSFER_PAIRS = [

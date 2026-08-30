@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import {
+  FACILITY_LIGHT_LAYOUT,
   FACILITY_PROPS,
   FACILITY_ROOMS,
   presentationFor,
@@ -292,9 +293,9 @@ const SCENE_PROPS: SceneProp[] = [
   // Commons — a clear route from the north doorway to the anchored lift.
   {
     asset: 'writingDesk',
-    x: 328,
-    y: 366,
-    baseline: 398,
+    x: 354,
+    y: 350,
+    baseline: 382,
     resourceId: 'context-kiosk',
   },
   {
@@ -646,7 +647,7 @@ const STATEFUL_PROPS = new Map(
   ]),
 );
 
-const LIGHT_FIXTURES: Record<
+const LIGHT_FIXTURES = FACILITY_LIGHT_LAYOUT as Record<
   RoomId,
   {
     fixtureX: number;
@@ -655,50 +656,7 @@ const LIGHT_FIXTURES: Record<
     switchY: number;
     variant: 'single' | 'dual';
   }
-> = {
-  research: {
-    fixtureX: 224,
-    fixtureY: 58,
-    switchX: 196,
-    switchY: 60,
-    variant: 'single',
-  },
-  command: {
-    fixtureX: 430,
-    fixtureY: 58,
-    switchX: 272,
-    switchY: 60,
-    variant: 'single',
-  },
-  tools: {
-    fixtureX: 700,
-    fixtureY: 58,
-    switchX: 520,
-    switchY: 60,
-    variant: 'single',
-  },
-  synthesis: {
-    fixtureX: 256,
-    fixtureY: 288,
-    switchX: 202,
-    switchY: 286,
-    variant: 'dual',
-  },
-  context: {
-    fixtureX: 408,
-    fixtureY: 288,
-    switchX: 368,
-    switchY: 286,
-    variant: 'single',
-  },
-  build: {
-    fixtureX: 520,
-    fixtureY: 288,
-    switchX: 614,
-    switchY: 286,
-    variant: 'dual',
-  },
-};
+>;
 
 function runStartedAt(state: AgentArenaState) {
   const started = state.events.find((event) => event.kind === 'run.started');
@@ -1103,15 +1061,9 @@ function motionFor(agent: RuntimeAgent, avatar: AvatarProjection): Motion {
   const hasStagedSeat = Boolean(
     (fixture as SeatedResource | undefined)?.seatedPositions?.length,
   );
-  if (agent.activeTool && fixture) return 'sit2';
-  if (agent.engagedResourceId === avatar.stationId) return 'sit';
-  if (
-    fixture &&
-    !hasStagedSeat &&
-    new Set(['table', 'board', 'waiting']).has(fixture.kind)
-  ) {
+  if (agent.activeTool && fixture && hasStagedSeat) return 'sit2';
+  if (agent.engagedResourceId === avatar.stationId && hasStagedSeat)
     return 'sit';
-  }
   return 'idle_anim';
 }
 

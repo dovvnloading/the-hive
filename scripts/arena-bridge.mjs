@@ -23,6 +23,7 @@ import {
   FACILITY_PROPS,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
+  LIGHT_SWITCH_REACH_PX,
   RESEARCH_TRACKS,
   inferToolCapability,
   neighborsForLocation,
@@ -2946,6 +2947,23 @@ function performWorldAction(agentId, body) {
     const entity = worldEntityById(body.targetId);
     if (!entity) throw httpError(404, 'There is no interactable fixture there');
     const verb = body.verb.trim();
+    if (
+      entity.kind === 'room-light' &&
+      new Set(['switch_on', 'switch_off']).has(verb)
+    ) {
+      const actorPosition = worldLocationById(locationId)?.position;
+      const controlPosition = entity.controlPosition;
+      const controlDistance =
+        actorPosition && controlPosition
+          ? metricDistance(actorPosition, controlPosition)
+          : Number.POSITIVE_INFINITY;
+      if (controlDistance > LIGHT_SWITCH_REACH_PX) {
+        throw httpError(
+          409,
+          `${entity.label} switch is outside physical reach; move beside the wall control`,
+        );
+      }
+    }
     const resource = resourceById(entity.id);
     const worldState = projectWorldEntityStates().get(entity.id);
     const currentState = {

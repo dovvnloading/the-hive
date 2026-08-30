@@ -5,7 +5,10 @@ import { createServer as createViteServer } from 'vite';
 
 import {
   FACILITY_COLLISION_GEOMETRY,
+  FACILITY_LIGHT_LAYOUT,
+  FACILITY_PROPS,
   FACILITY_RESOURCES,
+  LIGHT_SWITCH_REACH_PX,
   STATIONS,
   WORLD_EDGES,
   buildArenaPath,
@@ -233,6 +236,39 @@ void test('seated resources stage walkers outside chair collision bodies', () =>
         `${resource.id} seated projection is not anchored to a chair body`,
       );
     });
+  }
+});
+
+void test('only authored chairs seat residents and every light switch has a reachable standing point', () => {
+  const unseatedTables = FACILITY_RESOURCES.filter(
+    (resource) =>
+      resource.kind === 'table' && !resource.seatedPositions?.length,
+  );
+  assert.deepEqual(
+    unseatedTables.map((resource) => resource.id),
+    ['evidence-table'],
+  );
+
+  const roomLights = FACILITY_PROPS.filter(
+    (entity) => entity.kind === 'room-light',
+  );
+  assert.equal(roomLights.length, Object.keys(FACILITY_LIGHT_LAYOUT).length);
+  for (const light of roomLights) {
+    const layout = FACILITY_LIGHT_LAYOUT[light.roomId];
+    assert.ok(layout, `${light.id} has no shared visual layout`);
+    assert.deepEqual(light.position, layout.standPosition);
+    assert.deepEqual(light.controlPosition, layout.controlPosition);
+    assert.equal(
+      capsuleIsWorldLegal(light.position),
+      true,
+      `${light.id} standing point collides with ${worldCollisionIds(light.position).join(', ')}`,
+    );
+    const dx = ((light.position.x - light.controlPosition.x) / 100) * 768;
+    const dy = ((light.position.y - light.controlPosition.y) / 100) * 448;
+    assert.ok(
+      Math.hypot(dx, dy) <= LIGHT_SWITCH_REACH_PX,
+      `${light.id} is too far from its wall switch`,
+    );
   }
 });
 
