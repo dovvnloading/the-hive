@@ -176,7 +176,7 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'chairSouth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 633, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 697, y: 367, baseline: 389 },
-  { asset: 'plantSmall', x: 640, y: 306, baseline: 328, entityId: 'plant-build' },
+  { asset: 'plantSmall', x: 704, y: 306, baseline: 328, entityId: 'plant-build' },
 ];
 
 const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
@@ -497,7 +497,7 @@ const LIGHT_FIXTURES: Record<
   tools: { fixtureX: 708, fixtureY: 58, switchX: 520, switchY: 60 },
   synthesis: { fixtureX: 256, fixtureY: 268, switchX: 202, switchY: 286 },
   context: { fixtureX: 384, fixtureY: 248, switchX: 368, switchY: 286 },
-  build: { fixtureX: 520, fixtureY: 268, switchX: 646, switchY: 286 },
+  build: { fixtureX: 520, fixtureY: 268, switchX: 614, switchY: 286 },
 };
 
 function runStartedAt(state: AgentArenaState) {
