@@ -87,7 +87,9 @@ const FACILITY_ASSETS = {
   commandRoutingBoard: 'generated/command-routing-board-v1.png',
   utilityToolsBoard: 'generated/utility-tools-board-v1.png',
   wallLightDual: 'generated/wall-light-dual-v1.png',
+  wallLightDualOff: 'generated/wall-light-dual-off-v1.png',
   wallLightSingle: 'generated/wall-light-single-v1.png',
+  wallLightSingleOff: 'generated/wall-light-single-off-v1.png',
   researchDesk: furnitureAsset('research-desk.png'),
   utilityWorkstation: furnitureAsset('utility-workstation.png'),
   buildWorkbench: furnitureAsset('build-workbench.png'),
@@ -762,16 +764,19 @@ function drawRoomLightFixtures(
     const fixture = LIGHT_FIXTURES[room.id];
     const powered = roomLightIsOn(state, room.id, now);
     const single = fixture.variant === 'single';
-    context.save();
-    context.globalAlpha = powered ? 1 : 0.4;
     drawFacilitySprite(
       context,
       bank,
-      single ? 'wallLightSingle' : 'wallLightDual',
+      single
+        ? powered
+          ? 'wallLightSingle'
+          : 'wallLightSingleOff'
+        : powered
+          ? 'wallLightDual'
+          : 'wallLightDualOff',
       fixture.fixtureX - (single ? 11 : 24),
       fixture.fixtureY - (single ? 13 : 14),
     );
-    context.restore();
     context.fillStyle = 'rgba(35,25,18,.38)';
     context.fillRect(fixture.switchX - 2, fixture.switchY - 3, 7, 9);
     context.fillStyle = '#6d5845';

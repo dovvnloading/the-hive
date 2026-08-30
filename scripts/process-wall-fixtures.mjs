@@ -32,10 +32,22 @@ const fixtures = [
     removeNeutralBackground: false,
   },
   {
+    source: 'sources/wall-light-dual-off-source-v1.png',
+    output: 'wall-light-dual-off-v1.png',
+    size: [48, 28],
+    removeNeutralBackground: true,
+  },
+  {
     source: 'sources/wall-light-single-source-v1.png',
     output: 'wall-light-single-v1.png',
     size: [22, 26],
     removeNeutralBackground: false,
+  },
+  {
+    source: 'sources/wall-light-single-off-source-v1.png',
+    output: 'wall-light-single-off-v1.png',
+    size: [22, 26],
+    removeNeutralBackground: true,
   },
 ];
 

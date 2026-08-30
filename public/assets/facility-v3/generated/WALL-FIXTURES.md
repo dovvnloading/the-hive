@@ -26,20 +26,30 @@ and self-authored furniture sheet were supplied as style and scale references.
 
 - Dual source: `sources/wall-light-dual-source-v1.png`
 - Dual runtime asset: `wall-light-dual-v1.png` (48 x 28)
+- Dual unlit source: `sources/wall-light-dual-off-source-v1.png`
+- Dual unlit runtime asset: `wall-light-dual-off-v1.png` (48 x 28)
 - Dual prompt: a straight-on substantial wall light with a warm walnut
   backplate, aged-brass fittings, and two symmetrical frosted-amber lamps;
   handcrafted pixel art; transparent isolated object; unmistakably a light,
   never a closet, cabinet, screen, sign, or science-fiction fixture.
 - Single source: `sources/wall-light-single-source-v1.png`
 - Single runtime asset: `wall-light-single-v1.png` (22 x 26)
+- Single unlit source: `sources/wall-light-single-off-source-v1.png`
+- Single unlit runtime asset: `wall-light-single-off-v1.png` (22 x 26)
 - Single edit prompt: preserve the dual fixture's walnut, brass, amber glass,
   pixel rendering, palette, and front elevation while reducing it to one
   centered lamp on an intentionally shortened symmetrical backplate.
+- Unlit edit prompt: preserve each fixture's silhouette, geometry, walnut,
+  brass, glass, front elevation, and tight framing while extinguishing every
+  luminous core, glow, bloom, and halo; render the shades as muted smoky glass
+  with non-emissive reflections on an isolated background.
 
 Command and Commons use the single fixture where wall space is constrained.
 Research, Utility, Synthesis, and Build use the dual fixture.
+Each room swaps directly between its lit and unlit sprite when power changes;
+the unlit state is authored artwork rather than opacity-faded lit artwork.
 
 Run `node scripts/process-wall-fixtures.mjs` after replacing a source.
-The processor removes the Command source's connected neutral backdrop, crops
-to visible alpha, resamples with Lanczos, sharpens lightly, and writes a compact
-96-colour transparent PNG.
+The processor removes connected neutral backdrops from generated sources that
+need extraction, crops to visible alpha, resamples with Lanczos, sharpens
+lightly, and writes a compact 96-colour transparent PNG.
