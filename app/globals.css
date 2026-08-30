@@ -1017,12 +1017,12 @@ button {
 
 .journal-heading h2 {
   position: absolute;
-  top: 8.4%;
-  left: 9.2%;
+  top: 9.25%;
+  left: 9.45%;
   margin: 0;
   color: #49301f;
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(15px, 2.15vw, 25px);
+  font-size: clamp(15px, 1.95vw, 22px);
   font-weight: 600;
   letter-spacing: 0.015em;
   line-height: 1;
@@ -1116,7 +1116,7 @@ button {
   position: absolute;
   top: 15.4%;
   right: 11.7%;
-  bottom: 10.7%;
+  bottom: 13.8%;
   left: 8.4%;
   min-width: 0;
   min-height: 0;
@@ -1140,23 +1140,29 @@ button {
 }
 
 .journal-feed {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-content: start;
+  display: block;
+  min-height: 100%;
+  height: auto;
+  padding: 0 0 5%;
+  overflow: visible;
+  column-count: 2;
   column-gap: 13.5%;
-  height: 100%;
-  padding: 0 0 4%;
-  overflow: auto;
+  column-fill: balance;
 }
 
 .journal-feed > li {
   min-width: 0;
   border-bottom-color: var(--journal-line-soft);
+  break-inside: avoid;
 }
 
 .journal-feed-limit {
-  grid-column: 1 / -1;
+  column-span: all;
   color: var(--journal-muted);
+}
+
+.journal-content:has(.journal-feed) {
+  overflow-y: auto;
 }
 
 .journal-entry {
@@ -1379,9 +1385,10 @@ button {
   }
 
   .journal-feed {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 13.5%;
+    display: block;
     padding: 0;
+    column-count: 2;
+    column-gap: 13.5%;
   }
 
   .journal-entry {
