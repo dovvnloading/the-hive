@@ -378,8 +378,8 @@ void test('every authored chair selects the matching directional seated sheet', 
   );
   assert.deepEqual(commandTable?.capabilities, ['review']);
   assert.deepEqual(commandTable?.seatedPositions, [
-    { x: 40.755, y: 35.714 },
-    { x: 50.651, y: 35.714 },
+    { x: 40.755, y: 33.929 },
+    { x: 49.219, y: 33.929 },
   ]);
   const commandWestChair = FACILITY_COLLISION_GEOMETRY.solids.find(
     (solid) => solid.id === 'chair-command-west-body',
