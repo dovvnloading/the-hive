@@ -1449,16 +1449,16 @@ void test('research computers, artifacts, and authenticated context remain agent
     'continuous plant hydration drift must not stale an otherwise actionable scene',
   );
 
-  let observation = await walkTo(origin, sageToken, 'research-computer-a');
+  let observation = await walkTo(origin, sageToken, 'research-computer-b');
   const engaged = await interactAt(
     origin,
     sageToken,
     observation,
-    'research-computer-a',
+    'research-computer-b',
     'use',
   );
   observation = engaged.observation;
-  assert.equal(observation.you.engagedResourceId, 'research-computer-a');
+  assert.equal(observation.you.engagedResourceId, 'research-computer-b');
 
   const searchStart = await postEvent(origin, {
     kind: 'tool.started',
@@ -1477,7 +1477,7 @@ void test('research computers, artifacts, and authenticated context remain agent
     await boardRequest(origin, '/agent/context?after=0', sageToken),
   );
   assert.equal(researchContext.self.roomId, 'research');
-  assert.equal(researchContext.self.resourceId, 'research-computer-a');
+  assert.equal(researchContext.self.resourceId, 'research-computer-b');
   assert.equal(researchContext.self.capability, 'search');
   assert.equal(researchContext.self.topic.topicId, 'topic-tools');
   assert.ok(

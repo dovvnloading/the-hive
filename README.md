@@ -99,7 +99,7 @@ landmarks. It deliberately omits control-plane language and unseen room detail.
 ```powershell
 node scripts/arena-driver.mjs observe --agent sage --pretty
 node scripts/arena-driver.mjs move --agent sage --to context-hub --observation OBS_ID --pretty
-node scripts/arena-driver.mjs interact --agent sage --target research-computer-a --verb use --observation OBS_ID --pretty
+node scripts/arena-driver.mjs interact --agent sage --target research-computer-b --verb use --observation OBS_ID --pretty
 ```
 
 `move` traverses one graph edge; it never teleports to an arbitrary coordinate

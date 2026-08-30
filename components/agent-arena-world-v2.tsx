@@ -176,14 +176,6 @@ const SCENE_PROPS: SceneProp[] = [
   },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
   {
-    asset: 'researchDesk',
-    x: 122,
-    y: 106,
-    baseline: 140,
-    resourceId: 'research-computer-a',
-  },
-  { asset: 'chairNorth', x: 144, y: 130, baseline: 152 },
-  {
     asset: 'utilityWorkstation',
     x: 190,
     y: 108,
@@ -217,7 +209,7 @@ const SCENE_PROPS: SceneProp[] = [
     entityId: 'plant-command',
   },
 
-  // Utility / Tools — four physically distinct workstations.
+  // Utility / Tools — one shell station and one connector station.
   {
     asset: 'utilityWorkstation',
     x: 456,
@@ -227,28 +219,12 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'utilityWorkstation',
-    x: 512,
-    y: 108,
-    baseline: 142,
-    resourceId: 'shell-console-b',
-  },
-  {
-    asset: 'utilityWorkstation',
-    x: 610,
-    y: 108,
-    baseline: 142,
-    resourceId: 'connector-console-a',
-  },
-  {
-    asset: 'utilityWorkstation',
     x: 666,
     y: 108,
     baseline: 142,
     resourceId: 'connector-console-b',
   },
   { asset: 'chairNorth', x: 470, y: 130, baseline: 152 },
-  { asset: 'chairNorth', x: 534, y: 130, baseline: 152 },
-  { asset: 'chairNorth', x: 630, y: 130, baseline: 152 },
   { asset: 'chairNorth', x: 686, y: 130, baseline: 152 },
   {
     asset: 'plantSmall',
@@ -258,7 +234,7 @@ const SCENE_PROPS: SceneProp[] = [
     entityId: 'plant-tools',
   },
 
-  // Synthesis / Decisions — a small library salon and evidence table.
+  // Synthesis / Decisions — a small library salon and decision console.
   { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
   {
     asset: 'bookshelfFilled',
@@ -267,13 +243,6 @@ const SCENE_PROPS: SceneProp[] = [
     backWallRoomId: 'synthesis',
   },
   { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
-  {
-    asset: 'planningTable',
-    x: 119,
-    y: 336,
-    baseline: 370,
-    resourceId: 'evidence-table',
-  },
   {
     asset: 'verificationDesk',
     x: 217,
@@ -306,27 +275,13 @@ const SCENE_PROPS: SceneProp[] = [
     entityId: 'plant-context',
   },
 
-  // Build / Verify — workshop benches on the left, review desk on the right.
+  // Build / Verify — one workshop bench and one diagnostic rig.
   {
     asset: 'buildWorkbench',
     x: 456,
     y: 336,
     baseline: 370,
     resourceId: 'build-bench-a',
-  },
-  {
-    asset: 'buildWorkbench',
-    x: 515,
-    y: 336,
-    baseline: 370,
-    resourceId: 'build-bench-b',
-  },
-  {
-    asset: 'verificationDesk',
-    x: 594,
-    y: 336,
-    baseline: 370,
-    resourceId: 'verify-rig-a',
   },
   {
     asset: 'verificationDesk',
@@ -336,8 +291,6 @@ const SCENE_PROPS: SceneProp[] = [
     resourceId: 'verify-rig-b',
   },
   { asset: 'chairNorth', x: 473, y: 367, baseline: 389 },
-  { asset: 'chairNorth', x: 537, y: 367, baseline: 389 },
-  { asset: 'chairNorth', x: 614, y: 367, baseline: 389 },
   { asset: 'chairNorth', x: 678, y: 367, baseline: 389 },
   {
     asset: 'plantSmall',
@@ -801,11 +754,8 @@ function drawEnvironmentalLighting(
 }
 
 const COMPUTER_SURFACES = new Set([
-  'research-computer-a',
   'research-computer-b',
   'shell-console-a',
-  'shell-console-b',
-  'connector-console-a',
   'connector-console-b',
 ]);
 
@@ -847,16 +797,14 @@ function drawSurfaceDetail(
     return;
   }
 
-  if (resourceId === 'evidence-table' || resourceId === 'publish-console') {
+  if (resourceId === 'publish-console') {
     context.fillStyle = '#eadfc6';
     context.fillRect(centerX - 8, y + 6, 15, 10);
     context.fillStyle = '#8b765e';
     context.fillRect(centerX - 5, y + 9, 9, 1);
     context.fillRect(centerX - 5, y + 12, 7, 1);
-    if (resourceId === 'publish-console') {
-      context.fillStyle = '#4f4538';
-      context.fillRect(centerX + 8, y + 8, 3, 7);
-    }
+    context.fillStyle = '#4f4538';
+    context.fillRect(centerX + 8, y + 8, 3, 7);
     return;
   }
 

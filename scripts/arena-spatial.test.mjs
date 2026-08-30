@@ -246,7 +246,7 @@ void test('only authored chairs seat residents and every light switch has a reac
   );
   assert.deepEqual(
     unseatedTables.map((resource) => resource.id),
-    ['evidence-table'],
+    [],
   );
 
   const roomLights = FACILITY_PROPS.filter(
