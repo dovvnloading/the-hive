@@ -26,6 +26,14 @@ import type {
   Vec2,
   WorldEntityState,
 } from '@/lib/arena/agentic-types';
+import {
+  isSeatedMotion,
+  seatedFrameOffset,
+  seatedFrameHeight,
+  seatedFrameWidth,
+  seatedMotionFor,
+  seatedSheetMotion,
+} from '@/lib/arena/seated-presentation';
 
 const WORLD_WIDTH = 768;
 const WORLD_HEIGHT = 448;
@@ -38,9 +46,9 @@ const CHARACTER_SCALE = 1.5;
 const CHARACTER_FRAME_WIDTH = 16;
 const CHARACTER_FRAME_HEIGHT = 32;
 const FACILITY_ASSET_ROOT = '/assets/facility-v3';
-const MOTIONS = ['run', 'idle_anim', 'phone', 'sit', 'sit2'] as const;
+const ASSET_MOTIONS = ['run', 'idle_anim', 'phone', 'sit', 'sit2'] as const;
 
-type Motion = (typeof MOTIONS)[number];
+type Motion = (typeof ASSET_MOTIONS)[number] | 'sit_back' | 'sit_front';
 type ImageBank = Record<string, HTMLImageElement>;
 type RoomId =
   | 'research'
@@ -144,6 +152,8 @@ type SceneProp = {
   backWallRoomId?: RoomId;
   resourceId?: string;
   entityId?: string;
+  seatForResourceId?: string;
+  seatIndex?: number;
 };
 
 const CONTEXT_KIOSK_PROP = {
@@ -191,7 +201,13 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 118,
     resourceId: 'archive-lamp',
   },
-  { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
+  {
+    asset: 'armchairGreen',
+    x: 61,
+    y: 126,
+    baseline: 156,
+    seatForResourceId: 'archive-desk',
+  },
   {
     asset: 'utilityWorkstation',
     x: 190,
@@ -199,7 +215,13 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 142,
     resourceId: 'research-computer-b',
   },
-  { asset: 'chairNorth', x: 214, y: 130, baseline: 152 },
+  {
+    asset: 'chairNorth',
+    x: 214,
+    y: 130,
+    baseline: 152,
+    seatForResourceId: 'research-computer-b',
+  },
   {
     asset: 'plantSmall',
     x: 42,
@@ -216,8 +238,22 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 158,
     resourceId: 'command-table',
   },
-  { asset: 'chairEast', x: 307, y: 129, baseline: 156 },
-  { asset: 'chairWest', x: 382, y: 128, baseline: 156 },
+  {
+    asset: 'chairEast',
+    x: 307,
+    y: 129,
+    baseline: 156,
+    seatForResourceId: 'command-table',
+    seatIndex: 0,
+  },
+  {
+    asset: 'chairWest',
+    x: 382,
+    y: 128,
+    baseline: 156,
+    seatForResourceId: 'command-table',
+    seatIndex: 1,
+  },
   {
     asset: 'plantSmall',
     x: 420,
@@ -241,8 +277,20 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 142,
     resourceId: 'connector-console-b',
   },
-  { asset: 'chairNorth', x: 470, y: 130, baseline: 152 },
-  { asset: 'chairNorth', x: 686, y: 130, baseline: 152 },
+  {
+    asset: 'chairNorth',
+    x: 470,
+    y: 130,
+    baseline: 152,
+    seatForResourceId: 'shell-console-a',
+  },
+  {
+    asset: 'chairNorth',
+    x: 686,
+    y: 130,
+    baseline: 152,
+    seatForResourceId: 'connector-console-b',
+  },
   {
     asset: 'plantSmall',
     x: 584,
@@ -267,7 +315,13 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 352,
     resourceId: 'publish-console',
   },
-  { asset: 'chairNorth', x: 237, y: 349, baseline: 371 },
+  {
+    asset: 'chairNorth',
+    x: 237,
+    y: 349,
+    baseline: 371,
+    seatForResourceId: 'publish-console',
+  },
   {
     asset: 'plantSmall',
     x: 42,
@@ -301,8 +355,20 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 370,
     resourceId: 'verify-rig-b',
   },
-  { asset: 'chairNorth', x: 473, y: 367, baseline: 389 },
-  { asset: 'chairNorth', x: 678, y: 367, baseline: 389 },
+  {
+    asset: 'chairNorth',
+    x: 473,
+    y: 367,
+    baseline: 389,
+    seatForResourceId: 'build-bench-a',
+  },
+  {
+    asset: 'chairNorth',
+    x: 678,
+    y: 367,
+    baseline: 389,
+    seatForResourceId: 'verify-rig-b',
+  },
   {
     asset: 'plantSmall',
     x: 554,
@@ -1009,6 +1075,13 @@ function drawPlaque(
 
 function motionFor(agent: RuntimeAgent, avatar: AvatarProjection): Motion {
   if (avatar.isMoving && (avatar.routeDelayMs ?? 0) <= 0) return 'run';
+  const seatedProjection = seatedProjectionFor(agent, avatar);
+  if (seatedProjection) {
+    return seatedMotionFor(
+      seatedProjection.direction,
+      Boolean(agent.activeTool),
+    );
+  }
   if (
     agent.status === 'blocked' ||
     agent.status === 'failed' ||
@@ -1016,20 +1089,60 @@ function motionFor(agent: RuntimeAgent, avatar: AvatarProjection): Motion {
   ) {
     return 'idle_anim';
   }
-  const fixture = resourceById(avatar.stationId);
-  const hasStagedSeat = Boolean(
-    (fixture as SeatedResource | undefined)?.seatedPositions?.length,
-  );
-  if (agent.activeTool && fixture && hasStagedSeat) return 'sit2';
-  if (agent.engagedResourceId === avatar.stationId && hasStagedSeat)
-    return 'sit';
   return 'idle_anim';
 }
 
 type SeatedResource = {
   slots: readonly Vec2[];
   seatedPositions?: readonly Vec2[];
+  seatedDirections?: readonly AvatarDirection[];
 };
+
+type SeatedProjection = {
+  position: Vec2;
+  direction: AvatarDirection;
+  seatIndex: number;
+};
+
+function seatedProjectionFor(
+  agent: RuntimeAgent,
+  avatar: AvatarProjection,
+): SeatedProjection | undefined {
+  if (agent.engagedResourceId !== avatar.stationId) return undefined;
+  const fixture = resourceById(avatar.stationId) as SeatedResource | undefined;
+  const seats = fixture?.seatedPositions;
+  const directions = fixture?.seatedDirections;
+  if (
+    !fixture ||
+    !seats ||
+    seats.length === 0 ||
+    !directions ||
+    directions.length !== seats.length
+  ) {
+    return undefined;
+  }
+
+  let seatIndex = 0;
+  if (seats.length > 1 && fixture.slots.length > 0) {
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    fixture.slots.forEach((slot, index) => {
+      const distance = Math.hypot(
+        slot.x - avatar.position.x,
+        slot.y - avatar.position.y,
+      );
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        seatIndex = index;
+      }
+    });
+  }
+  seatIndex = Math.min(seatIndex, seats.length - 1);
+  return {
+    position: seats[seatIndex],
+    direction: directions[seatIndex],
+    seatIndex,
+  };
+}
 
 /**
  * Navigation ends at a collision-safe standing point in the aisle. Only an
@@ -1041,25 +1154,7 @@ function visualPositionFor(
   agent: RuntimeAgent,
   avatar: AvatarProjection,
 ): Vec2 {
-  if (agent.engagedResourceId !== avatar.stationId) return avatar.position;
-  const fixture = resourceById(avatar.stationId) as SeatedResource | undefined;
-  const seats = fixture?.seatedPositions;
-  if (!fixture || !seats || seats.length === 0) return avatar.position;
-  if (seats.length === 1 || fixture.slots.length === 0) return seats[0];
-
-  let slotIndex = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  fixture.slots.forEach((slot, index) => {
-    const distance = Math.hypot(
-      slot.x - avatar.position.x,
-      slot.y - avatar.position.y,
-    );
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      slotIndex = index;
-    }
-  });
-  return seats[Math.min(slotIndex, seats.length - 1)];
+  return seatedProjectionFor(agent, avatar)?.position ?? avatar.position;
 }
 
 function directionOffset(direction: AvatarDirection) {
@@ -1123,15 +1218,21 @@ function drawAgent(
   now: number,
 ) {
   const motion = motionFor(agent, avatar);
-  const sheet = bank[`${agent.id}:${motion}`];
+  const sheetMotion = isSeatedMotion(motion)
+    ? seatedSheetMotion(motion)
+    : motion;
+  const sheet = bank[`${agent.id}:${sheetMotion}`];
   if (!imageReady(sheet)) return;
 
-  const seated = motion === 'sit' || motion === 'sit2';
-  const frameWidth = seated ? 32 : CHARACTER_FRAME_WIDTH;
+  const seated = isSeatedMotion(motion);
+  const frameWidth = seated ? seatedFrameWidth(motion) : CHARACTER_FRAME_WIDTH;
   const frameCount = motion === 'phone' ? 9 : 6;
   const frame = Math.floor(now / (motion === 'run' ? 95 : 150)) % frameCount;
-  const seatedDirection =
-    avatar.direction === 'west' || avatar.direction === 'north' ? 6 : 0;
+  const seatedProjection = seatedProjectionFor(agent, avatar);
+  const renderedDirection = seatedProjection?.direction ?? avatar.direction;
+  const seatedDirection = seated
+    ? seatedFrameOffset(motion, renderedDirection)
+    : 0;
   const sourceFrame =
     motion === 'phone'
       ? frame
@@ -1142,7 +1243,10 @@ function drawAgent(
   const x = Math.round((visualPosition.x / 100) * WORLD_WIDTH);
   const y = Math.round((visualPosition.y / 100) * WORLD_HEIGHT);
   const width = frameWidth * CHARACTER_SCALE;
-  const height = CHARACTER_FRAME_HEIGHT * CHARACTER_SCALE;
+  const frameHeight = seated
+    ? seatedFrameHeight(motion)
+    : CHARACTER_FRAME_HEIGHT;
+  const height = frameHeight * CHARACTER_SCALE;
 
   context.fillStyle = 'rgba(0,0,0,.38)';
   context.beginPath();
@@ -1153,7 +1257,7 @@ function drawAgent(
     sourceFrame * frameWidth,
     0,
     frameWidth,
-    CHARACTER_FRAME_HEIGHT,
+    frameHeight,
     Math.round(x - width / 2),
     y - height,
     width,
@@ -1177,15 +1281,45 @@ function drawDepthSortedScene(
   agentsById: Map<string, RuntimeAgent>,
   now: number,
 ) {
+  const occupiedSeats = new Map<
+    string,
+    Array<{ agentId: string; baseline: number; seatIndex: number }>
+  >();
+  state.avatars.forEach((avatar) => {
+    const agent = agentsById.get(avatar.agentId);
+    if (!agent) return;
+    const projection = seatedProjectionFor(agent, avatar);
+    if (!projection) return;
+    const occupants = occupiedSeats.get(avatar.stationId) ?? [];
+    occupants.push({
+      agentId: agent.id,
+      baseline: (projection.position.y / 100) * WORLD_HEIGHT,
+      seatIndex: projection.seatIndex,
+    });
+    occupiedSeats.set(avatar.stationId, occupants);
+  });
+
   const entries: Array<{
     baseline: number;
     stableOrder: number;
     draw: () => void;
-  }> = SCENE_PROPS.map((prop, index) => ({
-    baseline: prop.baseline,
-    stableOrder: index,
-    draw: () => drawSceneProp(context, bank, state, prop),
-  }));
+  }> = SCENE_PROPS.map((prop, index) => {
+    const occupiedSeat = prop.seatForResourceId
+      ? occupiedSeats
+          .get(prop.seatForResourceId)
+          ?.find((occupant) => occupant.seatIndex === (prop.seatIndex ?? 0))
+      : undefined;
+    return {
+      // A chair back belongs behind its resident. The ordinary prop baseline
+      // remains authoritative while empty; occupation only tightens ordering
+      // for the one explicitly associated seat.
+      baseline: occupiedSeat
+        ? Math.min(prop.baseline, occupiedSeat.baseline - 0.5)
+        : prop.baseline,
+      stableOrder: index,
+      draw: () => drawSceneProp(context, bank, state, prop),
+    };
+  });
 
   state.avatars.forEach((avatar, index) => {
     const agent = agentsById.get(avatar.agentId);
@@ -1374,7 +1508,7 @@ export function AgentArenaWorldV2({
     ]);
     state.agents.forEach((agent) => {
       const folder = presentationFor(agent.id).sprite;
-      MOTIONS.forEach((motion) => {
+      ASSET_MOTIONS.forEach((motion) => {
         sources.push([`${agent.id}:${motion}`, `${folder}/${motion}.png`]);
       });
     });
@@ -1486,12 +1620,17 @@ export function AgentArenaWorldV2({
         const agent = agentsById.get(avatar.agentId);
         if (!agent) return false;
         const motion = motionFor(agent, avatar);
-        if (!imageReady(bankRef.current[`${agent.id}:${motion}`])) return false;
-        const seated = motion === 'sit' || motion === 'sit2';
+        const sheetMotion = isSeatedMotion(motion)
+          ? seatedSheetMotion(motion)
+          : motion;
+        if (!imageReady(bankRef.current[`${agent.id}:${sheetMotion}`]))
+          return false;
         const visualPosition = visualPositionFor(agent, avatar);
         const x = (visualPosition.x / 100) * WORLD_WIDTH;
         const y = (visualPosition.y / 100) * WORLD_HEIGHT;
-        const halfWidth = seated ? 25 : 13;
+        const halfWidth = isSeatedMotion(motion)
+          ? seatedFrameWidth(motion) * (CHARACTER_SCALE / 2) + 1
+          : 13;
         return (
           point.x >= x - halfWidth &&
           point.x <= x + halfWidth &&

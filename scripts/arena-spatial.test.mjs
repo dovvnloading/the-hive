@@ -22,6 +22,13 @@ import {
   resolveAvatarCollisions,
   worldCollisionIds,
 } from '../lib/arena/agentic-spatial.ts';
+import {
+  seatedFrameOffset,
+  seatedFrameHeight,
+  seatedFrameWidth,
+  seatedMotionFor,
+  seatedSheetMotion,
+} from '../lib/arena/seated-presentation.ts';
 import { runArenaSpatialAudit } from './arena-spatial-audit.mjs';
 
 void test('build plant remains outside the doorway opening and approach lane', () => {
@@ -237,6 +244,11 @@ void test('seated resources stage walkers outside chair collision bodies', () =>
       resource.seatedPositions.length,
       `${resource.id} needs one seated projection per standing slot`,
     );
+    assert.equal(
+      resource.seatedDirections?.length,
+      resource.seatedPositions.length,
+      `${resource.id} needs one authored facing direction per chair`,
+    );
     resource.slots.forEach((slot, index) => {
       const seat = resource.seatedPositions[index];
       assert.notDeepEqual(
@@ -255,6 +267,37 @@ void test('seated resources stage walkers outside chair collision bodies', () =>
       );
     });
   }
+});
+
+void test('every authored chair selects the matching directional seated sheet', () => {
+  const directionsByResource = Object.fromEntries(
+    FACILITY_RESOURCES.filter(
+      (resource) => resource.seatedPositions?.length,
+    ).map((resource) => [resource.id, resource.seatedDirections]),
+  );
+  assert.deepEqual(directionsByResource, {
+    'archive-desk': ['south'],
+    'research-computer-b': ['north'],
+    'command-table': ['east', 'west'],
+    'shell-console-a': ['north'],
+    'connector-console-b': ['north'],
+    'publish-console': ['north'],
+    'build-bench-a': ['north'],
+    'verify-rig-b': ['north'],
+  });
+
+  assert.equal(seatedMotionFor('north', true), 'sit_back');
+  assert.equal(seatedMotionFor('south', false), 'sit_front');
+  assert.equal(seatedMotionFor('east', false), 'sit');
+  assert.equal(seatedMotionFor('west', true), 'sit2');
+  assert.equal(seatedFrameWidth('sit_back'), 16);
+  assert.equal(seatedFrameWidth('sit'), 32);
+  assert.equal(seatedFrameHeight('sit_back'), 27);
+  assert.equal(seatedSheetMotion('sit_back'), 'idle_anim');
+  assert.equal(seatedFrameOffset('sit_back', 'north'), 6);
+  assert.equal(seatedFrameOffset('sit_front', 'south'), 18);
+  assert.equal(seatedFrameOffset('sit', 'east'), 0);
+  assert.equal(seatedFrameOffset('sit2', 'west'), 6);
 });
 
 void test('only authored chairs seat residents and every light switch has a reachable standing point', () => {
