@@ -3,9 +3,10 @@
 The furniture pack was created for this facility on 2026-08-29 with OpenAI's
 built-in image generator. No external image or style reference was supplied.
 
-## Master sheet
+## Master sheets
 
-- File: `furniture/furniture-sheet-v1.png`
+- Original concept: `furniture/furniture-sheet-v1.png`
+- Native-pixel replacement: `furniture/furniture-sheet-v2-transparent.png`
 - Layout: sixteen isolated sprites in a 4 × 4 transparent grid.
 - Projection: consistent three-quarter top-down orthographic view.
 - Palette: walnut, chestnut, honey oak, muted sage, parchment, dark teal, and
@@ -20,7 +21,14 @@ built-in image generator. No external image or style reference was supplied.
 
 ## Processing
 
-Each equal sheet cell was scanned for nontransparent pixels, cropped to its
-alpha bounds, and reduced with nearest-neighbor resampling into a transparent,
-bottom-aligned arena sprite. `furniture/manifest.json` records the stable cell
-order and normalized canvas size of every extracted PNG.
+The v2 sheet replaces the painted microtexture of the initial concept with
+deliberate hard pixel clusters and simplified silhouettes. Each equal sheet
+cell is scanned for nontransparent pixels, cropped to its alpha bounds, and
+reduced with Lanczos resampling, controlled sharpening, and a 64-colour
+non-dithered palette into a transparent, bottom-aligned arena sprite. This
+preserves readable forms at room scale without the destructive nearest-neighbor
+reduction used by v1.
+
+Run `node scripts/process-furniture-sheet.mjs` to reproduce every extracted
+sprite. `furniture/manifest.json` records the stable cell order, target size,
+and processing parameters.

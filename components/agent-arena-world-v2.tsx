@@ -27,6 +27,7 @@ import type {
 
 const WORLD_WIDTH = 768;
 const WORLD_HEIGHT = 448;
+const WORLD_RENDER_SCALE = 2;
 const BACK_WALL_HEIGHT = 64;
 const BACK_WALL_FURNITURE_OVERLAP = 4;
 // A 24 x 48 resident is the visual midpoint for this interior set: readable
@@ -74,7 +75,7 @@ const ROOMS = FACILITY_ROOMS.map((room) => ({
 })) satisfies Room[];
 
 const FURNITURE_ASSET_ROOT = '/assets/facility-v4/furniture';
-const FURNITURE_ASSET_REVISION = '20260829-2';
+const FURNITURE_ASSET_REVISION = '20260829-3';
 const furnitureAsset = (filename: string) =>
   `${FURNITURE_ASSET_ROOT}/${filename}?rev=${FURNITURE_ASSET_REVISION}`;
 
@@ -1343,6 +1344,16 @@ export function AgentArenaWorldV2({
     const labelContext = labelCanvas?.getContext('2d');
     if (!canvas || !context || !labelCanvas || !labelContext) return;
 
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.setTransform(
+      WORLD_RENDER_SCALE,
+      0,
+      0,
+      WORLD_RENDER_SCALE,
+      0,
+      0,
+    );
     context.imageSmoothingEnabled = false;
     const bank = bankRef.current;
     const environmentNow = bubbleNow || Date.now();
@@ -1430,8 +1441,8 @@ export function AgentArenaWorldV2({
       <div className="arena-stage-surface">
         <canvas
           ref={canvasRef}
-          width={WORLD_WIDTH}
-          height={WORLD_HEIGHT}
+          width={WORLD_WIDTH * WORLD_RENDER_SCALE}
+          height={WORLD_HEIGHT * WORLD_RENDER_SCALE}
           className="arena-world"
           aria-hidden="true"
           onPointerMove={(event) => setHoveredAgentId(agentAt(event))}
