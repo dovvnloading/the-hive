@@ -629,17 +629,13 @@ function drawDownwardDoorFrame(
   context.fillRect(centerX + 18, 184, 2, 7);
 }
 
-function drawDoorwayForegrounds(
-  context: CanvasRenderingContext2D,
-  bank: ImageBank,
-) {
-  // Repaint only frame pixels after residents. Transparent apertures preserve
-  // the body while jambs and headers correctly occlude a crossing resident.
+function drawDoorwayForegrounds(context: CanvasRenderingContext2D) {
+  // Upper openings occupy the south-wall seam, so their shallow rim remains
+  // in front of a crossing body. Lower generated frames already surround a
+  // 36px aperture around a 24px resident; repainting those sprites here cuts
+  // moving residents apart at the jamb and must not happen.
   [144, 352, 592].forEach((centerX) => {
     drawDownwardDoorFrame(context, centerX);
-  });
-  [176, 344, 592].forEach((centerX) => {
-    drawFacilitySprite(context, bank, 'doorwayFront', centerX - 22, 256);
   });
 }
 
@@ -1674,7 +1670,7 @@ export function AgentArenaWorldV2({
     drawArchitecture(context, bank);
     drawRoomLightFixtures(context, bank, state, environmentNow);
     drawDepthSortedScene(context, bank, state, agentsById, performance.now());
-    drawDoorwayForegrounds(context, bank);
+    drawDoorwayForegrounds(context);
     drawEnvironmentalLighting(context, state, environmentNow);
 
     labelContext.setTransform(1, 0, 0, 1, 0, 0);
