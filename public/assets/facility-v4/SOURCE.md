@@ -23,9 +23,11 @@ built-in image generator. No external image or style reference was supplied.
 
 The v2 sheet replaces the painted microtexture of the initial concept with
 deliberate hard pixel clusters and simplified silhouettes. Each equal sheet
-cell is scanned for nontransparent pixels, cropped to its alpha bounds, and
-reduced with Lanczos resampling, controlled sharpening, and a 64-colour
-non-dithered palette into a transparent, bottom-aligned arena sprite. This
+cell is scanned for nontransparent pixels, isolated to its largest connected
+alpha component, cropped to that component's bounds, and reduced with Lanczos
+resampling, controlled sharpening, and a 64-colour non-dithered palette into a
+transparent, bottom-aligned arena sprite. Component isolation excludes detached
+generation debris such as floor-level strips and cast-shadow remnants. This
 preserves readable forms at room scale without the destructive nearest-neighbor
 reduction used by v1.
 

@@ -35,32 +35,63 @@ const sprites = [
   { name: 'wall-shelf', cell: [3, 3], size: [48, 28] },
 ];
 
-function alphaBounds(data, width, height, channels) {
-  let left = width;
-  let top = height;
-  let right = -1;
-  let bottom = -1;
+function largestAlphaComponentBounds(data, width, height, channels) {
+  const visited = new Uint8Array(width * height);
+  let largest;
 
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const alpha = data[(y * width + x) * channels + 3];
-      if (alpha <= 8) continue;
+  for (let start = 0; start < visited.length; start += 1) {
+    if (visited[start] || data[start * channels + 3] <= 8) continue;
+
+    const queue = [start];
+    visited[start] = 1;
+    let pixels = 0;
+    let left = width;
+    let top = height;
+    let right = -1;
+    let bottom = -1;
+
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const index = queue[cursor];
+      const x = index % width;
+      const y = Math.floor(index / width);
+      pixels += 1;
       left = Math.min(left, x);
       top = Math.min(top, y);
       right = Math.max(right, x);
       bottom = Math.max(bottom, y);
+
+      const neighbors = [
+        index - 1,
+        index + 1,
+        index - width,
+        index + width,
+      ];
+      for (const neighbor of neighbors) {
+        if (neighbor < 0 || neighbor >= visited.length || visited[neighbor]) {
+          continue;
+        }
+        const neighborX = neighbor % width;
+        if (Math.abs(neighborX - x) > 1) continue;
+        if (data[neighbor * channels + 3] <= 8) continue;
+        visited[neighbor] = 1;
+        queue.push(neighbor);
+      }
+    }
+
+    if (!largest || pixels > largest.pixels) {
+      largest = { pixels, left, top, right, bottom };
     }
   }
 
-  if (right < left || bottom < top) {
+  if (!largest) {
     throw new Error('Sprite cell contains no visible pixels.');
   }
 
   return {
-    left,
-    top,
-    width: right - left + 1,
-    height: bottom - top + 1,
+    left: largest.left,
+    top: largest.top,
+    width: largest.right - largest.left + 1,
+    height: largest.bottom - largest.top + 1,
   };
 }
 
@@ -89,7 +120,12 @@ for (const sprite of sprites) {
     })
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const bounds = alphaBounds(data, info.width, info.height, info.channels);
+  const bounds = largestAlphaComponentBounds(
+    data,
+    info.width,
+    info.height,
+    info.channels,
+  );
   const [targetWidth, targetHeight] = sprite.size;
 
   const cropped = await sharp(sourcePath)
@@ -125,6 +161,7 @@ await fs.writeFile(
       sheet: 'furniture-sheet-v2-transparent.png',
       grid: { columns: 4, rows: 4 },
       processing: {
+        componentIsolation: 'largest-alpha-component',
         resampling: 'lanczos3',
         paletteColours: 64,
         dither: 0,

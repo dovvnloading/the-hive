@@ -75,7 +75,7 @@ const ROOMS = FACILITY_ROOMS.map((room) => ({
 })) satisfies Room[];
 
 const FURNITURE_ASSET_ROOT = '/assets/facility-v4/furniture';
-const FURNITURE_ASSET_REVISION = '20260829-3';
+const FURNITURE_ASSET_REVISION = '20260830-4';
 const furnitureAsset = (filename: string) =>
   `${FURNITURE_ASSET_ROOT}/${filename}?rev=${FURNITURE_ASSET_REVISION}`;
 

@@ -5,6 +5,7 @@
     "rows": 4
   },
   "processing": {
+    "componentIsolation": "largest-alpha-component",
     "resampling": "lanczos3",
     "paletteColours": 64,
     "dither": 0,
