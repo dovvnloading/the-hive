@@ -147,6 +147,24 @@ type SceneProp = {
   entityId?: string;
 };
 
+const CONTEXT_KIOSK_PROP = {
+  asset: 'writingDesk',
+  x: 354,
+  y: 350,
+  baseline: 382,
+  resourceId: 'context-kiosk',
+} satisfies SceneProp;
+
+// Match the journal action surface to the complete authored desk sprite. Its
+// position is derived from the same scene prop so future desk moves cannot
+// leave an invisible action target behind.
+const CONTEXT_KIOSK_ACTION_STYLE = {
+  left: `${(CONTEXT_KIOSK_PROP.x / WORLD_WIDTH) * 100}%`,
+  top: `${(CONTEXT_KIOSK_PROP.y / WORLD_HEIGHT) * 100}%`,
+  width: `${(50 / WORLD_WIDTH) * 100}%`,
+  height: `${(38 / WORLD_HEIGHT) * 100}%`,
+} satisfies CSSProperties;
+
 const WALL_COLORS: Record<RoomId, { paper: string; panel: string }> = {
   research: { paper: '#d8c39f', panel: '#8a5737' },
   command: { paper: '#c8c09c', panel: '#79543a' },
@@ -260,13 +278,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
 
   // Commons — a clear route from the north doorway to the anchored lift.
-  {
-    asset: 'writingDesk',
-    x: 354,
-    y: 350,
-    baseline: 382,
-    resourceId: 'context-kiosk',
-  },
+  CONTEXT_KIOSK_PROP,
   {
     asset: 'plantSmall',
     x: 421,
@@ -1547,6 +1559,7 @@ export function AgentArenaWorldV2({
         <button
           type="button"
           className="field-journal-hotspot"
+          style={CONTEXT_KIOSK_ACTION_STYLE}
           aria-label={`Open field journal, ${state.avatars.length} agents present`}
           aria-expanded={journalOpen}
           aria-haspopup="dialog"
