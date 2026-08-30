@@ -77,10 +77,17 @@ const FACILITY_ASSETS = {
   architectureFloor: 'generated/oak-floor-v1.png',
   architectureWall: 'generated/plaster-wall-v1.png',
   architectureCorridor: 'generated/slate-corridor-v1.png',
-  bookshelfA: 'cozy-cabin/sprites/bookcase-a.png',
-  bookshelfB: 'cozy-cabin/sprites/bookcase-b.png',
-  bookshelfC: 'cozy-cabin/sprites/bookcase-c.png',
-  bookshelfFilled: 'cozy-cabin/sprites/bookcase-filled.png',
+  researchDesk: '/assets/facility-v4/furniture/research-desk.png',
+  utilityWorkstation:
+    '/assets/facility-v4/furniture/utility-workstation.png',
+  buildWorkbench: '/assets/facility-v4/furniture/build-workbench.png',
+  verificationDesk: '/assets/facility-v4/furniture/verification-desk.png',
+  writingDesk: '/assets/facility-v4/furniture/writing-desk.png',
+  planningTable: '/assets/facility-v4/furniture/planning-table.png',
+  bookshelfA: '/assets/facility-v4/furniture/bookshelf-empty.png',
+  bookshelfB: '/assets/facility-v4/furniture/bookshelf-empty.png',
+  bookshelfC: '/assets/facility-v4/furniture/bookshelf-empty.png',
+  bookshelfFilled: '/assets/facility-v4/furniture/bookshelf-filled.png',
   cabinetA: 'cozy-cabin/sprites/cabinet-a.png',
   cabinetFilled: 'cozy-cabin/sprites/cabinet-filled.png',
   sideboardA: 'cozy-cabin/sprites/sideboard-a.png',
@@ -91,14 +98,14 @@ const FACILITY_ASSETS = {
   tableBlue: 'cozy-cabin/sprites/table-blue.png',
   tableYellow: 'cozy-cabin/sprites/table-yellow.png',
   tableVertical: 'cozy-cabin/sprites/table-vertical.png',
-  chairEast: 'cozy-cabin/sprites/chair-east.png',
-  chairWest: 'cozy-cabin/sprites/chair-west.png',
-  chairNorth: 'cozy-cabin/sprites/chair-north.png',
-  chairSouth: 'cozy-cabin/sprites/chair-south.png',
-  armchairGreen: 'cozy-cabin/sprites/armchair-green.png',
-  armchairAmber: 'cozy-cabin/sprites/armchair-amber.png',
-  sofaGreen: 'cozy-cabin/sprites/sofa-green.png',
-  sofaAmber: 'cozy-cabin/sprites/sofa-amber.png',
+  chairEast: '/assets/facility-v4/furniture/chair-east.png',
+  chairWest: '/assets/facility-v4/furniture/chair-west.png',
+  chairNorth: '/assets/facility-v4/furniture/chair-north.png',
+  chairSouth: '/assets/facility-v4/furniture/chair-south.png',
+  armchairGreen: '/assets/facility-v4/furniture/reading-armchair.png',
+  armchairAmber: '/assets/facility-v4/furniture/reading-armchair.png',
+  sofaGreen: '/assets/facility-v4/furniture/lounge-couch.png',
+  sofaAmber: '/assets/facility-v4/furniture/lounge-couch.png',
   floorLamp: 'cozy-cabin/sprites/floor-lamp.png',
   plantSmall: 'cozy-cabin/sprites/plant-small.png',
   plantTall: 'cozy-cabin/sprites/plant-tall.png',
@@ -107,6 +114,15 @@ const FACILITY_ASSETS = {
 } as const;
 
 type FacilityAssetKey = keyof typeof FACILITY_ASSETS;
+
+const SELF_AUTHORED_FURNITURE = new Set<FacilityAssetKey>([
+  'researchDesk',
+  'utilityWorkstation',
+  'buildWorkbench',
+  'verificationDesk',
+  'writingDesk',
+  'planningTable',
+]);
 
 type SceneProp = {
   asset: FacilityAssetKey;
@@ -134,23 +150,23 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
   { asset: 'floorLamp', x: 226, y: 88, baseline: 118, resourceId: 'archive-lamp' },
   { asset: 'armchairGreen', x: 61, y: 126, baseline: 156 },
-  { asset: 'deskRect', x: 126, y: 108, baseline: 140, resourceId: 'research-computer-a' },
+  { asset: 'researchDesk', x: 126, y: 106, baseline: 140, resourceId: 'research-computer-a' },
   { asset: 'chairSouth', x: 144, y: 137, baseline: 159 },
-  { asset: 'deskSmall', x: 207, y: 126, baseline: 158, resourceId: 'research-computer-b' },
+  { asset: 'utilityWorkstation', x: 202, y: 124, baseline: 158, resourceId: 'research-computer-b' },
   { asset: 'chairSouth', x: 216, y: 155, baseline: 177 },
   { asset: 'plantSmall', x: 37, y: 158, baseline: 180, entityId: 'plant-research' },
 
   // Command / Routing — a planning table beneath the mounted route board.
-  { asset: 'tableRound', x: 326, y: 126, baseline: 158, resourceId: 'command-table' },
+  { asset: 'planningTable', x: 326, y: 124, baseline: 158, resourceId: 'command-table' },
   { asset: 'chairWest', x: 307, y: 129, baseline: 156 },
   { asset: 'chairEast', x: 382, y: 128, baseline: 156 },
   { asset: 'plantSmall', x: 420, y: 78, baseline: 100, entityId: 'plant-command' },
 
   // Utility / Tools — four physically distinct workstations.
-  { asset: 'deskRect', x: 455, y: 126, baseline: 158, resourceId: 'shell-console-a' },
-  { asset: 'deskRect', x: 519, y: 126, baseline: 158, resourceId: 'shell-console-b' },
-  { asset: 'deskSmall', x: 624, y: 126, baseline: 158, resourceId: 'connector-console-a' },
-  { asset: 'deskSmall', x: 688, y: 126, baseline: 158, resourceId: 'connector-console-b' },
+  { asset: 'utilityWorkstation', x: 453, y: 124, baseline: 158, resourceId: 'shell-console-a' },
+  { asset: 'utilityWorkstation', x: 517, y: 124, baseline: 158, resourceId: 'shell-console-b' },
+  { asset: 'utilityWorkstation', x: 613, y: 124, baseline: 158, resourceId: 'connector-console-a' },
+  { asset: 'utilityWorkstation', x: 677, y: 124, baseline: 158, resourceId: 'connector-console-b' },
   { asset: 'chairSouth', x: 473, y: 155, baseline: 177 },
   { asset: 'chairSouth', x: 537, y: 155, baseline: 177 },
   { asset: 'chairSouth', x: 633, y: 155, baseline: 177 },
@@ -161,20 +177,20 @@ const SCENE_PROPS: SceneProp[] = [
   { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
   { asset: 'bookshelfFilled', x: 97, baseline: 324, backWallRoomId: 'synthesis' },
   { asset: 'sofaGreen', x: 48, y: 338, baseline: 368 },
-  { asset: 'tableRound', x: 119, y: 338, baseline: 370, resourceId: 'evidence-table' },
-  { asset: 'deskRect', x: 219, y: 320, baseline: 352, resourceId: 'publish-console' },
+  { asset: 'planningTable', x: 119, y: 336, baseline: 370, resourceId: 'evidence-table' },
+  { asset: 'verificationDesk', x: 217, y: 318, baseline: 352, resourceId: 'publish-console' },
   { asset: 'chairSouth', x: 237, y: 349, baseline: 371 },
   { asset: 'plantSmall', x: 37, y: 386, baseline: 408, entityId: 'plant-synthesis' },
 
   // Commons — a clear route from the north doorway to the anchored lift.
-  { asset: 'deskSmall', x: 328, y: 366, baseline: 398, resourceId: 'context-kiosk' },
+  { asset: 'writingDesk', x: 323, y: 366, baseline: 398, resourceId: 'context-kiosk' },
   { asset: 'plantSmall', x: 421, y: 386, baseline: 408, entityId: 'plant-context' },
 
   // Build / Verify — workshop benches on the left, review desk on the right.
-  { asset: 'deskRect', x: 455, y: 338, baseline: 370, resourceId: 'build-bench-a' },
-  { asset: 'deskRect', x: 519, y: 338, baseline: 370, resourceId: 'build-bench-b' },
-  { asset: 'tableYellow', x: 622, y: 338, baseline: 370, resourceId: 'verify-rig-a' },
-  { asset: 'deskSmall', x: 688, y: 338, baseline: 370, resourceId: 'verify-rig-b' },
+  { asset: 'buildWorkbench', x: 451, y: 336, baseline: 370, resourceId: 'build-bench-a' },
+  { asset: 'buildWorkbench', x: 515, y: 336, baseline: 370, resourceId: 'build-bench-b' },
+  { asset: 'verificationDesk', x: 620, y: 336, baseline: 370, resourceId: 'verify-rig-a' },
+  { asset: 'verificationDesk', x: 684, y: 336, baseline: 370, resourceId: 'verify-rig-b' },
   { asset: 'chairSouth', x: 473, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 537, y: 367, baseline: 389 },
   { asset: 'chairSouth', x: 633, y: 367, baseline: 389 },
@@ -715,6 +731,7 @@ function drawSurfaceDetail(
   width: number,
   y: number,
 ) {
+  if (SELF_AUTHORED_FURNITURE.has(prop.asset)) return;
   const resourceId = prop.resourceId;
   if (!resourceId) return;
   const centerX = Math.round(prop.x + width / 2);
@@ -1271,7 +1288,11 @@ export function AgentArenaWorldV2({
     const sources: Array<[string, string]> = Object.entries(FACILITY_ASSETS).map(
       ([key, filename]) => [
         facilityKey(key as FacilityAssetKey),
-        encodeURI(`${FACILITY_ASSET_ROOT}/${filename}`),
+        encodeURI(
+          filename.startsWith('/')
+            ? filename
+            : `${FACILITY_ASSET_ROOT}/${filename}`,
+        ),
       ],
     );
     state.agents.forEach((agent) => {
