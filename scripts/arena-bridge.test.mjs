@@ -1366,11 +1366,7 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.equal(conflictingRetry.status, 409);
   assert.match(await conflictingRetry.text(), /different action/u);
 
-  const atRoomLight = await walkTo(
-    origin,
-    sageToken,
-    'room-light-research',
-  );
+  const atRoomLight = await walkTo(origin, sageToken, 'room-light-research');
   const inspectedRoomLight = await interactAt(
     origin,
     sageToken,
@@ -1426,6 +1422,32 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.ok(plantState.hydration > 99.9);
   assert.equal(plantState.condition, 'healthy');
   assert.notEqual(plantState.lastWateredAt, 'never');
+  assert.notEqual(
+    wateredPlant.observation.observationId,
+    inspectedPlant.observation.observationId,
+  );
+
+  let driftedPlantScene = wateredPlant.observation;
+  const hydrationAtWatering = plantState.hydration;
+  const driftDeadline = Date.now() + 12_000;
+  while (
+    driftedPlantScene.entities.find((entity) => entity.id === 'plant-research')
+      .state.hydration === hydrationAtWatering &&
+    Date.now() < driftDeadline
+  ) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    driftedPlantScene = await observe(origin, sageToken);
+  }
+  assert.notEqual(
+    driftedPlantScene.entities.find((entity) => entity.id === 'plant-research')
+      .state.hydration,
+    hydrationAtWatering,
+  );
+  assert.equal(
+    driftedPlantScene.observationId,
+    wateredPlant.observation.observationId,
+    'continuous plant hydration drift must not stale an otherwise actionable scene',
+  );
 
   let observation = await walkTo(origin, sageToken, 'research-computer-a');
   const engaged = await interactAt(

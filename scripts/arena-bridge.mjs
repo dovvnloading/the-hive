@@ -287,7 +287,8 @@ function assertPayload(kind, payload) {
         ? undefined
         : 'payload.name and payload.role are required';
     case 'task.assigned':
-      if (!hasText(payload, 'objective')) return 'payload.objective is required';
+      if (!hasText(payload, 'objective'))
+        return 'payload.objective is required';
       return payload.mode === undefined || ASSIGNMENT_MODES.has(payload.mode)
         ? undefined
         : 'payload.mode must be directed or self-directed';
@@ -2279,6 +2280,18 @@ function sceneObservationId(materialObservation) {
   return `obs_${digest}`;
 }
 
+function materialEntityObservation(entity, projected) {
+  const stableState =
+    entity.kind === 'plant'
+      ? { condition: entity.state?.condition }
+      : entity.state;
+  return {
+    ...entity,
+    ...(stableState ? { state: stableState } : {}),
+    stateVersion: projected?.stateVersion ?? 0,
+  };
+}
+
 function compileObservation(agentId, after = 0) {
   const now = Date.now();
   const agents = projectAgentStates();
@@ -2501,7 +2514,8 @@ function compileObservation(agentId, after = 0) {
   const localNeeds = entities.flatMap((entity) => {
     if (entity.kind === 'plant') {
       const condition = entity.state?.condition;
-      if (condition === 'dead') return [`${entity.id}:dead/replacement-possible`];
+      if (condition === 'dead')
+        return [`${entity.id}:dead/replacement-possible`];
       if (condition === 'wilted') return [`${entity.id}:wilted`];
       if (condition === 'thirsty') return [`${entity.id}:thirsty`];
     }
@@ -2536,7 +2550,14 @@ function compileObservation(agentId, after = 0) {
       .map((person) => ({ ...person }))
       .sort((left, right) => left.id.localeCompare(right.id)),
     exits,
-    entities,
+    // Plant hydration is a continuously projected clock value. It remains
+    // visible to residents, but must not invalidate an otherwise actionable
+    // observation every time the displayed decimal ticks. Explicit
+    // interactions still invalidate through stateVersion, and natural decay
+    // still invalidates when it crosses a meaningful condition boundary.
+    entities: entities.map((entity) =>
+      materialEntityObservation(entity, worldStates.get(entity.id)),
+    ),
     privateJournal: {
       noteCount: privateJournalEntriesForSelf.length,
       accessible: privateJournalAccessible,
