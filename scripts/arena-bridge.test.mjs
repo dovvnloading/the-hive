@@ -132,7 +132,7 @@ async function walkTo(origin, agentToken, target) {
     let response;
     let rejection;
     let lightingHandled = false;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
       response = await boardRequest(origin, '/world/action', agentToken, {
         method: 'POST',
         body: JSON.stringify({
@@ -169,6 +169,10 @@ async function walkTo(origin, agentToken, target) {
         );
         lightingHandled = true;
         break;
+      }
+      if (/(path is in use|reserved|occupied)/u.test(rejection)) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 125));
+        continue;
       }
       if (!retry.observation) break;
     }
@@ -1133,7 +1137,7 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
   assert.equal(firstScene.schemaVersion, 3);
   assert.equal(firstScene.place.occupancy.residentsPresent, 2);
   assert.equal(firstScene.space.residentsPresent, 2);
-  assert.equal(firstScene.space.bodyClearancePx, 24);
+  assert.equal(firstScene.space.bodyClearancePx, 32);
   assert.equal(firstScene.space.conversationRangePx, 70);
   assert.equal(firstScene.people[0].proximity, 'shared-place');
   assert.deepEqual(
@@ -1678,6 +1682,110 @@ void test('shared social space stays approachable while in-use paths require yie
   assert.match(
     (await json(prematureDarkening)).error,
     /Atlas remains in or is entering context; leave room-light-context on/u,
+  );
+
+  const atlasEntersHall = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'atlas-enters-central-hall',
+        observationId: (await observe(origin, tokens.atlas)).observationId,
+        action: 'move',
+        targetId: 'hall-center',
+      }),
+    },
+  );
+  assert.equal(atlasEntersHall.status, 201);
+  const atlasEntersHallBody = await json(atlasEntersHall);
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(atlasEntersHallBody.event.payload.arrivesAt) -
+          Date.now() +
+          5,
+      ),
+    ),
+  );
+  const contextLightOff = await interactAt(
+    origin,
+    tokens.sage,
+    await observe(origin, tokens.sage),
+    'room-light-context',
+    'switch_off',
+  );
+  assert.equal(contextLightOff.observation.place.perception.vision, 'dark');
+  await walkTo(origin, tokens.sage, 'door-context');
+
+  const atlasCrossesWest = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'atlas-crosses-west-from-junction',
+        observationId: (await observe(origin, tokens.atlas)).observationId,
+        action: 'move',
+        targetId: 'hall-west',
+      }),
+    },
+  );
+  assert.equal(atlasCrossesWest.status, 201);
+  const atlasCrossesWestBody = await json(atlasCrossesWest);
+  const sageDoesNotEnterMovingJunction = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'sage-yields-central-corridor-junction',
+        observationId: (await observe(origin, tokens.sage)).observationId,
+        action: 'move',
+        targetId: 'hall-center',
+      }),
+    },
+  );
+  assert.equal(sageDoesNotEnterMovingJunction.status, 409);
+  assert.match(
+    (await json(sageDoesNotEnterMovingJunction)).error,
+    /path is in use by Atlas/u,
+  );
+
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(atlasCrossesWestBody.event.payload.arrivesAt) -
+          Date.now() +
+          5,
+      ),
+    ),
+  );
+  const sageWaitsForVisibleClearance = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'sage-waits-for-corridor-body-clearance',
+        observationId: (await observe(origin, tokens.sage)).observationId,
+        action: 'move',
+        targetId: 'hall-center',
+      }),
+    },
+  );
+  assert.equal(sageWaitsForVisibleClearance.status, 409);
+  assert.match(
+    (await json(sageWaitsForVisibleClearance)).error,
+    /path is in use by Atlas/u,
   );
 });
 

@@ -138,6 +138,7 @@ const PRIVATE_JOURNAL_NOTICE =
   'This volume is private to you. Other residents cannot read its pages.';
 const MAX_PROXIMITY_TEXT_LENGTH = 1_600;
 const MAX_COLLABORATION_OBJECTIVE_LENGTH = 800;
+const CORRIDOR_TRANSIT_CLEARANCE_MS = 600;
 const SOCIAL_RANGE_PX = Math.max(
   RESIDENT_BODY_CLEARANCE_PX + 8,
   Number(process.env.ARENA_SOCIAL_RANGE_PX) || RESIDENT_CONVERSATION_RANGE_PX,
@@ -2407,7 +2408,23 @@ function laneUsers(
   exceptAgentId,
   now = Date.now(),
 ) {
-  return activeResidents(agents).filter((candidate) => {
+  const requested = new Set([fromLocationId, toLocationId]);
+  const sharesChokepoint = (leftLocationId, rightLocationId) =>
+    [leftLocationId, rightLocationId].some((locationId) => {
+      if (!requested.has(locationId)) return false;
+      const location = worldLocationById(locationId);
+      return (
+        location?.kind === 'portal' ||
+        location?.roomId === 'corridor' ||
+        location?.capacity === 1
+      );
+    });
+  const sharesCorridorChokepoint = (leftLocationId, rightLocationId) =>
+    [leftLocationId, rightLocationId].some((locationId) => {
+      if (!requested.has(locationId)) return false;
+      return worldLocationById(locationId)?.roomId === 'corridor';
+    });
+  const active = activeResidents(agents).filter((candidate) => {
     if (candidate.id === exceptAgentId) return false;
     const navigation = activeNavigation(candidate, now);
     if (!navigation) return false;
@@ -2421,19 +2438,35 @@ function laneUsers(
     // Adjacent moves can still collide when they share the same doorway,
     // single-capacity waypoint, or corridor intersection. Reserve that whole
     // chokepoint until the first traversal has factually arrived.
-    const requested = new Set([fromLocationId, toLocationId]);
-    return [navigation.fromLocationId, navigation.toLocationId].some(
-      (locationId) => {
-        if (!requested.has(locationId)) return false;
-        const location = worldLocationById(locationId);
-        return (
-          location?.kind === 'portal' ||
-          location?.roomId === 'corridor' ||
-          location?.capacity === 1
-        );
-      },
-    );
+    return sharesChokepoint(navigation.fromLocationId, navigation.toLocationId);
   });
+  const activeIds = new Set(active.map((candidate) => candidate.id));
+  const settling = [];
+  for (const event of currentRunEvents().slice().reverse()) {
+    if (event.kind !== 'world.navigation') continue;
+    if (event.agentId === exceptAgentId || activeIds.has(event.agentId))
+      continue;
+    const arrivesAt = Date.parse(event.payload.arrivesAt);
+    if (now - arrivesAt >= CORRIDOR_TRANSIT_CLEARANCE_MS) continue;
+    if (arrivesAt > now) continue;
+    if (
+      !sharesCorridorChokepoint(
+        event.payload.fromLocationId,
+        event.payload.toLocationId,
+      )
+    ) {
+      continue;
+    }
+    const candidate = agents.get(event.agentId);
+    if (
+      candidate &&
+      !new Set(['completed', 'failed', 'canceled']).has(candidate.status)
+    ) {
+      settling.push(candidate);
+      activeIds.add(candidate.id);
+    }
+  }
+  return [...active, ...settling];
 }
 
 function movementAwareness(
