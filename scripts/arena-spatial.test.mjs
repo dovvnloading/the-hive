@@ -49,6 +49,24 @@ void test('build plant remains outside the doorway opening and approach lane', (
   );
 });
 
+void test('portal residents stage beside every doorway instead of inside its opening', () => {
+  const doors = STATIONS.filter((station) => station.kind === 'portal');
+  assert.equal(doors.length, 6);
+  for (const door of doors) {
+    assert.equal(door.roomId, 'corridor');
+    assert.equal(door.slots.length, 1);
+    const staging = door.slots[0];
+    assert.equal(staging.y, 50);
+    assert.equal(capsuleIsWorldLegal(staging), true);
+    const horizontalClearancePx =
+      Math.abs(staging.x - door.position.x) * (768 / 100);
+    assert.ok(
+      horizontalClearancePx >= 31,
+      `${door.id} staging bay clears the 36px doorway and 10px body capsule`,
+    );
+  }
+});
+
 function avatar(agentId, position, routeOrder = 0) {
   return {
     agentId,

@@ -2033,18 +2033,18 @@ function purposeForResident(
     opportunities.push({
       id: `care:${entityId}:${state}`,
       kind: 'care',
-      priority: state === 'off' ? 'explore' : 'urgent',
+      priority: 'urgent',
       title:
         state === 'off'
-          ? `Decide whether ${entityId} should remain off`
+          ? `Restore usable visibility with ${entityId}`
           : `Care for ${entityId} (${state})`,
       reason:
         state === 'off'
-          ? 'The room is dim; changing it is optional and should serve a real activity.'
+          ? 'The room is dark; detailed fixtures, clearances, and precision work cannot be perceived safely.'
           : 'A living fixture has a visible unmet need.',
       suggestedAction:
         state === 'off'
-          ? 'Approach the physical switch only if better light serves a chosen purpose.'
+          ? 'Follow the visible route to the physical wall switch, inspect it, and switch the room light on before other work.'
           : `Approach ${entityId}, inspect it, act on the observed condition, and verify the new state.`,
       locationId: entityId,
     });
@@ -2271,6 +2271,67 @@ function roomIdForLocation(locationId) {
   return worldLocationById(locationId)?.roomId ?? 'context';
 }
 
+function roomPerception(roomId, worldStates) {
+  if (roomId === 'corridor') {
+    return {
+      illumination: 'ambient',
+      vision: 'clear',
+      detail: 'The corridor has enough fixed spill light for safe movement.',
+    };
+  }
+  const roomLightId = `room-light-${roomId}`;
+  const roomLight = worldStates.get(roomLightId);
+  if (!roomLight || roomLight.state.power === 'on') {
+    return {
+      illumination: roomLight ? 'warm' : 'ambient',
+      vision: 'clear',
+      roomLightId: roomLight ? roomLightId : undefined,
+      detail: 'Faces, fixtures, controls, and walking clearances are visible.',
+    };
+  }
+  const archiveLampOn =
+    roomId === 'research' &&
+    worldStates.get('archive-lamp')?.state.power === 'on';
+  return {
+    illumination: archiveLampOn ? 'task-lit' : 'dark',
+    vision: archiveLampOn ? 'focused' : 'dark',
+    roomLightId,
+    detail: archiveLampOn
+      ? 'The archive lamp reveals only the reading desk; the rest of the room remains indistinct.'
+      : 'The room is dark. Only silhouettes, the route back, and the wall switch can be resolved safely.',
+  };
+}
+
+function visibleInCurrentLight(entity, perception, locationId) {
+  if (perception.vision === 'clear') return true;
+  if (entity.id === perception.roomLightId) return true;
+  if (
+    perception.vision === 'focused' &&
+    new Set(['archive-desk', 'archive-lamp']).has(entity.id)
+  ) {
+    return true;
+  }
+  return entity.id === locationId;
+}
+
+function preciseInteractionVisible(entity, perception) {
+  if (perception.vision === 'clear') return true;
+  if (entity.id === perception.roomLightId) return true;
+  return (
+    perception.vision === 'focused' &&
+    new Set(['archive-desk', 'archive-lamp']).has(entity.id)
+  );
+}
+
+function residentTouchesRoom(candidate, roomId, now = Date.now()) {
+  const currentRoomId = roomIdForLocation(effectiveLocation(candidate, now));
+  const navigation = activeNavigation(candidate, now);
+  const destinationRoomId = navigation
+    ? roomIdForLocation(navigation.toLocationId)
+    : undefined;
+  return currentRoomId === roomId || destinationRoomId === roomId;
+}
+
 function metricDistance(left, right) {
   const dx = ((right.x - left.x) / 100) * 768;
   const dy = ((right.y - left.y) / 100) * 448;
@@ -2322,11 +2383,27 @@ function laneUsers(
     if (candidate.id === exceptAgentId) return false;
     const navigation = activeNavigation(candidate, now);
     if (!navigation) return false;
-    return (
+    const sameLane =
       (navigation.fromLocationId === fromLocationId &&
         navigation.toLocationId === toLocationId) ||
       (navigation.fromLocationId === toLocationId &&
-        navigation.toLocationId === fromLocationId)
+        navigation.toLocationId === fromLocationId);
+    if (sameLane) return true;
+
+    // Adjacent moves can still collide when they share the same doorway,
+    // single-capacity waypoint, or corridor intersection. Reserve that whole
+    // chokepoint until the first traversal has factually arrived.
+    const requested = new Set([fromLocationId, toLocationId]);
+    return [navigation.fromLocationId, navigation.toLocationId].some(
+      (locationId) => {
+        if (!requested.has(locationId)) return false;
+        const location = worldLocationById(locationId);
+        return (
+          location?.kind === 'portal' ||
+          location?.roomId === 'corridor' ||
+          location?.capacity === 1
+        );
+      },
     );
   });
 }
@@ -2687,6 +2764,8 @@ function compileObservation(agentId, after = 0) {
   const room = roomForLocation(locationId);
   const navigation = activeNavigation(self, now);
   const position = location?.position ?? { x: 50, y: 80 };
+  const perception = roomPerception(roomId, worldStates);
+  const light = perception.illumination;
   const privateJournalEntriesForSelf = privateJournalForAgent(agentId);
   const privateJournalAccessible =
     !navigation &&
@@ -2738,6 +2817,8 @@ function compileObservation(agentId, after = 0) {
           : undefined,
         presence,
         proximity,
+        visibility:
+          perception.vision === 'dark' ? 'silhouette-or-voice' : 'visible',
         movement: relation,
         moving: Boolean(peerNavigation),
         canSpeak:
@@ -2865,96 +2946,123 @@ function compileObservation(agentId, after = 0) {
   const resourcesInRoom = FACILITY_RESOURCES.filter(
     (entity) => entity.roomId === roomId,
   );
-  const entities = [...resourcesInRoom, ...propsInRoom].map((entity) => {
-    const distance = metricDistance(position, entity.position);
-    const projected = worldStates.get(entity.id);
-    const inspected = self.inspectedEntityIds.has(entity.id);
-    const occupants = active
-      .filter(
-        (candidate) =>
-          candidate.id !== agentId &&
-          effectiveLocation(candidate, now) === entity.id,
-      )
-      .map((candidate) => candidate.name);
-    return {
-      id: entity.id,
-      label: entity.label,
-      kind: entity.kind,
-      bearing: bearingLabel(position, entity.position),
-      range: rangeLabel(distance),
-      ...(projected ? { state: publicEntityState(projected.state) } : {}),
-      ...(occupants.length > 0 ? { occupiedBy: occupants } : {}),
-      ...(inspected
-        ? {
-            known: {
-              description:
-                entity.description ??
-                `${entity.label} supports ${entity.capabilities.join(', ') || 'local use'}.`,
-              ...(entity.capabilities.length > 0
-                ? { capabilities: entity.capabilities }
-                : {}),
-              ...(entity.interactions
-                ? {
-                    affordances: entity.interactions.map(
-                      (interaction) => interaction.verb,
-                    ),
-                  }
-                : {}),
-            },
-          }
-        : {}),
-    };
-  });
+  const entities = [...resourcesInRoom, ...propsInRoom]
+    .filter((entity) => visibleInCurrentLight(entity, perception, locationId))
+    .map((entity) => {
+      const distance = metricDistance(position, entity.position);
+      const projected = worldStates.get(entity.id);
+      const inspected = self.inspectedEntityIds.has(entity.id);
+      const precise = preciseInteractionVisible(entity, perception);
+      const occupants = active
+        .filter(
+          (candidate) =>
+            candidate.id !== agentId &&
+            effectiveLocation(candidate, now) === entity.id,
+        )
+        .map((candidate) => candidate.name);
+      if (!precise) {
+        return {
+          id: entity.id,
+          label: 'Indistinct fixture',
+          kind: 'obscured',
+          bearing: bearingLabel(position, entity.position),
+          range: rangeLabel(distance),
+          visibility: 'silhouette',
+          ...(occupants.length > 0 ? { occupiedBy: occupants } : {}),
+        };
+      }
+      return {
+        id: entity.id,
+        label: entity.label,
+        kind: entity.kind,
+        bearing: bearingLabel(position, entity.position),
+        range: rangeLabel(distance),
+        visibility: perception.vision === 'focused' ? 'task-lit' : 'clear',
+        ...(projected ? { state: publicEntityState(projected.state) } : {}),
+        ...(occupants.length > 0 ? { occupiedBy: occupants } : {}),
+        ...(inspected
+          ? {
+              known: {
+                description:
+                  entity.description ??
+                  `${entity.label} supports ${entity.capabilities.join(', ') || 'local use'}.`,
+                ...(entity.capabilities.length > 0
+                  ? { capabilities: entity.capabilities }
+                  : {}),
+                ...(entity.interactions
+                  ? {
+                      affordances: entity.interactions.map(
+                        (interaction) => interaction.verb,
+                      ),
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+    });
   const exits = navigation
     ? []
-    : neighborsForLocation(locationId).map((neighborId) => {
-        const neighbor = worldLocationById(neighborId);
-        const awareness = movementAwareness(
-          agents,
-          agentId,
-          locationId,
-          neighborId,
-          now,
-        );
-        return {
-          to: neighborId,
-          label: neighbor?.label ?? neighborId,
-          bearing: neighbor
-            ? bearingLabel(position, neighbor.position)
-            : 'unknown',
-          range: neighbor
-            ? rangeLabel(metricDistance(position, neighbor.position))
-            : 'unknown',
-          status: awareness?.status ?? 'open',
-          available: awareness?.available ?? true,
-          capacity: awareness?.capacity ?? neighbor?.capacity ?? 1,
-          remainingCapacity: awareness?.remainingCapacity ?? 0,
-          ...(awareness?.present.length
-            ? {
-                occupiedBy: awareness.present.map((candidate) => ({
-                  id: candidate.id,
-                  name: candidate.name,
-                })),
-              }
-            : {}),
-          ...(awareness?.reserved.length
-            ? {
-                reservedBy: awareness.reserved.map((candidate) => ({
-                  id: candidate.id,
-                  name: candidate.name,
-                })),
-              }
-            : {}),
-          ...(awareness?.traffic.length
-            ? {
-                trafficBy: awareness.traffic.map((candidate) => ({
-                  id: candidate.id,
-                  name: candidate.name,
-                })),
-              }
-            : {}),
-        };
-      });
+    : neighborsForLocation(locationId)
+        .filter((neighborId) => {
+          if (perception.vision === 'clear') return true;
+          const neighbor = worldLocationById(neighborId);
+          return (
+            neighborId === perception.roomLightId ||
+            neighbor?.kind === 'portal' ||
+            neighbor?.kind === 'waypoint' ||
+            (perception.vision === 'focused' &&
+              new Set(['archive-desk', 'archive-lamp']).has(neighborId))
+          );
+        })
+        .map((neighborId) => {
+          const neighbor = worldLocationById(neighborId);
+          const awareness = movementAwareness(
+            agents,
+            agentId,
+            locationId,
+            neighborId,
+            now,
+          );
+          return {
+            to: neighborId,
+            label: neighbor?.label ?? neighborId,
+            bearing: neighbor
+              ? bearingLabel(position, neighbor.position)
+              : 'unknown',
+            range: neighbor
+              ? rangeLabel(metricDistance(position, neighbor.position))
+              : 'unknown',
+            status: awareness?.status ?? 'open',
+            available: awareness?.available ?? true,
+            capacity: awareness?.capacity ?? neighbor?.capacity ?? 1,
+            remainingCapacity: awareness?.remainingCapacity ?? 0,
+            ...(awareness?.present.length
+              ? {
+                  occupiedBy: awareness.present.map((candidate) => ({
+                    id: candidate.id,
+                    name: candidate.name,
+                  })),
+                }
+              : {}),
+            ...(awareness?.reserved.length
+              ? {
+                  reservedBy: awareness.reserved.map((candidate) => ({
+                    id: candidate.id,
+                    name: candidate.name,
+                  })),
+                }
+              : {}),
+            ...(awareness?.traffic.length
+              ? {
+                  trafficBy: awareness.traffic.map((candidate) => ({
+                    id: candidate.id,
+                    name: candidate.name,
+                  })),
+                }
+              : {}),
+          };
+        });
   const worldChanges = currentRunEvents()
     .filter(
       (event) =>
@@ -2980,6 +3088,15 @@ function compileObservation(agentId, after = 0) {
       }
       return roomIdForLocation(event.payload.locationId) === roomId;
     })
+    .filter((event) => {
+      if (perception.vision === 'clear' || event.agentId === agentId)
+        return true;
+      if (event.kind === 'world.navigation') return true;
+      const entity = worldEntityById(event.payload.entityId);
+      return entity
+        ? visibleInCurrentLight(entity, perception, locationId)
+        : false;
+    })
     .slice(-8)
     .map((event) => {
       const residentName = agents.get(event.agentId)?.name ?? event.agentId;
@@ -2993,14 +3110,6 @@ function compileObservation(agentId, after = 0) {
       messageVisibleTo(message, agentId) &&
       !latestAcknowledgement(message.payload.messageId, agentId),
   );
-  const lamp = worldStates.get('archive-lamp');
-  const roomLight = worldStates.get(`room-light-${roomId}`);
-  const light =
-    roomLight?.state.power === 'on'
-      ? 'warm'
-      : roomId === 'research' && lamp?.state.power === 'on'
-        ? 'task-lit'
-        : 'low';
   const localNeeds = entities.flatMap((entity) => {
     if (entity.kind === 'plant') {
       const condition = entity.state?.condition;
@@ -3041,6 +3150,7 @@ function compileObservation(agentId, after = 0) {
     locationId,
     roomId,
     light,
+    perception,
     localNeeds,
     navigation,
     space,
@@ -3090,6 +3200,7 @@ function compileObservation(agentId, after = 0) {
         ? `moving ${navigation.fromLocationId}->${navigation.toLocationId} until ${navigation.arrivesAt}`
         : `still${self.engagedResourceId ? ` | using:${self.engagedResourceId}` : ''}`
     }`,
+    `VISION ${perception.vision} | ${perception.detail}`,
     `WITH ${presentPeople.length > 0 ? presentPeople.map((person) => `${person.name}(${person.id})@${person.locationId}/${person.bearing}/${person.range}:${person.activity}${person.moving ? `:${person.movement}->${person.destinationId}` : ':stationary'}`).join(' ; ') : 'no one else in this room'}`,
     `TALK ${talk.length > 0 ? talk.map((person) => `${person.name}(${person.id})@${person.locationId}/${person.bearing}/${person.range}`).join(' ; ') : navigation ? 'unavailable while moving' : 'no one within speaking range'}`,
     `SPACE residents:${space.residentsPresent} | conversation:${talk.length > 0 ? talk.map((person) => `${person.name}(${person.id})`).join(',') : 'none'} | incoming:${incomingPeople.length > 0 ? incomingPeople.map((person) => `${person.name}(${person.id}) ${person.locationId}->${person.destinationId}`).join(',') : 'none'} | leaving:${leavingPeople.length > 0 ? leavingPeople.map((person) => `${person.name}(${person.id}) ${person.locationId}->${person.destinationId}`).join(',') : 'none'} | body-clearance:${RESIDENT_BODY_CLEARANCE_PX}px; speaking-range:${SOCIAL_RANGE_PX}px; approach allowed via open/shared places`,
@@ -3135,7 +3246,9 @@ function compileObservation(agentId, after = 0) {
                 }${entity.occupiedBy ? ` occupied:${entity.occupiedBy.join(',')}` : ''}${entity.known ? ` known:${entity.known.description}` : ''}`,
             )
             .join(' ; ')
-        : 'no fixtures in view'
+        : perception.vision === 'dark'
+          ? 'no detailed fixtures visible in darkness; locate the wall switch or retreat by the visible route'
+          : 'no fixtures in view'
     }`,
     `CHANGED ${worldChanges.length > 0 ? worldChanges.join(' ; ') : 'nothing locally since cursor'}`,
     `BOARD ${locationId === 'comms-board' ? `unread:${visibleUnread.length} accessible here` : visibleUnread.length > 0 ? `chime:${visibleUnread.length} unread; contents are at comms-board` : 'quiet'}`,
@@ -3181,6 +3294,7 @@ function compileObservation(agentId, after = 0) {
       id: roomId,
       name: room?.name ?? 'Central corridor',
       light,
+      perception,
       needs: localNeeds,
       occupancy: {
         residentsPresent: space.residentsPresent,
@@ -3287,7 +3401,7 @@ function agentContext(agentId, after = 0) {
       self.assignmentMode === 'self-directed'
         ? SELF_DIRECTED_DIRECTIVE
         : AUTONOMY_DIRECTIVE,
-    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | WITH ${withLabel} | SPACE present:${observation.space.residentsPresent},talk:${observation.space.conversationalAgentIds.join(',') || 'none'},incoming:${observation.space.incoming.length},leaving:${observation.space.leaving.length} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
+    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | VISION ${observation.place.perception.vision}/${observation.place.light} | WITH ${withLabel} | SPACE present:${observation.space.residentsPresent},talk:${observation.space.conversationalAgentIds.join(',') || 'none'},incoming:${observation.space.incoming.length},leaving:${observation.space.leaving.length} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
     observation,
     self: {
       id: self.id,
@@ -3312,14 +3426,27 @@ function agentContext(agentId, after = 0) {
       purpose: room.purpose,
       input: room.input,
       output: room.output,
+      perception: observation.place.perception,
       resources: FACILITY_RESOURCES.filter(
-        (resource) => resource.roomId === room.id,
+        (resource) =>
+          resource.roomId === room.id &&
+          observation.entities.some(
+            (entity) => entity.id === resource.id && entity.kind !== 'obscured',
+          ),
       ).map((resource) => ({
         id: resource.id,
         label: resource.label,
         capacity: resource.capacity,
         capabilities: resource.capabilities,
       })),
+      obscuredResourceCount: FACILITY_RESOURCES.filter(
+        (resource) => resource.roomId === room.id,
+      ).filter(
+        (resource) =>
+          !observation.entities.some(
+            (entity) => entity.id === resource.id && entity.kind !== 'obscured',
+          ),
+      ).length,
     },
     activeRoster: active.map((agent) => ({
       id: agent.id,
@@ -3433,6 +3560,49 @@ function performWorldAction(agentId, body) {
         `${target.id} is not adjacent to ${locationId}; choose a visible exit`,
       );
     }
+    const from = worldLocationById(locationId);
+    const worldStates = projectWorldEntityStates();
+    const perception = roomPerception(from?.roomId ?? 'corridor', worldStates);
+    if (
+      perception.vision !== 'clear' &&
+      from?.roomId !== 'corridor' &&
+      target.id !== perception.roomLightId &&
+      target.kind !== 'portal' &&
+      target.kind !== 'waypoint' &&
+      !(
+        perception.vision === 'focused' &&
+        new Set(['archive-desk', 'archive-lamp']).has(target.id)
+      )
+    ) {
+      throw httpError(
+        409,
+        `${from?.roomId ?? 'This room'} is too dark to resolve ${target.label}; use ${perception.roomLightId} or retreat by the visible route`,
+      );
+    }
+    const roomLightId =
+      from?.roomId && from.roomId !== 'corridor'
+        ? `room-light-${from.roomId}`
+        : undefined;
+    const roomLight = roomLightId ? worldStates.get(roomLightId) : undefined;
+    const leavingLitRoom =
+      from?.roomId !== 'corridor' && target.kind === 'portal';
+    const otherRoomUsers = leavingLitRoom
+      ? activeResidents(agents).filter(
+          (candidate) =>
+            candidate.id !== agentId &&
+            residentTouchesRoom(candidate, from.roomId),
+        )
+      : [];
+    if (
+      leavingLitRoom &&
+      roomLight?.state.power === 'on' &&
+      otherRoomUsers.length === 0
+    ) {
+      throw httpError(
+        409,
+        `You are the last resident leaving ${from.roomId}; switch off ${roomLightId} at its physical wall control before departure`,
+      );
+    }
     const awareness = movementAwareness(agents, agentId, locationId, target.id);
     if (!awareness?.available) {
       const involved =
@@ -3450,7 +3620,6 @@ function performWorldAction(agentId, body) {
             : `${target.label} is occupied by ${names}; observe or choose another local step`;
       throw httpError(409, message);
     }
-    const from = worldLocationById(locationId);
     const distance = from ? metricDistance(from.position, target.position) : 48;
     const durationMs = Math.max(
       MIN_TRAVEL_MS,
@@ -3491,6 +3660,14 @@ function performWorldAction(agentId, body) {
     const entity = worldEntityById(body.targetId);
     if (!entity) throw httpError(404, 'There is no interactable fixture there');
     const verb = body.verb.trim();
+    const worldStates = projectWorldEntityStates();
+    const perception = roomPerception(entity.roomId, worldStates);
+    if (!preciseInteractionVisible(entity, perception)) {
+      throw httpError(
+        409,
+        `${entity.label} cannot be resolved safely in the dark; use ${perception.roomLightId} before inspecting or operating it`,
+      );
+    }
     if (
       entity.kind === 'room-light' &&
       new Set(['switch_on', 'switch_off']).has(verb)
@@ -3509,7 +3686,7 @@ function performWorldAction(agentId, body) {
       }
     }
     const resource = resourceById(entity.id);
-    const worldState = projectWorldEntityStates().get(entity.id);
+    const worldState = worldStates.get(entity.id);
     const currentState = {
       ...(worldState?.state ?? entity.initialState),
     };

@@ -11,6 +11,7 @@ import { neighborsForLocation } from '../lib/arena/facility-protocol.mjs';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const bridgeScript = resolve(import.meta.dirname, 'arena-bridge.mjs');
+const driverScript = resolve(import.meta.dirname, 'arena-driver.mjs');
 const ingressHookScript = resolve(
   projectRoot,
   '.codex',
@@ -120,9 +121,17 @@ function routeBetween(from, target) {
 
 async function walkTo(origin, agentToken, target) {
   let observation = await observe(origin, agentToken);
-  const path = routeBetween(observation.you.locationId, target);
-  for (const step of path.slice(1)) {
+  let transitions = 0;
+  while (observation.you.locationId !== target) {
+    transitions += 1;
+    if (transitions > 64) {
+      throw new Error(`Facility route to ${target} exceeded 64 transitions`);
+    }
+    const path = routeBetween(observation.you.locationId, target);
+    const step = path[1];
     let response;
+    let rejection;
+    let lightingHandled = false;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       response = await boardRequest(origin, '/world/action', agentToken, {
         method: 'POST',
@@ -135,12 +144,38 @@ async function walkTo(origin, agentToken, target) {
       });
       if (response.status !== 409) break;
       const retry = await json(response);
+      rejection = retry.error ?? retry.message ?? JSON.stringify(retry);
+      observation = retry.observation ?? (await observe(origin, agentToken));
+      if (/too dark to resolve/u.test(rejection)) {
+        const lightId = observation.place.perception.roomLightId;
+        observation = await setRoomLight(
+          origin,
+          agentToken,
+          observation,
+          lightId,
+          'on',
+        );
+        lightingHandled = true;
+        break;
+      }
+      if (/last resident leaving/u.test(rejection)) {
+        const lightId = observation.place.perception.roomLightId;
+        observation = await setRoomLight(
+          origin,
+          agentToken,
+          observation,
+          lightId,
+          'off',
+        );
+        lightingHandled = true;
+        break;
+      }
       if (!retry.observation) break;
-      observation = retry.observation;
     }
+    if (lightingHandled) continue;
     if (response.status !== 201) {
       throw new Error(
-        `World move failed (${response.status}): ${await response.text()}`,
+        `World move failed (${response.status}): ${rejection ?? (await response.text())}`,
       );
     }
     const payload = await json(response);
@@ -163,6 +198,23 @@ async function walkTo(origin, agentToken, target) {
   }
   assert.equal(observation.you.locationId, target);
   return observation;
+}
+
+async function setRoomLight(origin, agentToken, observation, lightId, power) {
+  assert.ok(lightId, 'dark-room response names its physical wall light');
+  if (observation.you.locationId !== lightId) {
+    observation = await walkTo(origin, agentToken, lightId);
+  }
+  const light = observation.entities.find((entity) => entity.id === lightId);
+  if (light?.state?.power === power) return observation;
+  const payload = await interactAt(
+    origin,
+    agentToken,
+    observation,
+    lightId,
+    power === 'on' ? 'switch_on' : 'switch_off',
+  );
+  return payload.observation;
 }
 
 async function interactAt(origin, agentToken, observation, target, verb) {
@@ -221,6 +273,66 @@ async function runHook(script, input, env) {
   assert.equal(exitCode, 0, stderr);
   return JSON.parse(stdout);
 }
+
+async function runDriver(args) {
+  const child = spawn(process.execPath, [driverScript, ...args], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      ARENA_EMITTER_TOKEN: emitterToken,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  const exitCode = await new Promise((resolveExit) =>
+    child.once('exit', resolveExit),
+  );
+  return { exitCode, stdout, stderr };
+}
+
+void test('arena driver rejects invalid activity enums before contacting the bridge', async () => {
+  const invalidPhase = await runDriver([
+    'activity',
+    '--agent',
+    'kernel',
+    '--phase',
+    'invented',
+    '--summary',
+    'invalid phase',
+    '--url',
+    'http://127.0.0.1:1',
+  ]);
+  assert.equal(invalidPhase.exitCode, 1);
+  assert.equal(invalidPhase.stdout, '');
+  assert.match(invalidPhase.stderr, /--phase must be one of:/u);
+  assert.doesNotMatch(invalidPhase.stderr, /Bridge unavailable/u);
+
+  const invalidStatus = await runDriver([
+    'activity',
+    '--agent',
+    'kernel',
+    '--phase',
+    'planning',
+    '--summary',
+    'invalid status',
+    '--status',
+    'paused',
+    '--url',
+    'http://127.0.0.1:1',
+  ]);
+  assert.equal(invalidStatus.exitCode, 1);
+  assert.equal(invalidStatus.stdout, '');
+  assert.match(invalidStatus.stderr, /--status must be one of:/u);
+  assert.doesNotMatch(invalidStatus.stderr, /Bridge unavailable/u);
+});
 
 void test('project hooks capture offline, replay once, inject context, and guard stop', async (t) => {
   const port = await availablePort();
@@ -1359,6 +1471,70 @@ void test('shared social space stays approachable while in-use paths require yie
     sharedCommons.people.find((person) => person.id === 'atlas').proximity,
     'shared-place',
   );
+
+  const atlasAtPortal = await walkTo(origin, tokens.atlas, 'door-context');
+  await walkTo(origin, tokens.sage, 'context-hub');
+  const sageAtContextLight = await walkTo(
+    origin,
+    tokens.sage,
+    'room-light-context',
+  );
+  await interactAt(
+    origin,
+    tokens.sage,
+    sageAtContextLight,
+    'room-light-context',
+    'switch_off',
+  );
+  const sageAtLanding = await walkTo(origin, tokens.sage, 'context-hub');
+  assert.equal(atlasAtPortal.you.locationId, 'door-context');
+  assert.equal(sageAtLanding.you.locationId, 'context-hub');
+  const atlasReadyToClear = await observe(origin, tokens.atlas);
+  const atlasClearsPortal = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'atlas-clears-context-threshold',
+        observationId: atlasReadyToClear.observationId,
+        action: 'move',
+        targetId: 'hall-center',
+      }),
+    },
+  );
+  assert.equal(atlasClearsPortal.status, 201);
+
+  const sageWhileThresholdMoves = await observe(origin, tokens.sage);
+  const thresholdExit = sageWhileThresholdMoves.exits.find(
+    (exit) => exit.to === 'door-context',
+  );
+  assert.equal(thresholdExit.status, 'yield');
+  assert.equal(thresholdExit.available, false);
+  assert.deepEqual(
+    thresholdExit.trafficBy.map((person) => person.id),
+    ['atlas'],
+  );
+  const thresholdConflict = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'sage-yields-adjacent-portal-edge',
+        observationId: sageWhileThresholdMoves.observationId,
+        action: 'move',
+        targetId: 'door-context',
+      }),
+    },
+  );
+  assert.equal(thresholdConflict.status, 409);
+  assert.match(
+    (await json(thresholdConflict)).error,
+    /path is in use by Atlas/u,
+  );
 });
 
 void test('research computers, artifacts, and authenticated context remain agent-authored', async (t) => {
@@ -1589,7 +1765,8 @@ void test('research computers, artifacts, and authenticated context remain agent
       .state.power,
     'on',
   );
-  assert.equal(lit.observation.place.light, 'task-lit');
+  assert.equal(lit.observation.place.light, 'warm');
+  assert.equal(lit.observation.place.perception.vision, 'clear');
 
   const staleSwitch = await boardRequest(origin, '/world/action', sageToken, {
     method: 'POST',
@@ -1635,10 +1812,26 @@ void test('research computers, artifacts, and authenticated context remain agent
     ).known.affordances,
     ['inspect', 'switch_on', 'switch_off'],
   );
-  const ceilingLit = await interactAt(
+  const ceilingDark = await interactAt(
     origin,
     sageToken,
     inspectedRoomLight.observation,
+    'room-light-research',
+    'switch_off',
+  );
+  assert.equal(ceilingDark.observation.place.light, 'task-lit');
+  assert.equal(ceilingDark.observation.place.perception.vision, 'focused');
+  assert.ok(
+    ceilingDark.observation.entities.every((entity) =>
+      new Set(['room-light-research', 'archive-lamp', 'archive-desk']).has(
+        entity.id,
+      ),
+    ),
+  );
+  const ceilingLit = await interactAt(
+    origin,
+    sageToken,
+    ceilingDark.observation,
     'room-light-research',
     'switch_on',
   );
@@ -1649,6 +1842,58 @@ void test('research computers, artifacts, and authenticated context remain agent
     'on',
   );
   assert.equal(ceilingLit.observation.place.light, 'warm');
+
+  const backAtLamp = await walkTo(origin, sageToken, 'archive-lamp');
+  const lampOff = await interactAt(
+    origin,
+    sageToken,
+    backAtLamp,
+    'archive-lamp',
+    'switch_off',
+  );
+  assert.equal(lampOff.observation.place.light, 'warm');
+  const backAtRoomLight = await walkTo(
+    origin,
+    sageToken,
+    'room-light-research',
+  );
+  const fullyDark = await interactAt(
+    origin,
+    sageToken,
+    backAtRoomLight,
+    'room-light-research',
+    'switch_off',
+  );
+  assert.equal(fullyDark.observation.place.light, 'dark');
+  assert.equal(fullyDark.observation.place.perception.vision, 'dark');
+  const darkHub = await walkTo(origin, sageToken, 'research-hub');
+  assert.match(darkHub.text, /^VISION dark /mu);
+  assert.deepEqual(
+    darkHub.entities.map((entity) => entity.id),
+    ['room-light-research'],
+  );
+  const darkContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', sageToken),
+  );
+  assert.equal(darkContext.room.perception.vision, 'dark');
+  assert.equal(darkContext.room.resources.length, 0);
+  assert.ok(darkContext.room.obscuredResourceCount > 0);
+  const blindPlantMove = await boardRequest(
+    origin,
+    '/world/action',
+    sageToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'dark-room-hides-plant-route',
+        observationId: darkHub.observationId,
+        action: 'move',
+        targetId: 'plant-research',
+      }),
+    },
+  );
+  assert.equal(blindPlantMove.status, 409);
+  assert.match((await json(blindPlantMove)).error, /too dark to resolve/u);
 
   const atPlant = await walkTo(origin, sageToken, 'plant-research');
   const inspectedPlant = await interactAt(
@@ -1790,7 +2035,31 @@ void test('research computers, artifacts, and authenticated context remain agent
     201,
   );
 
+  const readyToLeaveResearch = await walkTo(origin, sageToken, 'research-hub');
+  const litDeparture = await boardRequest(origin, '/world/action', sageToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      actionId: 'last-resident-cannot-abandon-light',
+      observationId: readyToLeaveResearch.observationId,
+      action: 'move',
+      targetId: 'door-research',
+    }),
+  });
+  assert.equal(litDeparture.status, 409);
+  assert.match(
+    (await json(litDeparture)).error,
+    /last resident leaving research; switch off room-light-research/u,
+  );
   await walkTo(origin, sageToken, 'comms-board');
+  const lightLifecycle = await json(await fetch(`${origin}/events?after=0`));
+  const lastResearchLightEvent = lightLifecycle.events
+    .filter(
+      (event) =>
+        event.kind === 'world.interaction' &&
+        event.payload.entityId === 'room-light-research',
+    )
+    .at(-1);
+  assert.equal(lastResearchLightEvent.payload.verb, 'switch_off');
 
   const linkedBoard = await boardRequest(origin, '/board/message', sageToken, {
     method: 'POST',

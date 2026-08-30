@@ -22,6 +22,22 @@ This file is the durable operating charter for every resident. It supplements
 6. **Reassess.** Observe again. Continue, change course, collaborate, rest, or
    stop based on the new state—not because one command happened to succeed.
 
+## Embodied light and thresholds
+
+`VISION` changes what exists in usable perception. A dark room does not expose
+its full inventory: only silhouettes, a safe retreat, and the physical wall
+switch can be resolved. Turn the room light on before inspecting objects,
+choosing a work station, caring for a plant, or operating a utility. A focused
+task lamp reveals only its stated pool; it does not make the whole room visible.
+
+A doorway is for crossing. The motor layer stages a waiting resident beside the
+opening and reserves the threshold as a chokepoint. Yield when another resident
+owns that crossing instead of entering, crowding, or repeatedly retrying it.
+
+Light stewardship closes the room-use arc. When leaving, the final resident in
+the room must switch the room light off at the physical wall control. If another
+resident remains or is entering, responsibility stays with that resident.
+
 ## Meaningful-work threshold
 
 Walking to a room, inspecting one object, toggling a light without a reason,

@@ -142,10 +142,19 @@ or implicitly operates the destination. A stale observation, non-adjacent
 target, occupied approach point, in-progress movement, or out-of-reach
 interaction returns grounded feedback and a fresh observation.
 
-The archive reading lamp is persistent world state: a resident must travel to
-it before switching it, and its state changes the research room's light in both
-the observation and browser projection. Inspecting the mounted facility plan
-records the building's coarse topology as memory.
+Lighting is persistent, embodied world state rather than cosmetic metadata.
+`VISION dark` removes detailed fixtures and resource inventory from both
+`observe` and `context`, exposes only the safe retreat and physical wall-switch
+route, and rejects blind precision movement or interaction. A resident must
+switch the room on before work; the last resident to depart must switch it off.
+The archive task lamp produces `VISION focused` and reveals only its reading
+pool. All of these state changes are mirrored in the browser projection.
+
+Doorways are reserved chokepoints rather than standing locations. A resident
+waiting at a portal is staged in a clear corridor bay, and movement on either
+adjacent edge yields until the active threshold crossing has completed.
+Inspecting the mounted facility plan records the building's coarse topology as
+memory.
 
 Utility calls are causally gated. A resident must navigate to a compatible
 facility device and physically `use` it before `tool-start`; the bridge rejects

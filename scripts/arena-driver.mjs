@@ -17,6 +17,22 @@ const DEFAULT_AGENT_TOKEN_DIR = fileURLToPath(
   new URL('../.arena/agent-tokens/', import.meta.url),
 );
 
+const AGENT_PHASES = [
+  'spawning',
+  'planning',
+  'delegating',
+  'researching',
+  'implementing',
+  'tooling',
+  'verifying',
+  'synthesizing',
+  'waiting',
+  'completed',
+  'failed',
+  'canceled',
+];
+const AGENT_ACTIVITY_STATUSES = ['working', 'idle', 'blocked'];
+
 const HELP = `Arena driver — write real Codex subagent activity to the local arena bridge.
 
 Usage:
@@ -37,7 +53,8 @@ Agent lifecycle:
   spawn          --agent ID --name TEXT --role TEXT [--parent ID]
   assign         --agent ID --objective TEXT [--task ID]
                  [--mode directed|self-directed]
-  activity       --agent ID --phase PHASE --summary TEXT [--status working]
+  activity       --agent ID --phase PHASE --summary TEXT
+                 [--status working|idle|blocked]
   complete       --agent ID --summary TEXT
   fail           --agent ID --error TEXT
   stop           --agent ID --reason TEXT
@@ -667,6 +684,14 @@ async function execute(command, args, flags, baseUrl) {
       break;
     case 'activity':
       required(flags, 'agent', 'phase', 'summary');
+      if (!AGENT_PHASES.includes(flags.phase)) {
+        throw new Error(`--phase must be one of: ${AGENT_PHASES.join(', ')}`);
+      }
+      if (flags.status && !AGENT_ACTIVITY_STATUSES.includes(flags.status)) {
+        throw new Error(
+          `--status must be one of: ${AGENT_ACTIVITY_STATUSES.join(', ')}`,
+        );
+      }
       body = emitBody(
         'agent.activity',
         {
