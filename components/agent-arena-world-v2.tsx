@@ -61,7 +61,6 @@ type WorldProps = {
   state: AgentArenaState;
   onSelectAgent: (agentId?: string) => void;
   onOpenJournal: (eventId?: string) => void;
-  onOpenResearch: () => void;
   journalOpen: boolean;
 };
 type CanvasPointEvent = {
@@ -1332,7 +1331,6 @@ export function AgentArenaWorldV2({
   state,
   onSelectAgent,
   onOpenJournal,
-  onOpenResearch,
   journalOpen,
 }: WorldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1564,14 +1562,6 @@ export function AgentArenaWorldV2({
           aria-expanded={journalOpen}
           aria-haspopup="dialog"
           onClick={() => onOpenJournal()}
-        />
-        <button
-          type="button"
-          className="research-hotspot"
-          aria-label={`Open research ledger, ${state.researchTopics.length} topics and ${state.artifacts.filter((artifact) => artifact.kind === 'source-note').length} source notes`}
-          aria-expanded={journalOpen}
-          aria-haspopup="dialog"
-          onClick={onOpenResearch}
         />
       </div>
     </div>

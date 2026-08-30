@@ -60,7 +60,6 @@ type WorldProps = {
   state: AgentArenaState;
   onSelectAgent: (agentId?: string) => void;
   onOpenJournal: (eventId?: string) => void;
-  onOpenResearch: () => void;
   journalOpen: boolean;
 };
 
@@ -280,13 +279,7 @@ function drawSouthWallFaces(
       ({ centerX }) => centerX > room.x && centerX < room.x + room.w,
     );
     if (!opening) {
-      drawRoomWallFaceSegment(
-        context,
-        builder,
-        room,
-        room.x,
-        room.x + room.w,
-      );
+      drawRoomWallFaceSegment(context, builder, room, room.x, room.x + room.w);
       return;
     }
     const openingLeft = opening.centerX - opening.width / 2;
@@ -842,19 +835,13 @@ function drawBuildRoom(
     resourceIsActive(state, 'build-bench-b'),
     'finish',
   );
-  drawVerifyRig(
-    context,
-    618,
-    resourceIsActive(state, 'verify-rig-a'),
-    'trace',
-  );
+  drawVerifyRig(context, 618, resourceIsActive(state, 'verify-rig-a'), 'trace');
   drawVerifyRig(
     context,
     674,
     resourceIsActive(state, 'verify-rig-b'),
     'matrix',
   );
-
 }
 
 function messageAwaitsReceipt(
@@ -981,11 +968,7 @@ function drawUtilityRoom(
     context.fillRect(bayX + 5, 65, 28, 11);
     [0, 1, 2, 3].forEach((port) => {
       context.fillStyle =
-        active && port <= 1
-          ? '#7cc7c0'
-          : index < 2
-            ? '#70818a'
-            : '#8a7964';
+        active && port <= 1 ? '#7cc7c0' : index < 2 ? '#70818a' : '#8a7964';
       context.fillRect(bayX + 7 + port * 7, 68, 3, 3);
     });
     context.fillStyle = '#1a232a';
@@ -1152,9 +1135,7 @@ function drawForeground(context: CanvasRenderingContext2D, bank: ImageBank) {
   NORTH_ROOM_DOORS.forEach(({ centerX, width }) =>
     doorwayJambs(context, centerX, 192, width),
   );
-  SOUTH_ROOM_DOORS.forEach((opening) =>
-    drawSouthDoorFrame(context, opening),
-  );
+  SOUTH_ROOM_DOORS.forEach((opening) => drawSouthDoorFrame(context, opening));
   horizontalWallWithOpenings(context, 32, 736, 192, NORTH_ROOM_DOORS);
   horizontalWallWithOpenings(context, 32, 736, 256, SOUTH_ROOM_DOORS);
   verticalWall(context, 256, 32, 192);
@@ -1426,7 +1407,6 @@ export function AgentArenaWorld({
   state,
   onSelectAgent,
   onOpenJournal,
-  onOpenResearch,
   journalOpen,
 }: WorldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1654,14 +1634,6 @@ export function AgentArenaWorld({
           aria-expanded={journalOpen}
           aria-haspopup="dialog"
           onClick={() => onOpenJournal()}
-        />
-        <button
-          type="button"
-          className="research-hotspot"
-          aria-label={`Open research ledger, ${state.researchTopics.length} topics and ${state.artifacts.filter((artifact) => artifact.kind === 'source-note').length} source notes`}
-          aria-expanded={journalOpen}
-          aria-haspopup="dialog"
-          onClick={onOpenResearch}
         />
       </div>
     </div>

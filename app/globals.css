@@ -160,8 +160,7 @@ button {
 }
 
 .comms-board-hotspot,
-.field-journal-hotspot,
-.research-hotspot {
+.field-journal-hotspot {
   position: absolute;
   z-index: 2;
   padding: 0;
@@ -177,19 +176,10 @@ button {
   height: 9.375%;
 }
 
-.research-hotspot {
-  top: 14.955%;
-  left: 5.599%;
-  width: 13.021%;
-  height: 18.304%;
-}
-
 .comms-board-hotspot:hover,
 .field-journal-hotspot:hover,
-.research-hotspot:hover,
 .comms-board-hotspot:focus-visible,
-.field-journal-hotspot:focus-visible,
-.research-hotspot:focus-visible {
+.field-journal-hotspot:focus-visible {
   background: rgba(214, 185, 140, 0.06);
   border-color: rgba(214, 185, 140, 0.78);
   outline: none;

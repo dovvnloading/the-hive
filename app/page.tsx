@@ -32,7 +32,6 @@ export default function Home() {
         state={arena.state}
         journalOpen={journalView !== undefined}
         onOpenJournal={(eventId) => openJournal('journal', eventId)}
-        onOpenResearch={() => openJournal('research')}
         onSelectAgent={(agentId) => {
           if (!agentId) return;
           arena.selectAgent(agentId);
