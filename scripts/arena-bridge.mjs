@@ -24,6 +24,8 @@ import {
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
   LIGHT_SWITCH_REACH_PX,
+  RESIDENT_BODY_CLEARANCE_PX,
+  RESIDENT_CONVERSATION_RANGE_PX,
   RESEARCH_TRACKS,
   inferToolCapability,
   neighborsForLocation,
@@ -136,8 +138,8 @@ const PRIVATE_JOURNAL_NOTICE =
 const MAX_PROXIMITY_TEXT_LENGTH = 1_600;
 const MAX_COLLABORATION_OBJECTIVE_LENGTH = 800;
 const SOCIAL_RANGE_PX = Math.max(
-  32,
-  Number(process.env.ARENA_SOCIAL_RANGE_PX) || 70,
+  RESIDENT_BODY_CLEARANCE_PX + 8,
+  Number(process.env.ARENA_SOCIAL_RANGE_PX) || RESIDENT_CONVERSATION_RANGE_PX,
 );
 const MAX_CHAT_PROMPT_LENGTH = 500_000;
 const MAX_CHAT_SUMMARY_LENGTH = 800;
@@ -1675,6 +1677,7 @@ function projectAgentStates() {
         toLocationId: event.payload.toLocationId,
         startedAt: event.payload.startedAt,
         arrivesAt: event.payload.arrivesAt,
+        reason: event.payload.reason,
       };
     } else if (event.kind === 'world.interaction') {
       if (event.payload.verb === 'inspect') {
@@ -1996,6 +1999,92 @@ function rangeLabel(distancePixels) {
   return 'room';
 }
 
+function activeResidents(agents) {
+  return [...agents.values()].filter(
+    (candidate) =>
+      !new Set(['completed', 'failed', 'canceled']).has(candidate.status),
+  );
+}
+
+function locationClaims(agents, targetId, exceptAgentId, now = Date.now()) {
+  const present = [];
+  const reserved = [];
+  for (const candidate of activeResidents(agents)) {
+    if (candidate.id === exceptAgentId) continue;
+    const navigation = activeNavigation(candidate, now);
+    if (effectiveLocation(candidate, now) === targetId) present.push(candidate);
+    if (navigation?.toLocationId === targetId) reserved.push(candidate);
+  }
+  return { present, reserved };
+}
+
+function laneUsers(
+  agents,
+  fromLocationId,
+  toLocationId,
+  exceptAgentId,
+  now = Date.now(),
+) {
+  return activeResidents(agents).filter((candidate) => {
+    if (candidate.id === exceptAgentId) return false;
+    const navigation = activeNavigation(candidate, now);
+    if (!navigation) return false;
+    return (
+      (navigation.fromLocationId === fromLocationId &&
+        navigation.toLocationId === toLocationId) ||
+      (navigation.fromLocationId === toLocationId &&
+        navigation.toLocationId === fromLocationId)
+    );
+  });
+}
+
+function movementAwareness(
+  agents,
+  agentId,
+  fromLocationId,
+  toLocationId,
+  now = Date.now(),
+) {
+  const target = worldLocationById(toLocationId);
+  if (!target) return undefined;
+  const claims = locationClaims(agents, toLocationId, agentId, now);
+  const traffic = laneUsers(agents, fromLocationId, toLocationId, agentId, now);
+  const claimedBy = new Map(
+    [...claims.present, ...claims.reserved].map((candidate) => [
+      candidate.id,
+      candidate,
+    ]),
+  );
+  const remainingCapacity = Math.max(0, target.capacity - claimedBy.size);
+  let status = 'open';
+  if (traffic.length > 0) status = 'yield';
+  else if (claims.present.length >= target.capacity) status = 'occupied';
+  else if (claimedBy.size >= target.capacity) status = 'reserved';
+  else if (claimedBy.size > 0) status = 'shared';
+  return {
+    status,
+    available: new Set(['open', 'shared']).has(status),
+    capacity: target.capacity,
+    remainingCapacity,
+    present: claims.present,
+    reserved: claims.reserved,
+    traffic,
+  };
+}
+
+function movementRelation(navigation, observerRoomId) {
+  if (!navigation) return 'stationary';
+  const fromRoomId = roomIdForLocation(navigation.fromLocationId);
+  const toRoomId = roomIdForLocation(navigation.toLocationId);
+  if (fromRoomId !== observerRoomId && toRoomId === observerRoomId)
+    return 'entering-room';
+  if (fromRoomId === observerRoomId && toRoomId !== observerRoomId)
+    return 'leaving-room';
+  if (fromRoomId === observerRoomId && toRoomId === observerRoomId)
+    return 'moving-within-room';
+  return 'passing-nearby';
+}
+
 function speechPreview(text, maximum = 96) {
   const normalized = text.replace(/\s+/gu, ' ').trim();
   const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
@@ -2310,16 +2399,19 @@ function compileObservation(agentId, after = 0) {
     !navigation &&
     locationId === PRIVATE_JOURNAL_RESOURCE_ID &&
     self.engagedResourceId === PRIVATE_JOURNAL_RESOURCE_ID;
-  const active = [...agents.values()].filter(
-    (candidate) =>
-      !new Set(['completed', 'failed', 'canceled']).has(candidate.status),
-  );
+  const active = activeResidents(agents);
   const people = active
-    .filter(
-      (candidate) =>
-        candidate.id !== agentId &&
-        roomIdForLocation(effectiveLocation(candidate, now)) === roomId,
-    )
+    .filter((candidate) => {
+      if (candidate.id === agentId) return false;
+      const peerNavigation = activeNavigation(candidate, now);
+      const currentRoomId = roomIdForLocation(
+        effectiveLocation(candidate, now),
+      );
+      const destinationRoomId = peerNavigation
+        ? roomIdForLocation(peerNavigation.toLocationId)
+        : undefined;
+      return currentRoomId === roomId || destinationRoomId === roomId;
+    })
     .map((candidate) => {
       const peerLocationId = effectiveLocation(candidate, now);
       const peerLocation = worldLocationById(peerLocationId);
@@ -2327,6 +2419,17 @@ function compileObservation(agentId, after = 0) {
         ? metricDistance(position, peerLocation.position)
         : Number.POSITIVE_INFINITY;
       const peerNavigation = activeNavigation(candidate, now);
+      const presence =
+        roomIdForLocation(peerLocationId) === roomId ? 'present' : 'incoming';
+      const relation = movementRelation(peerNavigation, roomId);
+      const proximity =
+        peerLocationId === locationId
+          ? 'shared-place'
+          : peerDistance < RESIDENT_BODY_CLEARANCE_PX
+            ? 'body-close'
+            : peerDistance < SOCIAL_RANGE_PX
+              ? 'conversation'
+              : 'room';
       return {
         id: candidate.id,
         name: candidate.name,
@@ -2340,11 +2443,29 @@ function compileObservation(agentId, after = 0) {
         distancePx: Number.isFinite(peerDistance)
           ? Math.round(peerDistance * 10) / 10
           : undefined,
+        presence,
+        proximity,
+        movement: relation,
         moving: Boolean(peerNavigation),
         canSpeak:
-          !navigation && !peerNavigation && peerDistance < SOCIAL_RANGE_PX,
+          presence === 'present' &&
+          !navigation &&
+          !peerNavigation &&
+          peerDistance < SOCIAL_RANGE_PX,
+        ...(peerNavigation
+          ? {
+              destinationId: peerNavigation.toLocationId,
+              arrivesAt: peerNavigation.arrivesAt,
+              ...(peerNavigation.reason
+                ? { movementReason: peerNavigation.reason }
+                : {}),
+            }
+          : {}),
       };
     });
+  const presentPeople = people.filter(
+    (person) => person.presence === 'present',
+  );
   const talk = people
     .filter((person) => person.canSpeak)
     .map((person) => ({
@@ -2355,6 +2476,37 @@ function compileObservation(agentId, after = 0) {
       range: person.range,
       distancePx: person.distancePx,
     }));
+  const incomingPeople = people.filter(
+    (person) => person.movement === 'entering-room',
+  );
+  const leavingPeople = people.filter(
+    (person) => person.movement === 'leaving-room',
+  );
+  const space = {
+    bodyClearancePx: RESIDENT_BODY_CLEARANCE_PX,
+    conversationRangePx: SOCIAL_RANGE_PX,
+    residentsPresent: presentPeople.length + 1,
+    presentAgentIds: presentPeople
+      .map((person) => person.id)
+      .sort((left, right) => left.localeCompare(right)),
+    conversationalAgentIds: talk
+      .map((person) => person.id)
+      .sort((left, right) => left.localeCompare(right)),
+    incoming: incomingPeople.map((person) => ({
+      agentId: person.id,
+      from: person.locationId,
+      to: person.destinationId,
+      arrivesAt: person.arrivesAt,
+    })),
+    leaving: leavingPeople.map((person) => ({
+      agentId: person.id,
+      from: person.locationId,
+      to: person.destinationId,
+      arrivesAt: person.arrivesAt,
+    })),
+    socialApproach:
+      'Allowed through an open or shared destination; physical overlap remains blocked.',
+  };
   const socialEvents = currentProximitySpeech().filter((event) =>
     proximitySpeechVisibleTo(event, agentId),
   );
@@ -2464,6 +2616,13 @@ function compileObservation(agentId, after = 0) {
     ? []
     : neighborsForLocation(locationId).map((neighborId) => {
         const neighbor = worldLocationById(neighborId);
+        const awareness = movementAwareness(
+          agents,
+          agentId,
+          locationId,
+          neighborId,
+          now,
+        );
         return {
           to: neighborId,
           label: neighbor?.label ?? neighborId,
@@ -2473,6 +2632,34 @@ function compileObservation(agentId, after = 0) {
           range: neighbor
             ? rangeLabel(metricDistance(position, neighbor.position))
             : 'unknown',
+          status: awareness?.status ?? 'open',
+          available: awareness?.available ?? true,
+          capacity: awareness?.capacity ?? neighbor?.capacity ?? 1,
+          remainingCapacity: awareness?.remainingCapacity ?? 0,
+          ...(awareness?.present.length
+            ? {
+                occupiedBy: awareness.present.map((candidate) => ({
+                  id: candidate.id,
+                  name: candidate.name,
+                })),
+              }
+            : {}),
+          ...(awareness?.reserved.length
+            ? {
+                reservedBy: awareness.reserved.map((candidate) => ({
+                  id: candidate.id,
+                  name: candidate.name,
+                })),
+              }
+            : {}),
+          ...(awareness?.traffic.length
+            ? {
+                trafficBy: awareness.traffic.map((candidate) => ({
+                  id: candidate.id,
+                  name: candidate.name,
+                })),
+              }
+            : {}),
         };
       });
   const worldChanges = currentRunEvents()
@@ -2481,6 +2668,14 @@ function compileObservation(agentId, after = 0) {
         event.sequence > after &&
         (event.kind === 'world.navigation' ||
           event.kind === 'world.interaction'),
+    )
+    .filter((event) =>
+      event.kind === 'world.navigation'
+        ? Boolean(
+            worldLocationById(event.payload.fromLocationId) &&
+            worldLocationById(event.payload.toLocationId),
+          )
+        : Boolean(worldEntityById(event.payload.entityId)),
     )
     .filter((event) => {
       if (event.agentId === agentId) return true;
@@ -2493,11 +2688,12 @@ function compileObservation(agentId, after = 0) {
       return roomIdForLocation(event.payload.locationId) === roomId;
     })
     .slice(-8)
-    .map((event) =>
-      event.kind === 'world.navigation'
-        ? `${event.agentId} moved ${event.payload.fromLocationId} -> ${event.payload.toLocationId}`
-        : `${event.agentId} ${event.payload.verb} ${event.payload.entityId}: ${event.payload.result}`,
-    );
+    .map((event) => {
+      const residentName = agents.get(event.agentId)?.name ?? event.agentId;
+      return event.kind === 'world.navigation'
+        ? `${residentName} moved ${event.payload.fromLocationId} -> ${event.payload.toLocationId}`
+        : `${residentName} ${event.payload.verb} ${event.payload.entityId}: ${event.payload.result}`;
+    });
   const visibleUnread = currentBoardMessages().filter(
     (message) =>
       message.agentId !== agentId &&
@@ -2547,6 +2743,7 @@ function compileObservation(agentId, after = 0) {
     light,
     localNeeds,
     navigation,
+    space,
     people: people
       .map((person) => ({ ...person }))
       .sort((left, right) => left.id.localeCompare(right.id)),
@@ -2578,20 +2775,41 @@ function compileObservation(agentId, after = 0) {
     })),
   });
   const lines = [
-    `OBS HIVE/2 ${observationId} SEQ ${state.sequence}`,
+    `OBS HIVE/3 ${observationId} SEQ ${state.sequence}`,
     `YOU ${self.name} | ${self.role} | ${self.assignmentMode === 'self-directed' ? 'self-directed; no imposed objective' : `assignment: ${self.objective}`}`,
     `HERE ${locationId} / ${room?.name ?? 'Central corridor'} | light:${light} | ${
       navigation
         ? `moving ${navigation.fromLocationId}->${navigation.toLocationId} until ${navigation.arrivesAt}`
         : `still${self.engagedResourceId ? ` | using:${self.engagedResourceId}` : ''}`
     }`,
-    `WITH ${people.length > 0 ? people.map((person) => `${person.name}(${person.id})@${person.locationId}/${person.bearing}/${person.range}:${person.activity}${person.moving ? ':moving' : ':still'}`).join(' ; ') : 'no one nearby'}`,
+    `WITH ${presentPeople.length > 0 ? presentPeople.map((person) => `${person.name}(${person.id})@${person.locationId}/${person.bearing}/${person.range}:${person.activity}${person.moving ? `:${person.movement}->${person.destinationId}` : ':stationary'}`).join(' ; ') : 'no one else in this room'}`,
     `TALK ${talk.length > 0 ? talk.map((person) => `${person.name}(${person.id})@${person.locationId}/${person.bearing}/${person.range}`).join(' ; ') : navigation ? 'unavailable while moving' : 'no one within speaking range'}`,
+    `SPACE residents:${space.residentsPresent} | conversation:${talk.length > 0 ? talk.map((person) => `${person.name}(${person.id})`).join(',') : 'none'} | incoming:${incomingPeople.length > 0 ? incomingPeople.map((person) => `${person.name}(${person.id}) ${person.locationId}->${person.destinationId}`).join(',') : 'none'} | leaving:${leavingPeople.length > 0 ? leavingPeople.map((person) => `${person.name}(${person.id}) ${person.locationId}->${person.destinationId}`).join(',') : 'none'} | body-clearance:${RESIDENT_BODY_CLEARANCE_PX}px; speaking-range:${SOCIAL_RANGE_PX}px; approach allowed via open/shared places`,
     `HEARD ${heard.length > 0 ? heard.map((speech) => `#${speech.sequence} ${speech.speechId} ${speech.fromName}(${speech.fromAgentId})->${speech.targetName}(${speech.targetAgentId}) [${speech.speechAct}] ${JSON.stringify(speech.text)}`).join(' ; ') : 'nothing new within earshot since cursor'}`,
     `HEARD_PAGE through:${heardThroughSequence} ${heardHasMore ? `more:${audibleAfter.length - heardPage.length}; observe --after ${heardThroughSequence}` : 'complete'}`,
     `INVITES ${invitations.length > 0 ? invitations.map((invitation) => `${invitation.invitationId} ${invitation.fromName}(${invitation.fromAgentId})->${invitation.toName}(${invitation.toAgentId}) ${invitation.mode}:${invitation.status} objective=${JSON.stringify(invitation.objective)}`).join(' ; ') : 'none'}`,
     `COLLAB ${collaborations.length > 0 ? collaborations.map((invitation) => `${invitation.invitationId} ${invitation.fromName}(${invitation.fromAgentId})+${invitation.toName}(${invitation.toAgentId}) ${invitation.mode} consent-recorded; shared work awaits an assignment`).join(' ; ') : 'none accepted'}`,
-    `EXITS ${exits.length > 0 ? exits.map((exit) => `${exit.to}@${exit.bearing}/${exit.range}`).join(' ; ') : navigation ? 'none while moving' : 'none'}`,
+    `EXITS ${
+      exits.length > 0
+        ? exits
+            .map((exit) => {
+              const involved = [
+                ...(exit.trafficBy ?? []),
+                ...(exit.reservedBy ?? []),
+                ...(exit.occupiedBy ?? []),
+              ];
+              const names = [
+                ...new Map(
+                  involved.map((person) => [person.id, person.name]),
+                ).values(),
+              ];
+              return `${exit.to}@${exit.bearing}/${exit.range}/${exit.status}${names.length > 0 ? `:${names.join(',')}` : ''}`;
+            })
+            .join(' ; ')
+        : navigation
+          ? 'none while moving'
+          : 'none'
+    }`,
     `NEEDS ${localNeeds.length > 0 ? localNeeds.join(' ; ') : 'no obvious local urgency'}`,
     `SEE ${
       entities.length > 0
@@ -2628,13 +2846,14 @@ function compileObservation(agentId, after = 0) {
                 event.payload.toLocationId,
               ]),
           ]
+            .filter((value) => worldLocationById(value))
             .filter((value, index, values) => values.indexOf(value) === index)
             .join(',')}`
     }`,
   ];
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     observationId,
     sequence: state.sequence,
     after,
@@ -2653,7 +2872,13 @@ function compileObservation(agentId, after = 0) {
       name: room?.name ?? 'Central corridor',
       light,
       needs: localNeeds,
+      occupancy: {
+        residentsPresent: space.residentsPresent,
+        incoming: space.incoming.length,
+        leaving: space.leaving.length,
+      },
     },
+    space,
     people,
     talk,
     heard,
@@ -2684,12 +2909,9 @@ function agentContext(agentId, after = 0) {
   const agents = projectAgentStates();
   const self = agents.get(agentId);
   if (!self) throw httpError(403, 'Agent is not projected in this run');
-  const active = [...agents.values()]
-    .filter(
-      (agent) =>
-        !new Set(['completed', 'failed', 'canceled']).has(agent.status),
-    )
-    .sort((left, right) => left.id.localeCompare(right.id));
+  const active = activeResidents(agents).sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
   const locationId = effectiveLocation(self);
   const room = roomForLocation(locationId) ?? {
     id: 'corridor',
@@ -2742,6 +2964,7 @@ function agentContext(agentId, after = 0) {
     .filter(([roomId]) => roomId !== room.id)
     .map(([roomId, count]) => `${roomId}:${count}`)
     .join(',');
+  const observation = compileObservation(agentId, after);
 
   return {
     schemaVersion: 1,
@@ -2752,8 +2975,8 @@ function agentContext(agentId, after = 0) {
       self.assignmentMode === 'self-directed'
         ? SELF_DIRECTED_DIRECTIVE
         : AUTONOMY_DIRECTIVE,
-    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | WITH ${withLabel} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
-    observation: compileObservation(agentId, after),
+    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | WITH ${withLabel} | SPACE present:${observation.space.residentsPresent},talk:${observation.space.conversationalAgentIds.join(',') || 'none'},incoming:${observation.space.incoming.length},leaving:${observation.space.leaving.length} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
+    observation,
     self: {
       id: self.id,
       name: self.name,
@@ -2893,18 +3116,22 @@ function performWorldAction(agentId, body) {
         `${target.id} is not adjacent to ${locationId}; choose a visible exit`,
       );
     }
-    const occupants = [...agents.values()].filter(
-      (candidate) =>
-        candidate.id !== agentId &&
-        !new Set(['completed', 'failed', 'canceled']).has(candidate.status) &&
-        (effectiveLocation(candidate) === target.id ||
-          activeNavigation(candidate)?.toLocationId === target.id),
-    );
-    if (occupants.length >= target.capacity) {
-      throw httpError(
-        409,
-        `${target.label} is occupied; observe or choose another local step`,
-      );
+    const awareness = movementAwareness(agents, agentId, locationId, target.id);
+    if (!awareness?.available) {
+      const involved =
+        awareness.status === 'yield'
+          ? awareness.traffic
+          : awareness.status === 'reserved'
+            ? awareness.reserved
+            : awareness.present;
+      const names = involved.map((candidate) => candidate.name).join(', ');
+      const message =
+        awareness.status === 'yield'
+          ? `${target.label} path is in use by ${names}; yield, then observe again`
+          : awareness.status === 'reserved'
+            ? `${target.label} is reserved for ${names}; observe or choose another local step`
+            : `${target.label} is occupied by ${names}; observe or choose another local step`;
+      throw httpError(409, message);
     }
     const from = worldLocationById(locationId);
     const distance = from ? metricDistance(from.position, target.position) : 48;

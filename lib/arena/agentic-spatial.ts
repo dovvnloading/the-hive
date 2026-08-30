@@ -1,5 +1,8 @@
 import type { AvatarProjection, Vec2 } from './agentic-types';
-import { FACILITY_COLLISION_GEOMETRY } from './facility-protocol.mjs';
+import {
+  FACILITY_COLLISION_GEOMETRY,
+  RESIDENT_BODY_CLEARANCE_PX,
+} from './facility-protocol.mjs';
 
 export const ARENA_WORLD_WIDTH = 768;
 export const ARENA_WORLD_HEIGHT = 448;
@@ -7,10 +10,8 @@ export const ARENA_WORLD_HEIGHT = 448;
 // Agent-agent avoidance uses a taller body capsule than the ground-contact
 // capsule used against architecture. Residents render at 24 x 48px; a
 // shadow-only circle would still let bodies merge.
-const CAPSULE_RADIUS_PX = 10;
 const CAPSULE_SEGMENT_HALF_PX = 7;
-const CAPSULE_CLEARANCE_PX = 2;
-const MIN_CENTER_DISTANCE_PX = (CAPSULE_RADIUS_PX + CAPSULE_CLEARANCE_PX) * 2;
+const MIN_CENTER_DISTANCE_PX = RESIDENT_BODY_CLEARANCE_PX;
 const NEARBY_DISTANCE_PX = 72;
 const WORLD_CAPSULE_RADIUS_PX = 10;
 const WORLD_CAPSULE_SEGMENT_HALF_PX = 2;
@@ -86,7 +87,8 @@ export function worldCollisionIds(position: Vec2) {
   const collisions = (FACILITY_COLLISION_GEOMETRY.solids as SolidRect[])
     .filter((rect) => capsuleIntersectsRect(position, rect))
     .map((rect) => rect.id);
-  if (!capsuleInsideNavigableBounds(position)) collisions.unshift('world-bounds');
+  if (!capsuleInsideNavigableBounds(position))
+    collisions.unshift('world-bounds');
   return collisions;
 }
 
@@ -184,19 +186,16 @@ function separateFromWithinWorld(position: Vec2, blocker: Vec2, salt: number) {
     const angle = ((index + salt) / 16) * Math.PI * 2;
     return {
       x:
-        ((obstacle.x + Math.cos(angle) * separationPx) /
-          ARENA_WORLD_WIDTH) *
+        ((obstacle.x + Math.cos(angle) * separationPx) / ARENA_WORLD_WIDTH) *
         100,
       y:
-        ((obstacle.y + Math.sin(angle) * separationPx) /
-          ARENA_WORLD_HEIGHT) *
+        ((obstacle.y + Math.sin(angle) * separationPx) / ARENA_WORLD_HEIGHT) *
         100,
     };
   })
     .filter(
       (candidate) =>
-        capsuleIsWorldLegal(candidate) &&
-        !capsulesOverlap(candidate, blocker),
+        capsuleIsWorldLegal(candidate) && !capsulesOverlap(candidate, blocker),
     )
     .sort((left, right) => {
       const leftPoint = pixelPoint(left);

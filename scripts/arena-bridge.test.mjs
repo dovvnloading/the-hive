@@ -951,11 +951,18 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
   }
 
   const firstScene = await observe(origin, tokens.atlas);
+  assert.equal(firstScene.schemaVersion, 3);
+  assert.equal(firstScene.place.occupancy.residentsPresent, 2);
+  assert.equal(firstScene.space.residentsPresent, 2);
+  assert.equal(firstScene.space.bodyClearancePx, 24);
+  assert.equal(firstScene.space.conversationRangePx, 70);
+  assert.equal(firstScene.people[0].proximity, 'shared-place');
   assert.deepEqual(
     firstScene.talk.map((person) => person.id),
     ['sage'],
   );
   assert.match(firstScene.text, /TALK Sage\(sage\)/u);
+  assert.match(firstScene.text, /SPACE residents:2/u);
 
   const sayBody = {
     actionId: 'speech-say-one',
@@ -1138,6 +1145,210 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
   assert.match(
     (await json(distantSpeech)).error,
     /(outside speaking range|wall separates the two people)/u,
+  );
+});
+
+void test('shared social space stays approachable while in-use paths require yielding', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-spatial-awareness-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '800',
+        ARENA_SOCIAL_RANGE_PX: '80',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  t.after(async () => {
+    if (child.exitCode === null) child.kill('SIGTERM');
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once('exit', resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  await waitForHealth(origin, child);
+  await postEvent(origin, {
+    kind: 'run.started',
+    reset: true,
+    payload: { objective: 'Exercise layered spatial awareness' },
+  });
+  const tokens = {};
+  for (const [agentId, name] of [
+    ['atlas', 'Atlas'],
+    ['sage', 'Sage'],
+  ]) {
+    const spawned = await postEvent(origin, {
+      kind: 'agent.spawned',
+      agentId,
+      payload: { name, role: 'Resident verifier' },
+    });
+    tokens[agentId] = (await json(spawned)).agentToken;
+  }
+
+  const atlasAtLift = await observe(origin, tokens.atlas);
+  const atlasMove = await boardRequest(origin, '/world/action', tokens.atlas, {
+    method: 'POST',
+    body: JSON.stringify({
+      actionId: 'atlas-takes-commons-lane',
+      observationId: atlasAtLift.observationId,
+      action: 'move',
+      targetId: 'context-hub',
+      reason: 'Make room while keeping Sage within social reach.',
+    }),
+  });
+  assert.equal(atlasMove.status, 201);
+  const atlasMoveBody = await json(atlasMove);
+
+  const sageWhileAtlasMoves = await observe(origin, tokens.sage);
+  const atlasPerceived = sageWhileAtlasMoves.people.find(
+    (person) => person.id === 'atlas',
+  );
+  assert.equal(atlasPerceived.movement, 'moving-within-room');
+  assert.equal(atlasPerceived.destinationId, 'context-hub');
+  const reservedExit = sageWhileAtlasMoves.exits.find(
+    (exit) => exit.to === 'context-hub',
+  );
+  assert.equal(reservedExit.status, 'yield');
+  assert.equal(reservedExit.available, false);
+  assert.deepEqual(
+    reservedExit.trafficBy.map((person) => person.id),
+    ['atlas'],
+  );
+  assert.match(
+    sageWhileAtlasMoves.text,
+    /EXITS context-hub@[^\n]+\/yield:Atlas/u,
+  );
+
+  const conflictingMove = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'sage-does-not-run-into-atlas',
+        observationId: sageWhileAtlasMoves.observationId,
+        action: 'move',
+        targetId: 'context-hub',
+      }),
+    },
+  );
+  assert.equal(conflictingMove.status, 409);
+  assert.match((await json(conflictingMove)).error, /path is in use by Atlas/u);
+
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(atlasMoveBody.event.payload.arrivesAt) - Date.now() + 5,
+      ),
+    ),
+  );
+  const atlasAtHub = await observe(origin, tokens.atlas);
+  const atlasToCommons = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'atlas-enters-shared-commons',
+        observationId: atlasAtHub.observationId,
+        action: 'move',
+        targetId: 'commons',
+        reason: 'Choose a shared place where conversation remains possible.',
+      }),
+    },
+  );
+  assert.equal(atlasToCommons.status, 201);
+  const atlasToCommonsBody = await json(atlasToCommons);
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(atlasToCommonsBody.event.payload.arrivesAt) - Date.now() + 5,
+      ),
+    ),
+  );
+
+  let sageScene = await observe(origin, tokens.sage);
+  const sageToHub = await boardRequest(origin, '/world/action', tokens.sage, {
+    method: 'POST',
+    body: JSON.stringify({
+      actionId: 'sage-follows-after-clearance',
+      observationId: sageScene.observationId,
+      action: 'move',
+      targetId: 'context-hub',
+    }),
+  });
+  assert.equal(sageToHub.status, 201);
+  const sageToHubBody = await json(sageToHub);
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(sageToHubBody.event.payload.arrivesAt) - Date.now() + 5,
+      ),
+    ),
+  );
+
+  sageScene = await observe(origin, tokens.sage);
+  const sharedExit = sageScene.exits.find((exit) => exit.to === 'commons');
+  assert.equal(sharedExit.status, 'shared');
+  assert.equal(sharedExit.available, true);
+  assert.deepEqual(
+    sharedExit.occupiedBy.map((person) => person.id),
+    ['atlas'],
+  );
+  const socialApproach = await boardRequest(
+    origin,
+    '/world/action',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: 'sage-approaches-atlas-socially',
+        observationId: sageScene.observationId,
+        action: 'move',
+        targetId: 'commons',
+        reason: 'Approach Atlas into conversational range.',
+      }),
+    },
+  );
+  assert.equal(socialApproach.status, 201);
+  const socialApproachBody = await json(socialApproach);
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(
+        0,
+        Date.parse(socialApproachBody.event.payload.arrivesAt) - Date.now() + 5,
+      ),
+    ),
+  );
+  const sharedCommons = await observe(origin, tokens.sage);
+  assert.equal(sharedCommons.space.residentsPresent, 2);
+  assert.deepEqual(
+    sharedCommons.talk.map((person) => person.id),
+    ['atlas'],
+  );
+  assert.equal(
+    sharedCommons.people.find((person) => person.id === 'atlas').proximity,
+    'shared-place',
   );
 });
 
