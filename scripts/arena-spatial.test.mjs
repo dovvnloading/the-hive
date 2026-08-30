@@ -73,7 +73,7 @@ void test('station reservations never return an already reserved working slot', 
   );
 });
 
-void test('lift arrivals stage in visually separated capsule slots', () => {
+void test('Commons arrivals stage in visually separated capsule slots', () => {
   const reserved = [];
   for (const agentId of ['atlas', 'ohm', 'dalton', 'sage', 'nova', 'kernel']) {
     const slot = slotForAgent('spawn-lift', agentId, reserved);
@@ -167,8 +167,8 @@ void test('all station slots and semantic edge routes clear static world geometr
     }
   }
 
-  const lift = stationById('spawn-lift');
-  for (const slot of lift.slots) {
+  const arrival = stationById('spawn-lift');
+  for (const slot of arrival.slots) {
     const pixelY = (slot.y / 100) * 448;
     assert.equal(capsuleIsWorldLegal(slot), true);
     assert.ok(pixelY >= 339 && pixelY <= 341);
@@ -207,11 +207,16 @@ void test('seated resources stage walkers outside chair collision bodies', () =>
   }
 });
 
-void test('v3 back walls and the wall-anchored lift are not walkable floor', () => {
+void test('v3 back walls remain solid while the Commons arrival area stays open', () => {
+  assert.equal(
+    FACILITY_COLLISION_GEOMETRY.solids.some(
+      (solid) => solid.id === 'lift-face',
+    ),
+    false,
+  );
   const noWalkPoints = [
     { id: 'north back wall', position: { x: 18.75, y: 10 } },
     { id: 'south back wall', position: { x: 26, y: 60 } },
-    { id: 'closed lift face', position: { x: 53.125, y: 64 } },
   ];
   for (const sample of noWalkPoints) {
     assert.equal(

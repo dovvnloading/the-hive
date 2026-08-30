@@ -86,6 +86,7 @@ const FACILITY_ASSETS = {
   architectureCorridor: 'generated/slate-corridor-v1.png',
   commandRoutingBoard: 'generated/command-routing-board-v1.png',
   utilityToolsBoard: 'generated/utility-tools-board-v1.png',
+  commonsWallLight: 'generated/commons-wall-light-v1.png',
   researchDesk: furnitureAsset('research-desk.png'),
   utilityWorkstation: furnitureAsset('utility-workstation.png'),
   buildWorkbench: furnitureAsset('build-workbench.png'),
@@ -592,27 +593,6 @@ function drawPartitions(context: CanvasRenderingContext2D) {
   [319, 447].forEach((x) => context.fillRect(x, 259, 2, 154));
 }
 
-function drawLift(context: CanvasRenderingContext2D) {
-  // The lift is inset into Commons' north wall, rather than floating below
-  // the building. Its approach remains open on the room side.
-  const x = 376;
-  const y = 258;
-  context.fillStyle = '#3b281f';
-  context.fillRect(x - 4, y - 6, 76, 66);
-  context.fillStyle = '#8f765d';
-  context.fillRect(x, y, 68, 58);
-  context.fillStyle = '#c6b89c';
-  context.fillRect(x + 5, y + 5, 27, 49);
-  context.fillRect(x + 36, y + 5, 27, 49);
-  context.fillStyle = '#6e5a48';
-  context.fillRect(x + 31, y + 5, 6, 49);
-  context.fillStyle = '#e0d4bd';
-  context.fillRect(x + 7, y + 8, 23, 3);
-  context.fillRect(x + 38, y + 8, 23, 3);
-  context.fillStyle = '#4b3426';
-  context.fillRect(x - 6, y + 58, 80, 7);
-}
-
 function drawWallDetails(context: CanvasRenderingContext2D, bank: ImageBank) {
   // Every wall mark describes an in-world resource; none are dashboard chrome.
   drawFacilitySprite(context, bank, 'commandRoutingBoard', 284, 38);
@@ -637,7 +617,6 @@ function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
   drawPartitions(context);
   drawDoorways(context);
   drawWallDetails(context, bank);
-  drawLift(context);
 }
 
 function resourceIsActive(state: AgentArenaState, resourceId?: string) {
@@ -672,7 +651,7 @@ const LIGHT_FIXTURES: Record<
   command: { fixtureX: 422, fixtureY: 58, switchX: 272, switchY: 60 },
   tools: { fixtureX: 708, fixtureY: 58, switchX: 520, switchY: 60 },
   synthesis: { fixtureX: 256, fixtureY: 268, switchX: 202, switchY: 286 },
-  context: { fixtureX: 384, fixtureY: 248, switchX: 368, switchY: 286 },
+  context: { fixtureX: 408, fixtureY: 284, switchX: 368, switchY: 286 },
   build: { fixtureX: 520, fixtureY: 268, switchX: 614, switchY: 286 },
 };
 
@@ -732,16 +711,30 @@ function roomLightIsOn(state: AgentArenaState, roomId: RoomId, now: number) {
 
 function drawRoomLightFixtures(
   context: CanvasRenderingContext2D,
+  bank: ImageBank,
   state: AgentArenaState,
   now: number,
 ) {
   ROOMS.forEach((room) => {
     const fixture = LIGHT_FIXTURES[room.id];
     const powered = roomLightIsOn(state, room.id, now);
-    context.fillStyle = '#4b392c';
-    context.fillRect(fixture.fixtureX - 8, fixture.fixtureY - 3, 16, 7);
-    context.fillStyle = powered ? '#f2d58d' : '#665c4b';
-    context.fillRect(fixture.fixtureX - 5, fixture.fixtureY - 1, 10, 3);
+    if (room.id === 'context') {
+      context.save();
+      context.globalAlpha = powered ? 1 : 0.4;
+      drawFacilitySprite(
+        context,
+        bank,
+        'commonsWallLight',
+        fixture.fixtureX - 24,
+        fixture.fixtureY - 14,
+      );
+      context.restore();
+    } else {
+      context.fillStyle = '#4b392c';
+      context.fillRect(fixture.fixtureX - 8, fixture.fixtureY - 3, 16, 7);
+      context.fillStyle = powered ? '#f2d58d' : '#665c4b';
+      context.fillRect(fixture.fixtureX - 5, fixture.fixtureY - 1, 10, 3);
+    }
     context.fillStyle = 'rgba(35,25,18,.38)';
     context.fillRect(fixture.switchX - 2, fixture.switchY - 3, 7, 9);
     context.fillStyle = '#6d5845';
@@ -1482,7 +1475,7 @@ export function AgentArenaWorldV2({
     const bank = bankRef.current;
     const environmentNow = bubbleNow || Date.now();
     drawArchitecture(context, bank);
-    drawRoomLightFixtures(context, state, environmentNow);
+    drawRoomLightFixtures(context, bank, state, environmentNow);
     drawDepthSortedScene(context, bank, state, agentsById, performance.now());
     drawEnvironmentalLighting(context, state, environmentNow);
 

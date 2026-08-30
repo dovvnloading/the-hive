@@ -22,7 +22,16 @@ and self-authored furniture sheet were supplied as style and scale references.
   warm handcrafted pixel art; transparent isolated object; no text, room,
   character, logo, watermark, monitor, neon, or science-fiction styling.
 
-Run `node scripts/process-wall-fixtures.mjs` after replacing either source.
+## Commons wall light
+
+- Source: `sources/commons-wall-light-source-v1.png`
+- Runtime asset: `commons-wall-light-v1.png` (48 x 28)
+- Prompt: a straight-on substantial Commons wall light with a warm walnut
+  backplate, aged-brass fittings, and two symmetrical frosted-amber lamps;
+  handcrafted pixel art; transparent isolated object; unmistakably a light,
+  never a closet, cabinet, screen, sign, or science-fiction fixture.
+
+Run `node scripts/process-wall-fixtures.mjs` after replacing a source.
 The processor removes the Command source's connected neutral backdrop, crops
 to visible alpha, resamples with Lanczos, sharpens lightly, and writes a compact
 96-colour transparent PNG.

@@ -25,6 +25,12 @@ const fixtures = [
     size: [140, 36],
     removeNeutralBackground: false,
   },
+  {
+    source: 'sources/commons-wall-light-source-v1.png',
+    output: 'commons-wall-light-v1.png',
+    size: [48, 28],
+    removeNeutralBackground: false,
+  },
 ];
 
 function neutralBackdropPixel(data, index) {
