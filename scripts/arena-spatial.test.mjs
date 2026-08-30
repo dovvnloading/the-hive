@@ -29,6 +29,7 @@ import {
   seatedFrameWidth,
   seatedMotionFor,
   seatedSheetMotion,
+  sideChairForegroundCrop,
 } from '../lib/arena/seated-presentation.ts';
 import { runArenaSpatialAudit } from './arena-spatial-audit.mjs';
 
@@ -359,11 +360,41 @@ void test('every authored chair selects the matching directional seated sheet', 
   assert.equal(seatedFrameOffset('sit', 'east'), 0);
   assert.equal(seatedFrameOffset('sit2', 'west'), 6);
   assert.equal(NORTH_CHAIR_FOREGROUND_HEIGHT, 32);
+  assert.deepEqual(sideChairForegroundCrop('east'), {
+    x: 0,
+    y: 0,
+    width: 6,
+    height: 32,
+  });
+  assert.deepEqual(sideChairForegroundCrop('west'), {
+    x: 16,
+    y: 0,
+    width: 6,
+    height: 32,
+  });
 
   const commandTable = FACILITY_RESOURCES.find(
     (resource) => resource.id === 'command-table',
   );
   assert.deepEqual(commandTable?.capabilities, ['review']);
+  assert.deepEqual(commandTable?.seatedPositions, [
+    { x: 40.755, y: 35.714 },
+    { x: 50.651, y: 35.714 },
+  ]);
+  const commandWestChair = FACILITY_COLLISION_GEOMETRY.solids.find(
+    (solid) => solid.id === 'chair-command-west-body',
+  );
+  const commandEastChair = FACILITY_COLLISION_GEOMETRY.solids.find(
+    (solid) => solid.id === 'chair-command-east-body',
+  );
+  assert.ok(commandWestChair);
+  assert.ok(commandEastChair);
+  const commandTableCenterX = 351;
+  assert.equal(
+    commandWestChair.x,
+    commandTableCenterX * 2 - (commandEastChair.x + commandEastChair.w),
+    'Command chair collision bodies must mirror around the planning table',
+  );
 
   const publish = FACILITY_RESOURCES.find(
     (resource) => resource.id === 'publish-console',

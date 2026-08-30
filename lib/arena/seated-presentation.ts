@@ -4,6 +4,32 @@ export type SeatedMotion = 'sit' | 'sit2' | 'sit_back' | 'sit_front';
 
 export const NORTH_CHAIR_FOREGROUND_HEIGHT = 32;
 
+export type SeatForegroundCrop = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * Side-facing chairs need only their back rail repainted over the resident.
+ * Repainting no chair at all makes the resident look as though they are
+ * standing beside the table; repainting the whole chair hides the seated body.
+ */
+export function sideChairForegroundCrop(
+  direction: Extract<AvatarDirection, 'east' | 'west'>,
+  chairWidth = 22,
+  chairHeight = 32,
+): SeatForegroundCrop {
+  const backRailWidth = 6;
+  return {
+    x: direction === 'east' ? 0 : chairWidth - backRailWidth,
+    y: 0,
+    width: backRailWidth,
+    height: chairHeight,
+  };
+}
+
 export function isSeatedMotion(motion: string): motion is SeatedMotion {
   return (
     motion === 'sit' ||

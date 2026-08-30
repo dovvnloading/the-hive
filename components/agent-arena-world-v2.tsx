@@ -34,6 +34,8 @@ import {
   seatedFrameWidth,
   seatedMotionFor,
   seatedSheetMotion,
+  sideChairForegroundCrop,
+  type SeatForegroundCrop,
 } from '@/lib/arena/seated-presentation';
 
 const WORLD_WIDTH = 768;
@@ -156,6 +158,7 @@ type SceneProp = {
   seatForResourceId?: string;
   seatIndex?: number;
   seatForegroundHeight?: number;
+  seatForegroundCrop?: SeatForegroundCrop;
 };
 
 const CONTEXT_KIOSK_PROP = {
@@ -248,14 +251,19 @@ const SCENE_PROPS: SceneProp[] = [
     baseline: 156,
     seatForResourceId: 'command-table',
     seatIndex: 0,
+    seatForegroundCrop: sideChairForegroundCrop('east'),
   },
   {
     asset: 'chairWest',
-    x: 382,
+    // Mirror the west chair's 307..329 footprint around the table center at
+    // x=351. The previous x=382 position put this chair nine pixels too far
+    // east even though its resident anchor was already symmetric.
+    x: 373,
     y: 128,
     baseline: 156,
     seatForResourceId: 'command-table',
     seatIndex: 1,
+    seatForegroundCrop: sideChairForegroundCrop('west'),
   },
   {
     asset: 'plantSmall',
@@ -1027,28 +1035,45 @@ function drawOccupiedSeatForeground(
   bank: ImageBank,
   prop: SceneProp,
 ) {
-  if (prop.seatForegroundHeight === undefined) return;
+  if (
+    prop.seatForegroundHeight === undefined &&
+    prop.seatForegroundCrop === undefined
+  ) {
+    return;
+  }
   const image = bank[facilityKey(prop.asset)];
   if (!imageReady(image)) return;
+  const requestedCrop = prop.seatForegroundCrop ?? {
+    x: 0,
+    y: 0,
+    width: image.naturalWidth,
+    height: prop.seatForegroundHeight ?? image.naturalHeight,
+  };
+  const sourceX = Math.max(0, Math.min(requestedCrop.x, image.naturalWidth));
+  const sourceY = Math.max(0, Math.min(requestedCrop.y, image.naturalHeight));
+  const width = Math.max(
+    0,
+    Math.min(requestedCrop.width, image.naturalWidth - sourceX),
+  );
   const height = Math.max(
     0,
-    Math.min(prop.seatForegroundHeight, image.naturalHeight),
+    Math.min(requestedCrop.height, image.naturalHeight - sourceY),
   );
-  if (height === 0) return;
+  if (width === 0 || height === 0) return;
   const y = prop.y ?? 0;
 
-  // The complete chair is rendered behind its occupant first. Repainting the
-  // whole authored chair silhouette in front avoids a hard horizontal seam in
-  // its side rails while keeping the adjacent desk out of this layer.
+  // The complete chair is rendered behind its occupant first. North-facing
+  // chairs repaint the full authored silhouette; side-facing chairs repaint
+  // only the back rail so the body remains visible on the seat.
   context.drawImage(
     image,
-    0,
-    0,
-    image.naturalWidth,
+    sourceX,
+    sourceY,
+    width,
     height,
-    Math.round(prop.x),
-    Math.round(y),
-    image.naturalWidth,
+    Math.round(prop.x + sourceX),
+    Math.round(y + sourceY),
+    width,
     height,
   );
 }
@@ -1387,7 +1412,11 @@ function drawDepthSortedScene(
   });
 
   SCENE_PROPS.forEach((prop, index) => {
-    if (!prop.seatForResourceId || prop.seatForegroundHeight === undefined) {
+    if (
+      !prop.seatForResourceId ||
+      (prop.seatForegroundHeight === undefined &&
+        prop.seatForegroundCrop === undefined)
+    ) {
       return;
     }
     const occupiedSeat = occupiedSeats
