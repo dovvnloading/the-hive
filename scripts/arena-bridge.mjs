@@ -28,6 +28,7 @@ import {
   RESIDENT_BODY_CLEARANCE_PX,
   RESIDENT_CONVERSATION_RANGE_PX,
   RESEARCH_TRACKS,
+  activityForCapability,
   doorwayTraversalDistancePx,
   inferToolCapability,
   neighborsForLocation,
@@ -85,6 +86,15 @@ const BOARD_EVENT_KINDS = new Set(['board.message', 'board.acknowledged']);
 const CHAT_EVENT_KINDS = new Set(['chat.ingress', 'chat.relay']);
 const WORLD_EVENT_KINDS = new Set(['world.navigation', 'world.interaction']);
 const SOCIAL_EVENT_KINDS = new Set(['proximity.spoken']);
+const ACTION_REJECTION_REASON_CODES = new Set([
+  'stale_observation',
+  'path_yield',
+  'path_reserved',
+  'destination_occupied',
+  'resource_capacity',
+  'vision_limited',
+  'light_stewardship',
+]);
 const CHAT_RELAY_STATES = new Set([
   'claimed',
   'dispatched',
@@ -674,9 +684,12 @@ function parseAfter(url) {
   return after;
 }
 
-function httpError(status, message) {
+function httpError(status, message, reasonCode) {
   const error = new Error(message);
   error.status = status;
+  if (ACTION_REJECTION_REASON_CODES.has(reasonCode)) {
+    error.reasonCode = reasonCode;
+  }
   return error;
 }
 
@@ -710,6 +723,10 @@ const emitterTokenPath = resolve(options.dataDir, 'emitter-token');
 const chatTokenPath = resolve(options.dataDir, 'chat-token');
 const agentCredentialsPath = resolve(options.dataDir, 'agent-credentials.json');
 const privateJournalPath = resolve(options.dataDir, 'private-journals.jsonl');
+const actionRejectionsPath = resolve(
+  options.dataDir,
+  'action-rejections.jsonl',
+);
 
 function loadLocalToken(path, configuredValue) {
   const configured = configuredValue?.trim();
@@ -846,6 +863,75 @@ function currentRunIntents() {
     : [];
 }
 
+function safeActionReceiptIdentifier(value) {
+  const identifier = normalizedText(value);
+  return /^[A-Za-z0-9._:-]{1,200}$/u.test(identifier)
+    ? identifier
+    : undefined;
+}
+
+function safeActionReceiptObservationId(value) {
+  const observationId = normalizedText(value);
+  return /^obs_[0-9a-f]{16}$/u.test(observationId)
+    ? observationId
+    : undefined;
+}
+
+function appendActionRejection(agentId, body, error, observation) {
+  if (
+    !state.runId ||
+    !isRecord(body) ||
+    !ACTION_REJECTION_REASON_CODES.has(error?.reasonCode)
+  ) {
+    return undefined;
+  }
+
+  const safeAgentId = safeActionReceiptIdentifier(agentId);
+  const actionId = safeActionReceiptIdentifier(body.actionId);
+  const targetId = safeActionReceiptIdentifier(body.targetId);
+  const submittedObservationId = safeActionReceiptObservationId(
+    body.observationId,
+  );
+  const returnedObservationId = safeActionReceiptObservationId(
+    observation?.observationId,
+  );
+  const knownTarget =
+    body.action === 'move'
+      ? worldLocationById(targetId)
+      : body.action === 'interact'
+        ? worldEntityById(targetId)
+        : undefined;
+  if (
+    !safeAgentId ||
+    !actionId ||
+    !new Set(['move', 'interact']).has(body.action) ||
+    !targetId ||
+    !knownTarget ||
+    !submittedObservationId ||
+    !returnedObservationId
+  ) {
+    return undefined;
+  }
+
+  const receipt = {
+    schemaVersion: 1,
+    receiptId: `reject_${randomUUID()}`,
+    occurredAt: new Date().toISOString(),
+    runId: state.runId,
+    agentId: safeAgentId,
+    actionId,
+    action: body.action,
+    targetId,
+    submittedObservationId,
+    returnedObservationId,
+    currentEventSequence: state.sequence,
+    httpStatus: Number.isSafeInteger(error.status) ? error.status : 400,
+    reasonCode: error.reasonCode,
+  };
+  appendFileSync(actionRejectionsPath, `${JSON.stringify(receipt)}\n`, 'utf8');
+  return receipt;
+}
+
 function currentBoardMessages() {
   return currentRunEvents().filter((event) => event.kind === 'board.message');
 }
@@ -925,6 +1011,13 @@ function currentArtifacts() {
 function artifactEvent(artifactId) {
   return currentArtifacts().find(
     (event) => event.payload.artifactId === artifactId,
+  );
+}
+
+function isUrlBackedSourceNote(artifact) {
+  return (
+    artifact?.payload.kind === 'source-note' &&
+    /^https?:\/\//u.test(artifact.payload.uri ?? '')
   );
 }
 
@@ -1481,6 +1574,23 @@ function postBoardMessage(agentId, body) {
   if (unknownArtifact) {
     throw httpError(409, `Unknown artifact: ${unknownArtifact}`);
   }
+  if (normalized.messageType === 'handoff') {
+    if (!topicId || !artifactIds?.length) {
+      throw httpError(
+        400,
+        'Handoffs require a selected topicId and at least one linked artifact',
+      );
+    }
+    const mismatchedArtifact = artifactIds
+      .map((artifactId) => artifactEvent(artifactId))
+      .find((artifact) => artifact?.payload.topicId !== topicId);
+    if (mismatchedArtifact) {
+      throw httpError(
+        409,
+        `Handoff artifact ${mismatchedArtifact.payload.artifactId} is not linked to topic ${topicId}`,
+      );
+    }
+  }
 
   const payload = {
     messageId: `msg_${randomUUID()}`,
@@ -1651,8 +1761,12 @@ function projectAgentStates() {
         locationId: 'spawn-lift',
         engagedResourceId: undefined,
         currentTopicId: undefined,
+        activeToolTopicId: undefined,
+        activityCommitment: undefined,
         activeTool: undefined,
         activeToolCallId: undefined,
+        activeToolStartedSequence: undefined,
+        activeActivityId: undefined,
         capability: undefined,
         resourceQueued: false,
         inspectedEntityIds: new Set(),
@@ -1672,12 +1786,24 @@ function projectAgentStates() {
       agent.status = 'working';
       agent.activeTool = undefined;
       agent.activeToolCallId = undefined;
+      agent.activeToolStartedSequence = undefined;
+      agent.activeActivityId = undefined;
       agent.capability = undefined;
       agent.engagedResourceId = undefined;
+      agent.activeToolTopicId = undefined;
       agent.resourceQueued = false;
+      agent.activityCommitment = undefined;
     } else if (event.kind === 'agent.activity') {
       agent.phase = event.payload.phase;
       agent.status = event.payload.status;
+      if (event.payload.status === 'working') {
+        agent.activityCommitment = {
+          id: event.eventId,
+          sequence: event.sequence,
+          phase: event.payload.phase,
+          summary: event.payload.summary,
+        };
+      }
     } else if (event.kind === 'world.navigation') {
       agent.locationId = event.payload.toLocationId;
       agent.engagedResourceId = undefined;
@@ -1690,7 +1816,10 @@ function projectAgentStates() {
         reason: event.payload.reason,
       };
     } else if (event.kind === 'world.interaction') {
-      if (event.payload.verb === 'inspect') {
+      if (
+        event.payload.verb === 'inspect' ||
+        (event.payload.verb === 'use' && resourceById(event.payload.entityId))
+      ) {
         agent.inspectedEntityIds.add(event.payload.entityId);
       }
       const resource = resourceById(event.payload.entityId);
@@ -1706,15 +1835,23 @@ function projectAgentStates() {
         event.payload.capability ?? inferToolCapability(event.payload.tool);
       agent.activeTool = event.payload.tool;
       agent.activeToolCallId = event.payload.toolCallId;
+      agent.activeToolStartedSequence = event.sequence;
       agent.capability = capability;
-      agent.currentTopicId = event.payload.topicId ?? agent.currentTopicId;
+      agent.activeToolTopicId = event.payload.topicId;
       agent.engagedResourceId = event.payload.resourceId;
+      agent.activeActivityId = activityForCapability(
+        event.payload.resourceId,
+        capability,
+      )?.id;
       agent.resourceQueued = false;
       agent.status = 'working';
     } else if (event.kind === 'tool.finished') {
       agent.activeTool = undefined;
       agent.activeToolCallId = undefined;
+      agent.activeToolStartedSequence = undefined;
+      agent.activeActivityId = undefined;
       agent.capability = undefined;
+      agent.activeToolTopicId = undefined;
       agent.engagedResourceId = undefined;
       agent.resourceQueued = false;
     } else if (event.kind === 'agent.blocked') {
@@ -1728,25 +1865,37 @@ function projectAgentStates() {
       agent.status = 'completed';
       agent.activeTool = undefined;
       agent.activeToolCallId = undefined;
+      agent.activeToolStartedSequence = undefined;
+      agent.activeActivityId = undefined;
       agent.capability = undefined;
+      agent.activeToolTopicId = undefined;
       agent.engagedResourceId = undefined;
       agent.resourceQueued = false;
+      agent.activityCommitment = undefined;
     } else if (event.kind === 'agent.failed') {
       agent.phase = 'failed';
       agent.status = 'failed';
       agent.activeTool = undefined;
       agent.activeToolCallId = undefined;
+      agent.activeToolStartedSequence = undefined;
+      agent.activeActivityId = undefined;
       agent.capability = undefined;
+      agent.activeToolTopicId = undefined;
       agent.engagedResourceId = undefined;
       agent.resourceQueued = false;
+      agent.activityCommitment = undefined;
     } else if (event.kind === 'agent.stopped') {
       agent.phase = 'canceled';
       agent.status = 'canceled';
       agent.activeTool = undefined;
       agent.activeToolCallId = undefined;
+      agent.activeToolStartedSequence = undefined;
+      agent.activeActivityId = undefined;
       agent.capability = undefined;
+      agent.activeToolTopicId = undefined;
       agent.engagedResourceId = undefined;
       agent.resourceQueued = false;
+      agent.activityCommitment = undefined;
     }
   }
   return projected;
@@ -2001,24 +2150,65 @@ function purposeForResident(
     .filter((event) => event.kind === 'research.topic.selected')
     .map((event) => researchTopicState(event.payload.topicId))
     .filter(Boolean);
-  const ownTopic = self.currentTopicId
+  const selectedTopic = self.currentTopicId
     ? researchTopicState(self.currentTopicId)
+    : undefined;
+  const ownTopic =
+    selectedTopic?.ownerAgentId === self.id ? selectedTopic : undefined;
+  const activeToolTopic = self.activeToolTopicId
+    ? researchTopicState(self.activeToolTopicId)
+    : undefined;
+  const contributedTopic =
+    activeToolTopic?.ownerAgentId !== self.id ? activeToolTopic : undefined;
+  const activeActivity = self.engagedResourceId
+    ? activityForCapability(self.engagedResourceId, self.capability)
     : undefined;
   const artifacts = currentArtifacts();
   const opportunities = [];
+  const handoffSignalsByThread = new Map();
+  for (const message of currentBoardMessages()) {
+    if (
+      message.agentId === self.id ||
+      !messageVisibleTo(message, self.id) ||
+      !new Set(['handoff', 'question']).has(message.payload.messageType) ||
+      !message.payload.topicId ||
+      latestAcknowledgement(message.payload.messageId, self.id)?.payload.state ===
+        'resolved'
+    ) {
+      continue;
+    }
+    if (
+      message.payload.messageType === 'handoff' &&
+      !message.payload.artifactIds?.length
+    ) {
+      continue;
+    }
+    handoffSignalsByThread.set(message.payload.threadId, message);
+  }
+  const handoffSignals = [...handoffSignalsByThread.values()].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
 
   if (self.activeTool) {
     opportunities.push({
       id: `finish-tool:${self.activeToolCallId}`,
       kind: 'follow-through',
       priority: 'continue',
-      title: `Finish the active ${self.activeTool} call truthfully`,
+      title: `Finish ${activeActivity?.label ?? `the active ${self.activeTool} call`} truthfully`,
       reason:
         'A real utility call is in progress and its result has not been recorded.',
       suggestedAction:
         'Complete the actual call, record any durable artifact, then emit tool-finish with the factual outcome.',
       resourceId: self.engagedResourceId,
       capability: self.capability,
+      ...(activeActivity ? { activityId: activeActivity.id } : {}),
+      ...(activeToolTopic
+        ? {
+            topicId: activeToolTopic.topicId,
+            topicRelation: contributedTopic ? 'contributed' : 'owned',
+            ownerAgentId: activeToolTopic.ownerAgentId,
+          }
+        : {}),
     });
   }
 
@@ -2056,6 +2246,27 @@ function purposeForResident(
           ? 'Follow the visible route to the physical wall switch, inspect it, and switch the room light on before other work.'
           : `Approach ${entityId}, inspect it, act on the observed condition, and verify the new state.`,
       locationId: entityId,
+    });
+  }
+
+  if (
+    self.assignmentMode === 'self-directed' &&
+    !self.activityCommitment &&
+    !ownTopic
+  ) {
+    opportunities.push({
+      id: 'purpose:form-commitment',
+      kind: 'planning',
+      priority: 'continue',
+      title: 'Form one useful working commitment',
+      reason:
+        'Self-direction needs a resident-authored intention before isolated fixture use becomes a meaningful arc.',
+      suggestedAction:
+        'Visit and use the directive table, review the visible needs and inquiries, then declare one compact working agent.activity commitment of your own choosing.',
+      locationId: 'command-table',
+      resourceId: 'command-table',
+      capability: 'review',
+      activityId: 'command.reconcile-evidence',
     });
   }
 
@@ -2118,46 +2329,126 @@ function purposeForResident(
     }
   }
 
-  for (const topic of topicStates
-    .filter(
-      (candidate) =>
-        candidate.ownerAgentId !== self.id &&
-        !new Set(['complete', 'dropped']).has(candidate.status),
-    )
-    .slice(0, 2)) {
+  for (const message of handoffSignals) {
+    const topic = researchTopicState(message.payload.topicId);
+    if (!topic) continue;
     const topicArtifacts = artifacts.filter(
       (event) => event.payload.topicId === topic.topicId,
     );
-    const hasSources = topicArtifacts.some(
-      (event) => event.payload.kind === 'source-note',
+    const linkedArtifacts = (message.payload.artifactIds ?? [])
+      .map((artifactId) => artifactEvent(artifactId))
+      .filter(
+        (artifact) => artifact?.payload.topicId === message.payload.topicId,
+      );
+    const acknowledgement = latestAcknowledgement(
+      message.payload.messageId,
+      self.id,
     );
-    const hasValidation = topicArtifacts.some(
-      (event) => event.payload.kind === 'test-result',
-    );
-    opportunities.push({
-      id: `${hasSources && !hasValidation ? 'review' : 'support'}:${topic.topicId}`,
-      kind: hasSources && !hasValidation ? 'validation' : 'collaboration',
-      priority: 'contribute',
-      title:
-        hasSources && !hasValidation
-          ? `Independently test “${topic.title}”`
-          : `Offer evidence on “${topic.title}”`,
-      reason:
-        hasSources && !hasValidation
-          ? `Another resident owns this inquiry and has evidence, but no independent validation is recorded.`
-          : `Another resident owns this active inquiry and it still needs source evidence.`,
-      suggestedAction:
-        hasSources && !hasValidation
-          ? 'Use the diagnostic rig for a real independent check, record a linked test result, then send the owner a concise evidence handoff.'
-          : 'Use the connected research computer for real source gathering, record a linked source note, then send the owner a concise evidence handoff.',
-      locationId:
-        hasSources && !hasValidation ? 'verify-rig-b' : 'research-computer-b',
-      resourceId:
-        hasSources && !hasValidation ? 'verify-rig-b' : 'research-computer-b',
-      capability: hasSources && !hasValidation ? 'test' : 'search',
+    const base = {
+      priority: acknowledgement ? 'contribute' : 'urgent',
+      locationId: 'comms-board',
+      messageId: message.payload.messageId,
+      threadId: message.payload.threadId,
       topicId: topic.topicId,
-      ownerAgentId: topic.ownerAgentId,
-    });
+      artifactIds: linkedArtifacts.map(
+        (artifact) => artifact.payload.artifactId,
+      ),
+      ownerAgentId: message.agentId,
+    };
+
+    if (
+      profile.id === 'explorer' &&
+      !new Set(['complete', 'dropped']).has(topic.status) &&
+      !topicArtifacts.some((artifact) => isUrlBackedSourceNote(artifact)) &&
+      !currentBoardMessages().some(
+        (candidate) =>
+          candidate.payload.threadId === message.payload.threadId &&
+          candidate.agentId === self.id &&
+          candidate.sequence > message.sequence,
+      )
+    ) {
+      opportunities.push({
+        ...base,
+        id: `handoff:explore:${message.payload.messageId}`,
+        kind: 'research',
+        title: `Investigate the handed-off evidence gap in “${topic.title}”`,
+        reason:
+          'An explicit board question or handoff names this topic, and no source evidence is recorded for it.',
+        suggestedAction:
+          'Read the board thread, gather real HTTP(S) source evidence with the connected research computer, record linked source notes, and answer the handoff factually.',
+        resourceId: 'research-computer-b',
+        capability: 'search',
+      });
+    } else if (
+      profile.id === 'maker' &&
+      message.payload.messageType === 'handoff' &&
+      linkedArtifacts.some(
+        (artifact) =>
+          artifact.payload.kind === 'decision' ||
+          isUrlBackedSourceNote(artifact),
+      ) &&
+      !topicArtifacts.some((artifact) => artifact.payload.kind === 'change')
+    ) {
+      opportunities.push({
+        ...base,
+        id: `handoff:make:${message.payload.messageId}`,
+        kind: 'implementation',
+        title: `Implement the artifact-backed handoff for “${topic.title}”`,
+        reason:
+          'The explicit handoff links evidence or a decision, and the topic has no recorded change.',
+        suggestedAction:
+          'Read and acknowledge the board handoff, inspect the linked artifacts, then use the fabrication bench for a real edit or build and record the linked change and test result.',
+        resourceId: 'build-bench-a',
+        capability: 'edit',
+      });
+    } else if (
+      profile.id === 'critic' &&
+      message.payload.messageType === 'handoff'
+    ) {
+      const unvalidatedChange = linkedArtifacts
+        .filter(
+          (artifact) =>
+            artifact.payload.kind === 'change' &&
+            artifact.agentId !== self.id,
+        )
+        .find(
+          (change) =>
+            !topicArtifacts.some(
+              (artifact) =>
+                artifact.payload.kind === 'test-result' &&
+                artifact.agentId !== change.agentId &&
+                artifact.sequence > change.sequence,
+            ),
+        );
+      if (unvalidatedChange) {
+        opportunities.push({
+          ...base,
+          id: `handoff:critique:${message.payload.messageId}`,
+          kind: 'validation',
+          title: `Independently validate the handed-off change for “${topic.title}”`,
+          reason:
+            'The explicit handoff links a change without a later test result from an independent resident.',
+          suggestedAction:
+            'Read and acknowledge the board handoff, reproduce the change on the diagnostic rig, record a linked test-result artifact, and report the factual outcome in the thread.',
+          resourceId: 'verify-rig-b',
+          capability: 'test',
+          changeArtifactId: unvalidatedChange.payload.artifactId,
+        });
+      }
+    } else if (profile.id === 'steward') {
+      opportunities.push({
+        ...base,
+        id: `handoff:coordinate:${message.payload.messageId}`,
+        kind: 'coordination',
+        title: `Carry the unresolved board thread for “${topic.title}” forward`,
+        reason:
+          'An explicit board question or handoff remains unresolved for you.',
+        suggestedAction:
+          'Read the full thread at the comms board, connect the linked evidence to an accountable next step, and mark it resolved only after the coordination outcome is factual.',
+        resourceId: 'comms-board',
+        capability: 'communicate',
+      });
+    }
   }
 
   const claimedTracks = new Set(
@@ -2177,17 +2468,40 @@ function purposeForResident(
   );
   if (!ownTopic || new Set(['complete', 'dropped']).has(ownTopic.status)) {
     for (const track of openTracks.slice(0, 3)) {
+      const route =
+        track.id === 'project-context'
+          ? {
+              locationId: 'shell-console-a',
+              resourceId: 'shell-console-a',
+              capability: 'filesystem',
+              suggestedAction:
+                'If this matters to you, claim a narrow question with research-select, then inspect the real project at the shell console and preserve any reusable local evidence.',
+            }
+          : track.id === 'prior-art'
+            ? {
+                locationId: 'archive-desk',
+                resourceId: 'archive-desk',
+                capability: 'read',
+                suggestedAction:
+                  'If this matters to you, claim a narrow question with research-select, then review recorded references and prior decisions at the source archive before deciding whether external search is needed.',
+              }
+            : {
+                locationId: 'research-computer-b',
+                resourceId: 'research-computer-b',
+                capability: 'search',
+                suggestedAction:
+                  'If this matters to you, claim a narrow question with research-select, then gather real evidence from primary sources through the connected research computer.',
+              };
       opportunities.push({
         id: `inquiry:${track.id}`,
         kind: 'open-inquiry',
         priority: 'contribute',
         title: `Open inquiry: ${track.title}`,
         reason: track.purpose,
-        suggestedAction:
-          'If this matters to you, claim a narrow question with research-select, then gather real evidence through the appropriate archive or connected research computer.',
-        locationId: 'research-computer-b',
-        resourceId: 'research-computer-b',
-        capability: 'search',
+        suggestedAction: route.suggestedAction,
+        locationId: route.locationId,
+        resourceId: route.resourceId,
+        capability: route.capability,
         parentTopicId: track.id,
       });
     }
@@ -2208,6 +2522,45 @@ function purposeForResident(
       suggestedAction: `Approach and inspect ${entity.id}; use it only if its real capabilities serve a chosen purpose.`,
       locationId: entity.id,
       resourceId: entity.id,
+    });
+  }
+
+  const commitmentText = `${self.objective ?? ''} ${self.activityCommitment?.summary ?? ''}`.toLowerCase();
+  const groundedLocalActivities = entities
+    .filter((entity) => entity.known?.activities?.length)
+    .flatMap((entity) =>
+      entity.known.activities.map((activity) => ({ entity, activity })),
+    )
+    .filter(({ entity, activity }) => {
+      if (self.activeTool || self.engagedResourceId === entity.id) return false;
+      if (entity.id === 'archive-desk') return artifacts.length > 0;
+      if (entity.id === 'shell-console-a') {
+        return (
+          activity.capability === 'filesystem' ||
+          Boolean(self.activityCommitment)
+        );
+      }
+      if (entity.id === 'connector-console-b') {
+        return /connector|\bapi\b|service|external system/u.test(
+          commitmentText,
+        );
+      }
+      if (entity.id === 'command-table') return artifacts.length > 0;
+      if (entity.id === 'synthesis-lounge') return artifacts.length > 0;
+      return false;
+    });
+  for (const { entity, activity } of groundedLocalActivities.slice(0, 2)) {
+    opportunities.push({
+      id: `activity:${activity.id}`,
+      kind: 'facility-activity',
+      priority: 'explore',
+      title: activity.label,
+      reason: activity.description,
+      suggestedAction: `Use ${entity.id}, start a real ${activity.capability} utility call, and finish factually${activity.proofPolicy.requiredOnSuccess ? ` with a linked ${activity.proofPolicy.artifactKinds.join(' or ')} artifact` : '; preserve a useful artifact when the call produces one'}.`,
+      locationId: entity.id,
+      resourceId: entity.id,
+      capability: activity.capability,
+      activityId: activity.id,
     });
   }
 
@@ -2255,21 +2608,49 @@ function purposeForResident(
       label: profile.label,
       drives: [...profile.drives],
     },
-    commitment: ownTopic
+    commitment:
+      ownTopic && !new Set(['complete', 'dropped']).has(ownTopic.status)
       ? {
           kind: 'research-topic',
           id: ownTopic.topicId,
           title: ownTopic.title,
           status: ownTopic.status,
         }
-      : self.assignmentMode === 'directed'
+      : self.activityCommitment
         ? {
-            kind: 'assignment',
-            id: self.taskId,
-            title: self.objective,
+            kind: 'activity',
+            id: self.activityCommitment.id,
+            title: self.activityCommitment.summary,
             status: self.status,
+            phase: self.activityCommitment.phase,
+            sequence: self.activityCommitment.sequence,
           }
-        : undefined,
+        : ownTopic
+          ? {
+              kind: 'research-topic',
+              id: ownTopic.topicId,
+              title: ownTopic.title,
+              status: ownTopic.status,
+            }
+          : self.assignmentMode === 'directed'
+            ? {
+                kind: 'assignment',
+                id: self.taskId,
+                title: self.objective,
+                status: self.status,
+              }
+            : undefined,
+    activeContribution: contributedTopic
+      ? {
+          kind: 'research-topic-contribution',
+          id: contributedTopic.topicId,
+          title: contributedTopic.title,
+          status: contributedTopic.status,
+          ownerAgentId: contributedTopic.ownerAgentId,
+          toolCallId: self.activeToolCallId,
+          ...(activeActivity ? { activityId: activeActivity.id } : {}),
+        }
+      : undefined,
     opportunities: opportunities.slice(0, 8),
     completionStandard:
       'Complete a meaningful arc with evidence, a verified change, a resolved handoff, a verified care outcome, or a factual blocker; one movement or inspection is not enough.',
@@ -2913,6 +3294,10 @@ function compileObservation(agentId, after = 0) {
     !navigation &&
     locationId === PRIVATE_JOURNAL_RESOURCE_ID &&
     self.engagedResourceId === PRIVATE_JOURNAL_RESOURCE_ID;
+  const engagedResource = resourceById(self.engagedResourceId);
+  const availableActivities = navigation
+    ? []
+    : (engagedResource?.activities ?? []);
   const people = active
     .filter((candidate) => {
       if (candidate.id === agentId) return false;
@@ -3130,12 +3515,22 @@ function compileObservation(agentId, after = 0) {
                 ...(entity.capabilities.length > 0
                   ? { capabilities: entity.capabilities }
                   : {}),
-                ...(entity.interactions
+                ...(resourceById(entity.id)
+                  ? {
+                      affordances: [
+                        'inspect',
+                        ...(entity.capabilities.length > 0 ? ['use'] : []),
+                      ],
+                    }
+                  : entity.interactions
                   ? {
                       affordances: entity.interactions.map(
                         (interaction) => interaction.verb,
                       ),
                     }
+                  : {}),
+                ...(entity.activities?.length
+                  ? { activities: entity.activities }
                   : {}),
               },
             }
@@ -3282,6 +3677,7 @@ function compileObservation(agentId, after = 0) {
       status: self.status,
       currentTopicId: self.currentTopicId,
       activeTool: self.activeTool,
+      activeActivityId: self.activeActivityId,
       capability: self.capability,
       engagement: self.engagedResourceId,
       inspectedEntityIds: [...self.inspectedEntityIds].sort((left, right) =>
@@ -3373,6 +3769,22 @@ function compileObservation(agentId, after = 0) {
     `NEEDS ${localNeeds.length > 0 ? localNeeds.join(' ; ') : 'no obvious local urgency'}`,
     `DRIVES ${purpose.profile.label} | ${purpose.profile.drives.join(' ; ')}`,
     `OPPORTUNITIES ${purpose.opportunities.length > 0 ? purpose.opportunities.map((opportunity) => `${opportunity.id}[${opportunity.priority}] ${opportunity.title} -> ${opportunity.suggestedAction}`).join(' ; ') : 'none visible; explore, reflect, or deliberately rest'}`,
+    `ACTIVITIES ${
+      availableActivities.length > 0
+        ? availableActivities
+            .map(
+              (activity) =>
+                `${activity.id}[${activity.capability}] ${activity.label}; proof:${
+                  activity.proofPolicy.requiredOnSuccess
+                    ? activity.proofPolicy.artifactKinds.join('|')
+                    : activity.proofPolicy.artifactKinds.length > 0
+                      ? `optional-${activity.proofPolicy.artifactKinds.join('|')}`
+                      : 'factual-summary'
+                }`,
+            )
+            .join(' ; ')
+        : 'none; inspect and use a capable local fixture to reveal grounded work'
+    }`,
     `SEE ${
       entities.length > 0
         ? entities
@@ -3429,6 +3841,7 @@ function compileObservation(agentId, after = 0) {
       assignmentMode: self.assignmentMode,
       locationId,
       engagedResourceId: self.engagedResourceId,
+      activeActivityId: self.activeActivityId,
       navigation,
     },
     place: {
@@ -3457,6 +3870,7 @@ function compileObservation(agentId, after = 0) {
     collaborations,
     exits,
     entities,
+    activities: availableActivities,
     changes: worldChanges,
     board: {
       unreadCount: visibleUnread.length,
@@ -3557,6 +3971,7 @@ function agentContext(agentId, after = 0) {
       locationId,
       resourceId: self.engagedResourceId,
       activeTool: self.activeTool,
+      activeActivityId: self.activeActivityId,
       capability: self.capability,
       resourceQueued: self.resourceQueued,
       topic,
@@ -3574,12 +3989,20 @@ function agentContext(agentId, after = 0) {
           observation.entities.some(
             (entity) => entity.id === resource.id && entity.kind !== 'obscured',
           ),
-      ).map((resource) => ({
-        id: resource.id,
-        label: resource.label,
-        capacity: resource.capacity,
-        capabilities: resource.capabilities,
-      })),
+      ).map((resource) => {
+        const observed = observation.entities.find(
+          (entity) => entity.id === resource.id,
+        );
+        return {
+          id: resource.id,
+          label: resource.label,
+          capacity: resource.capacity,
+          capabilities: resource.capabilities,
+          ...(observed?.known?.activities
+            ? { activities: observed.known.activities }
+            : {}),
+        };
+      }),
       obscuredResourceCount: FACILITY_RESOURCES.filter(
         (resource) => resource.roomId === room.id,
       ).filter(
@@ -3650,6 +4073,7 @@ function assertFreshObservation(agentId, observationId) {
     throw httpError(
       409,
       `The local scene changed; observe again (${current.observationId})`,
+      'stale_observation',
     );
   }
   return current;
@@ -3718,6 +4142,7 @@ function performWorldAction(agentId, body) {
       throw httpError(
         409,
         `${from?.roomId ?? 'This room'} is too dark to resolve ${target.label}; use ${perception.roomLightId} or retreat by the visible route`,
+        'vision_limited',
       );
     }
     const roomLightId =
@@ -3742,6 +4167,7 @@ function performWorldAction(agentId, body) {
       throw httpError(
         409,
         `You are the last resident leaving ${from.roomId}; switch off ${roomLightId} at its physical wall control before departure`,
+        'light_stewardship',
       );
     }
     const awareness = movementAwareness(agents, agentId, locationId, target.id);
@@ -3759,7 +4185,13 @@ function performWorldAction(agentId, body) {
           : awareness.status === 'reserved'
             ? `${target.label} is reserved for ${names}; observe or choose another local step`
             : `${target.label} is occupied by ${names}; observe or choose another local step`;
-      throw httpError(409, message);
+      const reasonCode =
+        awareness.status === 'yield'
+          ? 'path_yield'
+          : awareness.status === 'reserved'
+            ? 'path_reserved'
+            : 'destination_occupied';
+      throw httpError(409, message, reasonCode);
     }
     const distance =
       doorwayTraversalDistancePx(locationId, target.id) ??
@@ -3809,6 +4241,7 @@ function performWorldAction(agentId, body) {
       throw httpError(
         409,
         `${entity.label} cannot be resolved safely in the dark; use ${perception.roomLightId} before inspecting or operating it`,
+        'vision_limited',
       );
     }
     if (
@@ -3841,6 +4274,7 @@ function performWorldAction(agentId, body) {
         throw httpError(
           409,
           `${names} remains in or is entering ${entity.roomId}; leave ${entity.id} on and transfer light responsibility`,
+          'light_stewardship',
         );
       }
     }
@@ -3857,6 +4291,12 @@ function performWorldAction(agentId, body) {
       if (!new Set(['inspect', 'use']).has(verb)) {
         throw httpError(409, `${verb} is not a grounded interaction here`);
       }
+      const activitySummary = (resource.activities ?? [])
+        .map(
+          (activity) =>
+            `${activity.id} (${activity.capability}): ${activity.label}`,
+        )
+        .join('; ');
       if (verb === 'use') {
         if (resource.capabilities.length === 0) {
           throw httpError(409, `${resource.label} has no utility interface`);
@@ -3874,11 +4314,12 @@ function performWorldAction(agentId, body) {
           throw httpError(
             409,
             `${resource.label} is at capacity (${occupants.map((candidate) => candidate.name).join(', ')})`,
+            'resource_capacity',
           );
         }
-        result = `${resource.label} is physically engaged and ready for ${resource.capabilities.join(', ')}.`;
+        result = `${resource.label} is physically engaged. Available grounded activities: ${activitySummary || resource.capabilities.join(', ')}. Start only the matching real utility call.`;
       } else {
-        result = `${resource.label} supports ${resource.capabilities.join(', ') || 'local occupancy'}.`;
+        result = `${resource.label} supports ${resource.capabilities.join(', ') || 'local occupancy'}.${activitySummary ? ` Activities: ${activitySummary}.` : ''}`;
       }
     } else {
       const interaction = entity.interactions.find(
@@ -4033,6 +4474,13 @@ function appendEvent(body, source = 'codex') {
     throw new Error(`${kind} requires agentId`);
   }
 
+  if (kind === 'agent.spawned') {
+    body = {
+      ...body,
+      agentId: assertChatIdentifier(body.agentId, 'agentId'),
+    };
+  }
+
   if (!kind.startsWith('run.') && currentRunIsClosed()) {
     throw new Error('The current run is closed');
   }
@@ -4119,25 +4567,38 @@ function appendEvent(body, source = 'codex') {
     ) {
       throw new Error('A successful utility call requires a factual summary');
     }
+    const activity = activityForCapability(
+      projected.engagedResourceId,
+      projected.capability,
+    );
     if (
       body.payload.outcome === 'succeeded' &&
-      new Set(['search', 'browse']).has(projected.capability)
+      activity?.proofPolicy.requiredOnSuccess
     ) {
       if (!body.payload.artifactIds?.length) {
         throw new Error(
-          'Successful web research requires a linked URL-backed source-note',
+          activity.proofPolicy.requiresHttpSource
+            ? 'Successful web research requires a linked URL-backed source-note'
+            : `${activity.label} requires a linked ${activity.proofPolicy.artifactKinds.join(' or ')} artifact`,
         );
       }
       const invalidEvidence = body.payload.artifactIds
         .map((artifactId) => artifactEvent(artifactId))
         .find(
           (artifact) =>
-            artifact?.payload.kind !== 'source-note' ||
-            !/^https?:\/\//u.test(artifact?.payload.uri ?? ''),
+            artifact?.agentId !== body.agentId.trim() ||
+            artifact.sequence <= projected.activeToolStartedSequence ||
+            !activity.proofPolicy.artifactKinds.includes(
+              artifact.payload.kind,
+            ) ||
+            (projected.activeToolTopicId &&
+              artifact.payload.topicId !== projected.activeToolTopicId) ||
+            (activity.proofPolicy.requiresHttpSource &&
+              !/^https?:\/\//u.test(artifact.payload.uri ?? '')),
         );
       if (invalidEvidence) {
         throw new Error(
-          'Successful web research artifacts must be source notes with HTTP(S) source URLs',
+          `${activity.label} proof must be authored by this resident after the tool start${projected.activeToolTopicId ? ', linked to the active topic,' : ''} and match ${activity.proofPolicy.artifactKinds.join(' or ')}${activity.proofPolicy.requiresHttpSource ? ' with an HTTP(S) source URL' : ''}`,
         );
       }
     }
@@ -4433,6 +4894,7 @@ const server = createServer(async (request, response) => {
         } catch {
           observation = undefined;
         }
+        appendActionRejection(agentId, body, error, observation);
         writeJson(request, response, error.status ?? 400, {
           error: error.message,
           ...(observation ? { observation } : {}),

@@ -95,6 +95,13 @@ ranked opportunities derived from the actual run:
 - nearby people who may be useful collaborators;
 - an empty private journal that can hold a longer-lived intention.
 
+A self-directed resident without a working commitment is first offered the
+directive table as a place to form one. Project-context inquiries route to the
+shell console, prior-art inquiries route to the source archive, and external
+evidence routes to the connected research computer. Connector work appears
+only when the resident's stated commitment actually calls for a connector,
+API, or external service.
+
 The resident chooses among these or forms another grounded goal. One movement
 or inspection is explicitly below the meaningful-work threshold.
 
@@ -112,8 +119,118 @@ Facility tools are causal gates to real Codex capabilities:
 | Context desk                | situated context and owner-private journal notes    |
 
 `tool-start`/`tool-finish` bracket a real call; they do not count as the call.
-The bridge rejects a successful search/browse finish unless it links at least
-one HTTP(S) source-note artifact.
+After a resource is inspected or used, `observe` exposes its named activities,
+matching capability, and expected proof. The activity catalog is declarative:
+it does not run fake applications or add a second scheduler. A workstation
+screen becomes ready only after physical `use`, active only during an
+authenticated tool call, and idle again after `tool-finish` or departure.
+
+The bridge rejects a successful search/browse finish unless it links a new
+HTTP(S) source-note authored by that resident after the call began. Successful
+edits require a new change artifact; builds, tests, and independent reviews
+require a new test-result; publication work requires a new decision. When a
+tool call names a topic, its proof must link the same topic. Failed or
+no-finding calls remain valid factual outcomes and do not terminalize the
+resident.
+
+## Lean autonomy qualification
+
+The v1 qualification is one real four-resident facility run. Start a clean run
+with this exact shared objective:
+
+> Produce one evidence-backed, implemented, independently verified improvement to the Hive while maintaining facility continuity.
+
+The root participates as Steward while controlling the run. Spawn three
+context-free collaboration processes for Explorer, Maker, and Critic, register
+all four authenticated identities, and assign each resident this exact neutral
+assignment in `self-directed` mode:
+
+> Establish a life and pursue useful work from your resident charter.
+
+Dispatch the four assignments together. A resident prompt contains only its
+identity, authenticated resident ID, charter path, applicable disposable
+worktree path, and self-directed mode. Do not provide routes, fixture
+sequences, or follow-up action coaching. Allow up to 30 minutes for every
+resident to finish or surface a factual blocker, and verify that claimed
+search, edit, build, test, and review lifecycles contain the corresponding real
+calls.
+
+Put autonomous code changes in an ignored disposable worktree created from the
+implementation HEAD. Nothing is promoted automatically: retain the worktree
+for review only when it contains an independently validated improvement;
+otherwise discard it without changing the primary checkout. During live
+observation, park the in-app-browser cursor outside the visible viewport and
+keep it there for the entire run.
+
+Write the actual process-to-identity mapping to a roster file. The roster has
+exactly four residents, contains Explorer, Maker, Critic, and Steward once
+each, and uses unique `processId`, `agentId`, and `taskId` values. Each row
+records the real root or collaboration process ID, facility agent ID, assigned
+task ID, profile, and charter path; the IDs and `runId` must match the
+authoritative event journal. Its shape is:
+
+```json
+{
+  "schemaVersion": 1,
+  "runId": "run_...",
+  "residents": [
+    {
+      "processId": "/root",
+      "agentId": "steward-id",
+      "taskId": "steward-task-id",
+      "profile": "Steward",
+      "charterPath": ".codex/residents/STEWARD.md"
+    },
+    {
+      "processId": "/root/explorer",
+      "agentId": "explorer-id",
+      "taskId": "explorer-task-id",
+      "profile": "Explorer",
+      "charterPath": ".codex/residents/EXPLORER.md"
+    },
+    {
+      "processId": "/root/maker",
+      "agentId": "maker-id",
+      "taskId": "maker-task-id",
+      "profile": "Maker",
+      "charterPath": ".codex/residents/MAKER.md"
+    },
+    {
+      "processId": "/root/critic",
+      "agentId": "critic-id",
+      "taskId": "critic-task-id",
+      "profile": "Critic",
+      "charterPath": ".codex/residents/CRITIC.md"
+    }
+  ]
+}
+```
+
+After completing the run, audit the authoritative event journal and rejection
+receipts without starting or changing facility state:
+
+```powershell
+npm run eval:arena -- --run current --roster <roster.json>
+```
+
+The auditor prints a concise summary, writes
+`outputs/evaluations/<runId>.json`, and exits nonzero unless every required gate
+passes. Run the implementation acceptance suite with:
+
+```powershell
+npm run test:eval
+npm run test:bridge
+npm run test:spatial
+npm run lint
+npm run build
+```
+
+This baseline intentionally excludes a scheduler, simulated residents,
+scripted routes, model-as-judge scoring, dashboards, databases, a second
+runtime, generalist qualification, long-horizon memory, connector breadth,
+load testing, and additional scenarios. Speech and seating are coverage rather
+than required behaviors; a short live visual smoke pass remains separate from
+the autonomy result.
 
 ## Agent contract
 

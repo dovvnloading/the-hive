@@ -668,7 +668,6 @@ function applyRuntimeEvent(
       currentResourceId: event.payload.resourceId,
       engagedResourceId: event.payload.resourceId,
       resourceQueued: false,
-      currentTopicId: event.payload.topicId ?? agent.currentTopicId,
       summary: event.payload.summary,
     }));
     return next;
@@ -691,7 +690,6 @@ function applyRuntimeEvent(
           ...(event.payload.artifactIds ?? []),
         ]),
       ],
-      status: event.payload.outcome === 'failed' ? 'failed' : agent.status,
       summary:
         event.payload.summary ??
         `${event.payload.toolCallId} ${event.payload.outcome}`,

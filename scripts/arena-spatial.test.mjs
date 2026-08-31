@@ -11,10 +11,13 @@ import {
   LIGHT_SWITCH_REACH_PX,
   STATIONS,
   WORLD_EDGES,
+  activitiesForResource,
+  activityForCapability,
   allocatePresentationIndex,
   buildArenaPath,
   doorwayTraversalDistancePx,
   isFacilityPortalTransfer,
+  inferToolCapability,
   slotForAgent,
   stationById,
 } from '../lib/arena/agentic-catalog.ts';
@@ -46,6 +49,87 @@ void test('concurrent residents receive distinct character sheets', () => {
     occupied.push(allocatePresentationIndex(agentId, occupied));
   }
   assert.equal(new Set(occupied).size, 4);
+});
+
+void test('facility activities are unique, capability-backed, and physically discoverable', () => {
+  const allowedArtifactKinds = new Set([
+    'source-note',
+    'change',
+    'test-result',
+    'decision',
+  ]);
+  const activityIds = new Set();
+  for (const resource of FACILITY_RESOURCES) {
+    const activities = activitiesForResource(resource.id);
+    const capabilities = new Set();
+    for (const activity of activities) {
+      assert.equal(activityIds.has(activity.id), false, activity.id);
+      assert.equal(
+        resource.capabilities.includes(activity.capability),
+        true,
+        `${activity.id} is not backed by ${resource.id}`,
+      );
+      assert.equal(
+        capabilities.has(activity.capability),
+        false,
+        `${resource.id} has ambiguous ${activity.capability} activities`,
+      );
+      assert.equal(
+        activityForCapability(resource.id, activity.capability)?.id,
+        activity.id,
+      );
+      assert.equal(typeof activity.description, 'string');
+      assert.ok(activity.description.length > 20);
+      assert.equal(typeof activity.proofPolicy.requiredOnSuccess, 'boolean');
+      assert.equal(
+        activity.proofPolicy.artifactKinds.every((kind) =>
+          allowedArtifactKinds.has(kind),
+        ),
+        true,
+      );
+      activityIds.add(activity.id);
+      capabilities.add(activity.capability);
+    }
+  }
+
+  assert.deepEqual(
+    [...activityIds].sort((left, right) => left.localeCompare(right)),
+    [
+      'archive.review-local-evidence',
+      'build.compile-project',
+      'build.implement-linked-change',
+      'command.reconcile-evidence',
+      'connector.query-configured-service',
+      'lounge.review-linked-evidence',
+      'publish.record-decision',
+      'publish.review-evidence-chain',
+      'research.browse-authoritative-source',
+      'research.search-primary-sources',
+      'shell.inspect-project-state',
+      'shell.run-scoped-command',
+      'verify.independent-review',
+      'verify.run-scoped-validation',
+    ],
+  );
+  assert.equal(inferToolCapability('review'), 'review');
+  assert.equal(inferToolCapability('code review'), 'review');
+  assert.equal(inferToolCapability('view file'), 'read');
+  assert.equal(inferToolCapability('audit'), 'test');
+
+  for (const propId of ['utility-tools-board', 'build-verification-chart']) {
+    const prop = FACILITY_PROPS.find((candidate) => candidate.id === propId);
+    assert.ok(prop, `${propId} is not in the authoritative facility catalog`);
+    assert.equal(prop.interactions.some(({ verb }) => verb === 'inspect'), true);
+    assert.equal(capsuleIsWorldLegal(prop.slots[0]), true);
+    assert.equal(
+      WORLD_EDGES.some(
+        ([left, right]) =>
+          (left === prop.id && right === `${prop.roomId}-hub`) ||
+          (right === prop.id && left === `${prop.roomId}-hub`),
+      ),
+      true,
+    );
+  }
 });
 
 void test('four simultaneous arrivals receive capsule-safe Commons positions', () => {
@@ -719,6 +803,134 @@ void test('navigation owns location until arrival and reassignment restores the 
     assert.equal(state.avatars[0].routeDelayMs, undefined);
     assert.ok(state.avatars[0].path.length >= 5);
     assert.equal(capsuleIsWorldLegal(state.avatars[0].position), true);
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('contributed tool work preserves topic ownership and a failure does not terminalize the resident', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now();
+  const event = (sequence, kind, payload, extra = {}) => ({
+    eventId: `event-tool-${sequence}`,
+    runId: 'run-tool-lifecycle',
+    sequence,
+    occurredAt: new Date(base + sequence * 100).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(1, 'run.started', {
+        objective: 'Keep utility failures separate from resident lifecycle',
+      }),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        2,
+        'agent.spawned',
+        { name: 'Sage', role: 'Maker' },
+        { agentId: 'sage' },
+      ),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        3,
+        'task.assigned',
+        { objective: 'Implement one verified change' },
+        { agentId: 'sage', taskId: 'task-tool-lifecycle' },
+      ),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        4,
+        'research.topic.selected',
+        {
+          topicId: 'topic-owned',
+          title: 'Owned inquiry',
+          question: 'What should Sage pursue?',
+        },
+        { agentId: 'sage' },
+      ),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        5,
+        'research.topic.selected',
+        {
+          topicId: 'topic-contributed',
+          title: 'Shared change',
+          question: 'Does another resident\'s change hold?',
+        },
+        { agentId: 'maker' },
+      ),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        6,
+        'tool.started',
+        {
+          toolCallId: 'tool-edit-1',
+          tool: 'filesystem.edit',
+          capability: 'edit',
+          resourceId: 'build-bench-a',
+          topicId: 'topic-contributed',
+          summary: 'Applying a focused change',
+        },
+        { agentId: 'sage' },
+      ),
+    });
+    let resident = state.agents.find((agent) => agent.id === 'sage');
+    assert.equal(resident.currentTopicId, 'topic-owned');
+    assert.equal(resident.activeTool, 'filesystem.edit');
+    assert.equal(resident.activeCapability, 'edit');
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        7,
+        'tool.finished',
+        {
+          toolCallId: 'tool-edit-1',
+          outcome: 'failed',
+          summary: 'The edit failed and needs another attempt',
+        },
+        { agentId: 'sage' },
+      ),
+    });
+
+    resident = state.agents.find((agent) => agent.id === 'sage');
+    assert.equal(resident.status, 'working');
+    assert.equal(resident.currentTopicId, 'topic-owned');
+    assert.equal(resident.activeTool, undefined);
+    assert.equal(resident.activeCapability, undefined);
+    assert.equal(resident.currentResourceId, undefined);
+    assert.equal(resident.engagedResourceId, undefined);
+    assert.equal(
+      resident.lastToolResult,
+      'The edit failed and needs another attempt',
+    );
+    assert.equal(
+      resident.summary,
+      'The edit failed and needs another attempt',
+    );
   } finally {
     await vite.close();
   }

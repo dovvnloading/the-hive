@@ -217,8 +217,20 @@ const SCENE_PROPS: SceneProp[] = [
     backWallRoomId: 'research',
     resourceId: 'archive-desk',
   },
-  { asset: 'bookshelfB', x: 96, baseline: 100, backWallRoomId: 'research' },
-  { asset: 'bookshelfC', x: 145, baseline: 100, backWallRoomId: 'research' },
+  {
+    asset: 'bookshelfB',
+    x: 96,
+    baseline: 100,
+    backWallRoomId: 'research',
+    resourceId: 'archive-desk',
+  },
+  {
+    asset: 'bookshelfC',
+    x: 145,
+    baseline: 100,
+    backWallRoomId: 'research',
+    resourceId: 'archive-desk',
+  },
   {
     asset: 'floorLamp',
     x: 226,
@@ -312,12 +324,19 @@ const SCENE_PROPS: SceneProp[] = [
   },
 
   // Synthesis / Decisions — a small library salon and decision console.
-  { asset: 'bookshelfA', x: 48, baseline: 324, backWallRoomId: 'synthesis' },
+  {
+    asset: 'bookshelfA',
+    x: 48,
+    baseline: 324,
+    backWallRoomId: 'synthesis',
+    resourceId: 'synthesis-lounge',
+  },
   {
     asset: 'bookshelfFilled',
     x: 97,
     baseline: 324,
     backWallRoomId: 'synthesis',
+    resourceId: 'synthesis-lounge',
   },
   {
     asset: 'sofaGreen',
@@ -688,14 +707,42 @@ function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
   drawWallDetails(context, bank);
 }
 
-function resourceIsActive(state: AgentArenaState, resourceId?: string) {
-  if (!resourceId) return false;
-  return state.agents.some(
+type ResourceWorkState = {
+  mode: 'idle' | 'ready' | 'active';
+  capability?: string;
+};
+
+function resourceWorkState(
+  state: AgentArenaState,
+  resourceId?: string,
+): ResourceWorkState {
+  if (!resourceId) return { mode: 'idle' };
+  const residents = state.agents.filter(
     (agent) =>
-      agent.status === 'working' &&
-      (agent.currentResourceId === resourceId ||
-        agent.engagedResourceId === resourceId),
+      agent.currentResourceId === resourceId ||
+      agent.engagedResourceId === resourceId,
   );
+  const activeResident = residents.find((resident) => resident.activeTool);
+  if (activeResident) {
+    return {
+      mode: 'active',
+      capability: activeResident.activeCapability,
+    };
+  }
+  return residents.length > 0 ? { mode: 'ready' } : { mode: 'idle' };
+}
+
+function activityScreenColor(work: ResourceWorkState) {
+  if (work.mode === 'ready') return '#8e7746';
+  if (work.mode !== 'active') return '#596f69';
+  if (new Set(['search', 'browse']).has(work.capability ?? ''))
+    return '#4f8f91';
+  if (new Set(['shell', 'filesystem']).has(work.capability ?? ''))
+    return '#4f7d57';
+  if (work.capability === 'connector') return '#526f9b';
+  if (new Set(['test', 'review']).has(work.capability ?? ''))
+    return '#756692';
+  return '#9a6f48';
 }
 
 type StatefulFacilityProp = {
@@ -871,26 +918,47 @@ const COMPUTER_SURFACES = new Set([
   'connector-console-b',
 ]);
 
+const ACTIVITY_SURFACE_OVERLAYS = new Set([
+  ...COMPUTER_SURFACES,
+  'publish-console',
+  'build-bench-a',
+  'verify-rig-b',
+]);
+
 function drawSurfaceDetail(
   context: CanvasRenderingContext2D,
+  state: AgentArenaState,
   prop: SceneProp,
   width: number,
   y: number,
 ) {
-  if (SELF_AUTHORED_FURNITURE.has(prop.asset)) return;
   const resourceId = prop.resourceId;
   if (!resourceId) return;
+  if (
+    SELF_AUTHORED_FURNITURE.has(prop.asset) &&
+    !ACTIVITY_SURFACE_OVERLAYS.has(resourceId)
+  ) {
+    return;
+  }
   const centerX = Math.round(prop.x + width / 2);
+  const work = resourceWorkState(state, resourceId);
 
   if (COMPUTER_SURFACES.has(resourceId)) {
     const left = centerX - 8;
     const top = y + 5;
     context.fillStyle = '#302922';
     context.fillRect(left - 1, top - 1, 18, 10);
-    context.fillStyle = '#596f69';
+    context.fillStyle = activityScreenColor(work);
     context.fillRect(left + 1, top + 1, 14, 6);
-    context.fillStyle = '#9db69f';
-    context.fillRect(left + 3, top + 2, 6, 1);
+    context.fillStyle = work.mode === 'active' ? '#d5e7cb' : '#9db69f';
+    if (work.mode === 'active' && work.capability === 'connector') {
+      context.fillRect(left + 3, top + 2, 2, 2);
+      context.fillRect(left + 10, top + 4, 2, 2);
+      context.fillRect(left + 5, top + 3, 5, 1);
+    } else {
+      context.fillRect(left + 3, top + 2, work.mode === 'ready' ? 3 : 8, 1);
+      if (work.mode === 'active') context.fillRect(left + 3, top + 4, 6, 1);
+    }
     context.fillStyle = '#4b3b2c';
     context.fillRect(left - 3, top + 9, 22, 3);
     context.fillStyle = '#b58855';
@@ -933,7 +1001,7 @@ function drawSurfaceDetail(
   if (resourceId.startsWith('verify-rig')) {
     context.fillStyle = '#d7e0c6';
     context.fillRect(centerX - 8, y + 6, 16, 10);
-    context.fillStyle = '#667765';
+    context.fillStyle = activityScreenColor(work);
     context.fillRect(centerX - 5, y + 9, 2, 2);
     context.fillRect(centerX - 5, y + 13, 2, 2);
     context.fillStyle = '#65706b';
@@ -1032,14 +1100,19 @@ function drawSceneProp(
     drawLivingPlant(context, image, prop.x, y, condition);
     return;
   }
-  if (resourceIsActive(state, prop.resourceId)) {
-    context.fillStyle = 'rgba(224,181,104,.16)';
+  const work = resourceWorkState(state, prop.resourceId);
+  if (work.mode !== 'idle') {
+    context.fillStyle =
+      work.mode === 'active'
+        ? 'rgba(224,181,104,.24)'
+        : 'rgba(224,181,104,.1)';
     context.fillRect(prop.x - 3, y - 3, width + 6, height + 6);
-    context.fillStyle = '#d8a85f';
+    context.fillStyle =
+      work.mode === 'active' ? activityScreenColor(work) : '#a88c56';
     context.fillRect(prop.x, y + height + 1, width, 2);
   }
   drawFacilitySprite(context, bank, prop.asset, prop.x, y);
-  drawSurfaceDetail(context, prop, width, y);
+  drawSurfaceDetail(context, state, prop, width, y);
 }
 
 function drawOccupiedSeatForeground(
