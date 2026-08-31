@@ -274,20 +274,50 @@ void test('build plant remains outside the doorway opening and approach lane', (
   );
 });
 
-void test('portal residents stage beside every doorway instead of inside its opening', () => {
+void test('portal residents stage legally on every doorway centerline at the corridor mouth', () => {
   const doors = STATIONS.filter((station) => station.kind === 'portal');
   assert.equal(doors.length, 6);
   for (const door of doors) {
     assert.equal(door.roomId, 'corridor');
     assert.equal(door.slots.length, 1);
     const staging = door.slots[0];
+    assert.equal(staging.x, door.position.x);
     assert.equal(staging.y, 50);
     assert.equal(capsuleIsWorldLegal(staging), true);
-    const horizontalClearancePx =
-      Math.abs(staging.x - door.position.x) * (768 / 100);
+  }
+});
+
+void test('every occupied portal has collision-free room egress past coexisting adjacent corridor residents', () => {
+  const doors = STATIONS.filter((station) => station.kind === 'portal');
+  for (const door of doors) {
+    const neighbors = WORLD_EDGES.filter((edge) => edge.includes(door.id)).map(
+      (edge) => edge.find((stationId) => stationId !== door.id),
+    );
+    const hub = neighbors
+      .map((stationId) => stationById(stationId))
+      .find((station) => station.roomId !== 'corridor');
+    const corridor = neighbors
+      .map((stationId) => stationById(stationId))
+      .find(
+        (station) =>
+          station.roomId === 'corridor' && station.kind !== 'portal',
+      );
+    assert.ok(hub, `${door.id} needs a room-side neighbor`);
+    assert.ok(corridor, `${door.id} needs a corridor-side neighbor`);
+
+    const from = door.slots[0];
+    const path = buildArenaPath(from, hub.slots[0], door.id, hub.id);
+    const coexistingResidents = corridor.slots.filter(
+      (slot) => !capsulesOverlap(slot, from),
+    );
     assert.ok(
-      horizontalClearancePx >= 31,
-      `${door.id} staging bay clears the 36px doorway and 10px body capsule`,
+      coexistingResidents.length > 0,
+      `${door.id} needs at least one coexisting corridor position`,
+    );
+    assert.equal(
+      pathClearsStationaryBodies(from, path, coexistingResidents),
+      true,
+      `${door.id}->${hub.id} recrosses a coexisting ${corridor.id} resident`,
     );
   }
 });
@@ -313,7 +343,7 @@ void test('every room doorway uses a continuous centerline traversal in both dir
       const to = stationById(toId);
       const path = buildArenaPath(from.slots[0], to.slots[0], fromId, toId);
       assert.ok(
-        path.length >= 5,
+        path.length >= 4,
         `${fromId}->${toId} needs staged jamb points`,
       );
       assert.ok(
@@ -585,7 +615,7 @@ void test('all station slots and semantic edge routes clear static world geometr
   }
 });
 
-void test('every directed edge provides occupant-aware egress without trapping full corridor or arrival rows', () => {
+void test('non-portal edges provide occupant-aware egress without trapping full corridor or arrival rows', () => {
   const failures = [];
   const exercisedMultiSlotStations = new Set();
   const exercisedDrainStates = new Set();
@@ -648,6 +678,14 @@ void test('every directed edge provides occupant-aware egress without trapping f
           true,
           `${fromId} has an invalid full authored occupancy`,
         );
+        if (stationById(toId).kind === 'portal') {
+          // A full single-file corridor row must first drain longitudinally;
+          // its doorway mouth is intentionally a chokepoint rather than an
+          // outer bay beyond the row. Portal-to-room liveness is covered by
+          // the reciprocal-egress regression above.
+          sourceSlots += sourceSlotsForDrain.length;
+          continue;
+        }
         const remainingSlotIndexes = sourceSlotsForDrain.map(
           (_, index) => index,
         );

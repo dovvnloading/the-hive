@@ -2699,6 +2699,172 @@ void test("bridge-authored paths have exact timing, reserve conflicts, and keep 
   ]);
 });
 
+void test("an occupied doorway can drain past a stationary adjacent corridor resident", async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), "hive-doorway-drain-"));
+  const origin = `http://127.0.0.1:${port}`;
+  const runId = "run-doorway-drain";
+  const occurredAt = new Date().toISOString();
+  const startedAt = new Date(Date.now() - 2_000).toISOString();
+  const arrivesAt = new Date(Date.now() - 1_000).toISOString();
+  const events = [
+    {
+      schemaVersion: 1,
+      eventId: "doorway-drain-run",
+      runId,
+      sequence: 1,
+      occurredAt,
+      source: "codex",
+      kind: "run.started",
+      payload: { objective: "Keep doorway egress live" },
+    },
+    ...[
+      ["steward-01", "Aster", "Steward"],
+      ["explorer-01", "Sagan", "Explorer"],
+    ].map(([agentId, name, role], index) => ({
+      schemaVersion: 1,
+      eventId: `doorway-drain-spawn-${agentId}`,
+      runId,
+      sequence: index + 2,
+      occurredAt,
+      source: "codex",
+      kind: "agent.spawned",
+      agentId,
+      payload: { name, role },
+    })),
+    ...[
+      ["steward-01", "spawn-lift", "hall-center"],
+      ["explorer-01", "spawn-lift", "door-command"],
+    ].map(([agentId, fromLocationId, toLocationId], index) => ({
+      schemaVersion: 1,
+      eventId: `doorway-drain-navigation-${agentId}`,
+      runId,
+      sequence: index + 4,
+      occurredAt,
+      source: "codex",
+      kind: "world.navigation",
+      agentId,
+      payload: {
+        actionId: `legacy-position-${agentId}`,
+        observationId: `legacy-observation-${agentId}`,
+        fromLocationId,
+        toLocationId,
+        startedAt,
+        arrivesAt,
+      },
+    })),
+  ];
+  const tokens = {
+    "steward-01":
+      "doorway-drain-steward-token-0123456789abcdef0123456789abcdef",
+    "explorer-01":
+      "doorway-drain-explorer-token-0123456789abcdef0123456789abcdef",
+  };
+  const credentials = Object.fromEntries(
+    Object.entries(tokens).map(([agentId, token]) => [
+      agentId,
+      {
+        hash: createHash("sha256").update(token).digest("hex"),
+        runId,
+        issuedAt: occurredAt,
+      },
+    ]),
+  );
+  await writeFile(
+    resolve(dataDir, "events.jsonl"),
+    `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+    "utf8",
+  );
+  await writeFile(
+    resolve(dataDir, "state.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      runId,
+      sequence: events.length,
+      intentSequence: 0,
+      startedAt: occurredAt,
+      updatedAt: occurredAt,
+    })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    resolve(dataDir, "agent-credentials.json"),
+    `${JSON.stringify(credentials)}\n`,
+    "utf8",
+  );
+
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, "--port", String(port), "--data-dir", dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: "100000",
+        ARENA_MIN_TRAVEL_MS: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+  t.after(async () => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once("exit", resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await waitForHealth(origin, child);
+
+  const asterScene = await observe(origin, tokens["steward-01"]);
+  assert.equal(asterScene.you.locationId, "hall-center");
+  const occupiedDoor = asterScene.exits.find(
+    (exit) => exit.to === "door-command",
+  );
+  assert.equal(occupiedDoor.status, "occupied");
+  assert.equal(occupiedDoor.available, false);
+  assert.deepEqual(
+    occupiedDoor.occupiedBy.map((resident) => resident.id),
+    ["explorer-01"],
+  );
+
+  const saganScene = await observe(origin, tokens["explorer-01"]);
+  assert.equal(saganScene.you.locationId, "door-command");
+  assert.equal(saganScene.you.navigation, undefined);
+  const roomEgress = saganScene.exits.find(
+    (exit) => exit.to === "command-hub",
+  );
+  assert.ok(roomEgress);
+  assert.equal(roomEgress.available, true);
+  assert.ok(["open", "shared"].includes(roomEgress.status));
+
+  const egress = await boardRequest(
+    origin,
+    "/world/action",
+    tokens["explorer-01"],
+    {
+      method: "POST",
+      body: JSON.stringify({
+        actionId: "sagan-drains-command-doorway",
+        observationId: saganScene.observationId,
+        action: "move",
+        targetId: "command-hub",
+      }),
+    },
+  );
+  const egressBody = await json(egress);
+  assert.equal(egress.status, 201, egressBody.error);
+  assert.deepEqual(egressBody.event.payload.fromPosition, {
+    x: 45.833,
+    y: 50,
+  });
+  assertNavigationPathClearsPositions(egressBody.event.payload, [
+    { x: 52.25, y: 50 },
+  ]);
+});
+
 void test("authenticated semantic world-action failures write redacted recovery receipts", async (t) => {
   const port = await availablePort();
   const dataDir = await mkdtemp(resolve(tmpdir(), "hive-action-rejections-"));
@@ -5463,7 +5629,7 @@ void test("continuous peer motion preserves fresh disjoint actions while exact c
   for (const [agentId, name, destination] of [
     ["west-motion", "West Motion", "hall-west"],
     ["east-mover-3", "East Mover", "hall-east"],
-    ["east-witness", "East Witness", "hall-east"],
+    ["east-witness-0", "East Witness", "hall-east"],
   ]) {
     const spawned = await postEvent(origin, {
       kind: "agent.spawned",
@@ -5532,7 +5698,7 @@ void test("continuous peer motion preserves fresh disjoint actions while exact c
   assert.equal(eastMove.status, 201, eastMoveBody.error);
   assertNavigationPathIsSweptLegal(eastMoveBody.event.payload);
 
-  const witnessScene = await observe(origin, tokens["east-witness"]);
+  const witnessScene = await observe(origin, tokens["east-witness-0"]);
   const advertisedYield = witnessScene.exits.find(
     (exit) => exit.to === "door-build",
   );
@@ -5549,7 +5715,7 @@ void test("continuous peer motion preserves fresh disjoint actions while exact c
   const conflictingMove = await boardRequest(
     origin,
     "/world/action",
-    tokens["east-witness"],
+    tokens["east-witness-0"],
     {
       method: "POST",
       body: JSON.stringify({
