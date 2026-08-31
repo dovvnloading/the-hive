@@ -912,19 +912,6 @@ function drawEnvironmentalLighting(
   context.restore();
 }
 
-const COMPUTER_SURFACES = new Set([
-  'research-computer-b',
-  'shell-console-a',
-  'connector-console-b',
-]);
-
-const ACTIVITY_SURFACE_OVERLAYS = new Set([
-  ...COMPUTER_SURFACES,
-  'publish-console',
-  'build-bench-a',
-  'verify-rig-b',
-]);
-
 function drawSurfaceDetail(
   context: CanvasRenderingContext2D,
   state: AgentArenaState,
@@ -934,37 +921,12 @@ function drawSurfaceDetail(
 ) {
   const resourceId = prop.resourceId;
   if (!resourceId) return;
-  if (
-    SELF_AUTHORED_FURNITURE.has(prop.asset) &&
-    !ACTIVITY_SURFACE_OVERLAYS.has(resourceId)
-  ) {
-    return;
-  }
+  // Authored furniture sprites already contain their computers, tools, and
+  // desk contents. Resource behavior is bound through resourceId; painting a
+  // second surface here would duplicate the physical prop.
+  if (SELF_AUTHORED_FURNITURE.has(prop.asset)) return;
   const centerX = Math.round(prop.x + width / 2);
   const work = resourceWorkState(state, resourceId);
-
-  if (COMPUTER_SURFACES.has(resourceId)) {
-    const left = centerX - 8;
-    const top = y + 5;
-    context.fillStyle = '#302922';
-    context.fillRect(left - 1, top - 1, 18, 10);
-    context.fillStyle = activityScreenColor(work);
-    context.fillRect(left + 1, top + 1, 14, 6);
-    context.fillStyle = work.mode === 'active' ? '#d5e7cb' : '#9db69f';
-    if (work.mode === 'active' && work.capability === 'connector') {
-      context.fillRect(left + 3, top + 2, 2, 2);
-      context.fillRect(left + 10, top + 4, 2, 2);
-      context.fillRect(left + 5, top + 3, 5, 1);
-    } else {
-      context.fillRect(left + 3, top + 2, work.mode === 'ready' ? 3 : 8, 1);
-      if (work.mode === 'active') context.fillRect(left + 3, top + 4, 6, 1);
-    }
-    context.fillStyle = '#4b3b2c';
-    context.fillRect(left - 3, top + 9, 22, 3);
-    context.fillStyle = '#b58855';
-    context.fillRect(left + 1, top + 9, 14, 1);
-    return;
-  }
 
   if (resourceId === 'command-table') {
     context.fillStyle = '#ead8b3';
