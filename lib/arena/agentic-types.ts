@@ -99,8 +99,14 @@ export type RuntimeEvent =
         summary: string;
       }
     >
-  | EventEnvelope<'agent.spawned', { name: string; role: string }>
-  | EventEnvelope<'task.assigned', { objective: string; mode?: AssignmentMode }>
+  | EventEnvelope<
+      'agent.spawned',
+      { name: string; role: string; position?: Vec2 }
+    >
+  | EventEnvelope<
+      'task.assigned',
+      { objective: string; mode?: AssignmentMode; position?: Vec2 }
+    >
   | EventEnvelope<
       'world.navigation',
       {
@@ -110,6 +116,14 @@ export type RuntimeEvent =
         toLocationId: string;
         startedAt: string;
         arrivesAt: string;
+        /**
+         * Bridge-authored motor projection. Older journals omit these fields;
+         * live movement requires the complete set.
+         */
+        fromPosition?: Vec2;
+        toPosition?: Vec2;
+        path?: Vec2[];
+        speedPxPerSecond?: number;
         reason?: string;
       }
     >
@@ -280,12 +294,17 @@ export type RuntimeAgent = {
   activeActivityId?: string;
   currentResourceId?: string;
   currentLocationId: string;
+  currentPosition?: Vec2;
   navigation?: {
     actionId: string;
     fromLocationId: string;
     toLocationId: string;
     startedAt: string;
     arrivesAt: string;
+    fromPosition?: Vec2;
+    toPosition?: Vec2;
+    path?: Vec2[];
+    speedPxPerSecond?: number;
   };
   engagedResourceId?: string;
   resourceQueued?: boolean;
@@ -305,12 +324,28 @@ export type RuntimeAgent = {
 
 export type AvatarDirection = 'north' | 'south' | 'east' | 'west';
 
+export type AvatarNavigationProjection = {
+  actionId: string;
+  fromStationId: string;
+  toStationId: string;
+  fromPosition: Vec2;
+  toPosition: Vec2;
+  /** Ordered bridge-authored route, normalized to include both endpoints. */
+  path: Vec2[];
+  speedPxPerSecond: number;
+  startedAt: number;
+  arrivesAt: number;
+  /** Legacy events can retain semantic timing without inventing a route. */
+  legacyFrozen?: boolean;
+};
+
 export type AvatarProjection = {
   agentId: string;
   position: Vec2;
   path: Vec2[];
   direction: AvatarDirection;
   isMoving: boolean;
+  navigation?: AvatarNavigationProjection;
   routeOrder?: number;
   routeDelayMs?: number;
   portalTransfer?: boolean;
@@ -435,7 +470,9 @@ export type AgentArenaState = {
 
 export type AgentArenaAction =
   | { type: 'runtime.event'; event: RuntimeEvent }
-  | { type: 'projection.tick'; deltaMs: number }
+  | { type: 'projection.tick'; now: number; deltaMs?: never }
+  /** Compatibility for archived worktree callers; the reducer ignores deltaMs. */
+  | { type: 'projection.tick'; deltaMs: number; now?: never }
   | { type: 'selection.changed'; agentId?: string }
   | { type: 'follow.changed'; agentId?: string };
 

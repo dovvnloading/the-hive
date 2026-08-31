@@ -30,7 +30,12 @@ import {
   RESEARCH_TRACKS,
   activitiesForResource,
   activityForCapability,
-  doorwayTraversalDistancePx,
+  buildArenaPath,
+  facilityPathIsSweptLegal,
+  facilityPathLengthPx,
+  facilityPathTimingIsConsistent,
+  facilityPositionAlongPath,
+  facilityPositionIsWorldLegal,
   inferToolCapability,
   neighborsForLocation,
   residentPurposeProfile,
@@ -51,6 +56,7 @@ const MIN_TRAVEL_MS = Math.max(
   0,
   Number(process.env.ARENA_MIN_TRAVEL_MS) || 450,
 );
+const NAVIGATION_START_LEAD_MS = 550;
 const DEFAULT_BROWSER_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -151,7 +157,6 @@ const PRIVATE_JOURNAL_NOTICE =
   'This volume is private to you. Other residents cannot read its pages.';
 const MAX_PROXIMITY_TEXT_LENGTH = 1_600;
 const MAX_COLLABORATION_OBJECTIVE_LENGTH = 800;
-const CORRIDOR_TRANSIT_CLEARANCE_MS = 600;
 const SOCIAL_RANGE_PX = Math.max(
   RESIDENT_BODY_CLEARANCE_PX + 8,
   Number(process.env.ARENA_SOCIAL_RANGE_PX) || RESIDENT_CONVERSATION_RANGE_PX,
@@ -301,15 +306,26 @@ function assertPayload(kind, payload) {
         ? undefined
         : 'payload.targetAgentIds must be an array of agent ids';
     case 'agent.spawned':
-      return hasText(payload, 'name') && hasText(payload, 'role')
+      if (!hasText(payload, 'name') || !hasText(payload, 'role')) {
+        return 'payload.name and payload.role are required';
+      }
+      return payload.position === undefined ||
+        (isWorldPosition(payload.position) &&
+          facilityPositionIsWorldLegal(payload.position))
         ? undefined
-        : 'payload.name and payload.role are required';
+        : 'payload.position must be a collision-safe world position';
     case 'task.assigned':
       if (!hasText(payload, 'objective'))
         return 'payload.objective is required';
-      return payload.mode === undefined || ASSIGNMENT_MODES.has(payload.mode)
+      if (
+        payload.mode !== undefined &&
+        !ASSIGNMENT_MODES.has(payload.mode)
+      ) {
+        return 'payload.mode must be directed or self-directed';
+      }
+      return payload.position === undefined
         ? undefined
-        : 'payload.mode must be directed or self-directed';
+        : 'payload.position is bridge-authored reactivation metadata';
     case 'world.navigation':
       if (
         !hasText(payload, 'actionId') ||
@@ -326,6 +342,49 @@ function assertPayload(kind, payload) {
         Number.isNaN(Date.parse(payload.arrivesAt))
       ) {
         return 'world navigation timestamps must be valid ISO timestamps';
+      }
+      {
+        const motorFields = [
+          payload.fromPosition,
+          payload.toPosition,
+          payload.path,
+          payload.speedPxPerSecond,
+        ];
+        const suppliedMotorFields = motorFields.filter(
+          (value) => value !== undefined,
+        ).length;
+        if (suppliedMotorFields > 0) {
+          if (
+            suppliedMotorFields !== motorFields.length ||
+            !isWorldPosition(payload.fromPosition) ||
+            !isWorldPosition(payload.toPosition) ||
+            !Array.isArray(payload.path) ||
+            payload.path.length === 0 ||
+            !payload.path.every(isWorldPosition) ||
+            !Number.isFinite(payload.speedPxPerSecond) ||
+            payload.speedPxPerSecond <= 0
+          ) {
+            return 'world navigation motor fields must form one complete finite trajectory';
+          }
+          const endpoint = payload.path.at(-1);
+          if (
+            endpoint.x !== payload.toPosition.x ||
+            endpoint.y !== payload.toPosition.y ||
+            !facilityPathIsSweptLegal(payload.fromPosition, payload.path)
+          ) {
+            return 'world navigation motor path must end at its collision-safe destination';
+          }
+          if (
+            !facilityPathTimingIsConsistent(
+              payload.fromPosition,
+              payload.path,
+              payload.speedPxPerSecond,
+              Date.parse(payload.arrivesAt) - Date.parse(payload.startedAt),
+            )
+          ) {
+            return 'world navigation motor timing must match its path length and speed';
+          }
+        }
       }
       return optionalText(payload, 'reason')
         ? undefined
@@ -1809,6 +1868,9 @@ function projectAgentStates() {
         resourceQueued: false,
         inspectedEntityIds: new Set(),
         navigation: undefined,
+        positionOverride: isWorldPosition(event.payload.position)
+          ? cloneWorldPosition(event.payload.position)
+          : undefined,
         lastSequence: event.sequence,
       });
       continue;
@@ -1831,6 +1893,9 @@ function projectAgentStates() {
       agent.activeToolTopicId = undefined;
       agent.resourceQueued = false;
       agent.activityCommitment = undefined;
+      if (isWorldPosition(event.payload.position)) {
+        agent.positionOverride = cloneWorldPosition(event.payload.position);
+      }
     } else if (event.kind === 'agent.activity') {
       agent.phase = event.payload.phase;
       agent.status = event.payload.status;
@@ -1851,8 +1916,13 @@ function projectAgentStates() {
         toLocationId: event.payload.toLocationId,
         startedAt: event.payload.startedAt,
         arrivesAt: event.payload.arrivesAt,
+        fromPosition: event.payload.fromPosition,
+        toPosition: event.payload.toPosition,
+        path: event.payload.path,
+        speedPxPerSecond: event.payload.speedPxPerSecond,
         reason: event.payload.reason,
       };
+      agent.positionOverride = undefined;
     } else if (event.kind === 'world.interaction') {
       if (
         event.payload.verb === 'inspect' ||
@@ -2843,6 +2913,27 @@ function rotatedSlots(slots, start) {
   return slots.map((_, offset) => slots[(start + offset) % slots.length]);
 }
 
+function isWorldPosition(value) {
+  return (
+    isRecord(value) &&
+    Number.isFinite(value.x) &&
+    Number.isFinite(value.y)
+  );
+}
+
+function cloneWorldPosition(value) {
+  return { x: Number(value.x), y: Number(value.y) };
+}
+
+function sameWorldPosition(left, right) {
+  return (
+    isWorldPosition(left) &&
+    isWorldPosition(right) &&
+    Math.abs(left.x - right.x) <= 0.0001 &&
+    Math.abs(left.y - right.y) <= 0.0001
+  );
+}
+
 function observationSlotsFor(locationId, agentId) {
   const location = worldLocationById(locationId);
   if (!location?.slots?.length) return location ? [location.position] : [];
@@ -2860,38 +2951,444 @@ function observationSlotsFor(locationId, agentId) {
   ];
 }
 
-function projectedResidentPositions(residents, now = Date.now()) {
-  const positions = new Map();
-  const byLocation = new Map();
-  for (const resident of residents) {
-    const locationId = effectiveLocation(resident, now);
-    const group = byLocation.get(locationId) ?? [];
-    group.push(resident);
-    byLocation.set(locationId, group);
+const LEGACY_OVERFLOW_SLOTS = Object.freeze({
+  'context-hub': Object.freeze([{ x: 44.661, y: 89.286 }]),
+  'context-kiosk': Object.freeze([
+    { x: 47.135, y: 85.714 },
+    { x: 51.302, y: 85.714 },
+  ]),
+  commons: Object.freeze([
+    { x: 43.75, y: 89.286 },
+    { x: 47.917, y: 89.286 },
+  ]),
+});
+
+function legacyOverflowPosition(
+  locationId,
+  agentId,
+  reserved,
+  additionallyAvailable = () => true,
+) {
+  const location = worldLocationById(locationId);
+  if (!location) return undefined;
+  const available = (candidate) =>
+    facilityPositionIsWorldLegal(candidate) &&
+    reserved.every(
+      (occupied) => !residentCapsulesOverlap(candidate, occupied),
+    ) &&
+    additionallyAvailable(candidate);
+  for (const candidate of LEGACY_OVERFLOW_SLOTS[locationId] ?? []) {
+    if (available(candidate)) return cloneWorldPosition(candidate);
   }
-  for (const [locationId, group] of byLocation) {
-    const reserved = [];
-    group
-      .slice()
-      .sort(
-        (left, right) =>
-          (left.spawnSequence ?? 0) - (right.spawnSequence ?? 0) ||
-          left.id.localeCompare(right.id),
-      )
-      .forEach((resident) => {
-        const candidates = observationSlotsFor(locationId, resident.id);
-        const position =
-          candidates.find((candidate) =>
-            reserved.every(
-              (occupied) => !residentCapsulesOverlap(candidate, occupied),
-            ),
-          ) ?? worldLocationById(locationId)?.position;
-        if (!position) return;
-        reserved.push(position);
-        positions.set(resident.id, position);
-      });
+  const anchors = [...(location.slots ?? []), location.position];
+  const phase = residentHash(agentId) % 16;
+  for (const radiusPx of [28, 36, 44, 52, 60, 72, 84, 96]) {
+    for (let index = 0; index < 16; index += 1) {
+      const angle = ((index + phase) / 16) * Math.PI * 2;
+      for (const anchor of anchors) {
+        const candidate = {
+          x: anchor.x + (Math.cos(angle) * radiusPx * 100) / 768,
+          y: anchor.y + (Math.sin(angle) * radiusPx * 100) / 448,
+        };
+        if (available(candidate)) return candidate;
+      }
+    }
+  }
+  return undefined;
+}
+
+function preferredAuthoredSlots(locationId, agentId) {
+  const location = worldLocationById(locationId);
+  if (!location?.slots?.length) return [];
+  return rotatedSlots(
+    location.slots,
+    residentHash(agentId) % location.slots.length,
+  ).map(cloneWorldPosition);
+}
+
+function immutableSpawnPositions() {
+  const positions = new Map();
+  const reserved = [];
+  const spawned = currentRunEvents()
+    .filter((event) => event.kind === 'agent.spawned')
+    .sort((left, right) => left.sequence - right.sequence);
+  for (const event of spawned) {
+    if (positions.has(event.agentId)) continue;
+    const candidates = observationSlotsFor('spawn-lift', event.agentId);
+    const storedPosition = isWorldPosition(event.payload?.position)
+      ? cloneWorldPosition(event.payload.position)
+      : undefined;
+    const position =
+      storedPosition ??
+      candidates.find((candidate) =>
+        reserved.every(
+          (occupied) => !residentCapsulesOverlap(candidate, occupied),
+        ),
+      );
+    if (!position) continue;
+    const authored = cloneWorldPosition(position);
+    positions.set(event.agentId, authored);
+    reserved.push(authored);
   }
   return positions;
+}
+
+function selectImmutableSpawnPosition(agentId) {
+  const now = Date.now();
+  const agents = projectAgentStates();
+  const residents = activeResidents(agents);
+  const occupied = [...projectedResidentPositions(residents, now).values()];
+  for (const resident of residents) {
+    const plan = navigationPlanFor(resident);
+    if (plan && now < plan.arrivesAtMs) occupied.push(plan.toPosition);
+  }
+  const position = observationSlotsFor('spawn-lift', agentId).find(
+    (candidate) =>
+      facilityPositionIsWorldLegal(candidate) &&
+      occupied.every(
+        (reserved) => !residentCapsulesOverlap(candidate, reserved),
+      ) &&
+      !residentWhoseActivePlanCrossesPosition(candidate, residents, now),
+  );
+  return position ? cloneWorldPosition(position) : undefined;
+}
+
+function selectReactivationPosition(agentId, resident, agents, now = Date.now()) {
+  const locationId = effectiveLocation(resident, now);
+  const active = activeResidents(agents).filter(
+    (candidate) => candidate.id !== agentId,
+  );
+  const occupied = [...projectedResidentPositions(active, now).values()];
+  for (const candidate of active) {
+    const plan = navigationPlanFor(candidate);
+    if (plan && now < plan.arrivesAtMs) occupied.push(plan.toPosition);
+  }
+  const previous = projectedResidentPositions([resident], now).get(agentId);
+  const candidates = [
+    ...(previous ? [previous] : []),
+    ...observationSlotsFor(locationId, agentId),
+  ].filter(
+    (candidate, index, values) =>
+      values.findIndex(
+        (other) => other.x === candidate.x && other.y === candidate.y,
+      ) === index,
+  );
+  const authoredPosition = candidates.find(
+    (candidate) =>
+      facilityPositionIsWorldLegal(candidate) &&
+      occupied.every(
+        (other) => !residentCapsulesOverlap(candidate, other),
+      ) &&
+      !residentWhoseActivePlanCrossesPosition(candidate, active, now),
+  );
+  const position =
+    authoredPosition ??
+    legacyOverflowPosition(
+      locationId,
+      agentId,
+      occupied,
+      (candidate) =>
+        !residentWhoseActivePlanCrossesPosition(candidate, active, now),
+    );
+  return position ? cloneWorldPosition(position) : undefined;
+}
+
+function fallbackPositionForLocation(locationId, agentId, spawnPositions) {
+  if (locationId === 'spawn-lift') {
+    const spawn = spawnPositions.get(agentId);
+    if (spawn) return cloneWorldPosition(spawn);
+  }
+  const preferred = preferredAuthoredSlots(locationId, agentId)[0];
+  if (preferred) return preferred;
+  const location = worldLocationById(locationId);
+  return location ? cloneWorldPosition(location.position) : undefined;
+}
+
+function navigationPlanFor(resident, spawnPositions = immutableSpawnPositions()) {
+  const navigation = resident?.navigation;
+  if (!navigation) return undefined;
+  const fromPosition = isWorldPosition(navigation.fromPosition)
+    ? cloneWorldPosition(navigation.fromPosition)
+    : fallbackPositionForLocation(
+        navigation.fromLocationId,
+        resident.id,
+        spawnPositions,
+      );
+  const toPosition = isWorldPosition(navigation.toPosition)
+    ? cloneWorldPosition(navigation.toPosition)
+    : fallbackPositionForLocation(
+        navigation.toLocationId,
+        resident.id,
+        spawnPositions,
+      );
+  if (!fromPosition || !toPosition) return undefined;
+
+  const suppliedPath = Array.isArray(navigation.path)
+    ? navigation.path.filter(isWorldPosition).map(cloneWorldPosition)
+    : [];
+  const suppliedEndpoint = suppliedPath.at(-1);
+  const path =
+    suppliedPath.length > 0 &&
+    sameWorldPosition(suppliedEndpoint, toPosition)
+      ? suppliedPath
+      : buildArenaPath(
+          fromPosition,
+          toPosition,
+          navigation.fromLocationId,
+          navigation.toLocationId,
+        );
+  if (path.length === 0) return undefined;
+
+  const startedAtMs = Date.parse(navigation.startedAt);
+  const arrivesAtMs = Date.parse(navigation.arrivesAt);
+  const pathLengthPx = facilityPathLengthPx(fromPosition, path);
+  const durationSeconds = Math.max(0, arrivesAtMs - startedAtMs) / 1_000;
+  const speedPxPerSecond =
+    Number.isFinite(navigation.speedPxPerSecond) &&
+    navigation.speedPxPerSecond > 0
+      ? navigation.speedPxPerSecond
+      : durationSeconds > 0
+        ? pathLengthPx / durationSeconds
+        : TRAVEL_SPEED_PX_PER_SECOND;
+  return {
+    ...navigation,
+    fromPosition,
+    toPosition,
+    path,
+    speedPxPerSecond,
+    pathLengthPx,
+    startedAtMs,
+    arrivesAtMs,
+  };
+}
+
+function hasAuthoredMotorProjection(resident) {
+  const navigation = resident?.navigation;
+  if (
+    !navigation ||
+    !isWorldPosition(navigation.fromPosition) ||
+    !isWorldPosition(navigation.toPosition) ||
+    !Array.isArray(navigation.path) ||
+    navigation.path.length === 0 ||
+    !navigation.path.every(isWorldPosition) ||
+    !Number.isFinite(navigation.speedPxPerSecond) ||
+    navigation.speedPxPerSecond <= 0
+  ) {
+    return false;
+  }
+  const startedAtMs = Date.parse(navigation.startedAt);
+  const arrivesAtMs = Date.parse(navigation.arrivesAt);
+  const endpoint = navigation.path.at(-1);
+  return (
+    Number.isFinite(startedAtMs) &&
+    Number.isFinite(arrivesAtMs) &&
+    sameWorldPosition(endpoint, navigation.toPosition) &&
+    facilityPathIsSweptLegal(navigation.fromPosition, navigation.path) &&
+    facilityPathTimingIsConsistent(
+      navigation.fromPosition,
+      navigation.path,
+      navigation.speedPxPerSecond,
+      arrivesAtMs - startedAtMs,
+    )
+  );
+}
+
+function navigationPositionAt(plan, at) {
+  if (!plan) return undefined;
+  if (at <= plan.startedAtMs) return { ...plan.fromPosition };
+  if (at >= plan.arrivesAtMs) return { ...plan.toPosition };
+  const elapsedSeconds = (at - plan.startedAtMs) / 1_000;
+  return facilityPositionAlongPath(
+    plan.fromPosition,
+    plan.path,
+    Math.min(plan.pathLengthPx, elapsedSeconds * plan.speedPxPerSecond),
+  );
+}
+
+function residentWhoseActivePlanCrossesPosition(
+  position,
+  residents,
+  now = Date.now(),
+) {
+  for (const resident of residents) {
+    const plan = navigationPlanFor(resident);
+    if (!plan || plan.arrivesAtMs <= now) continue;
+    const durationMs = Math.max(1, plan.arrivesAtMs - now);
+    const samples = Math.max(
+      1,
+      Math.ceil(durationMs / 32),
+      Math.ceil(plan.pathLengthPx / 2),
+    );
+    for (let sample = 0; sample <= samples; sample += 1) {
+      const at = now + (durationMs * sample) / samples;
+      const residentPosition = navigationPositionAt(plan, at);
+      if (
+        residentPosition &&
+        residentCapsulesOverlap(position, residentPosition)
+      ) {
+        return resident;
+      }
+    }
+  }
+  return undefined;
+}
+
+function projectedResidentPositions(residents, now = Date.now()) {
+  const positions = new Map();
+  const spawnPositions = immutableSpawnPositions();
+  const reserved = [];
+  const ordered = [...residents].sort(
+    (left, right) =>
+      (left.spawnSequence ?? 0) - (right.spawnSequence ?? 0) ||
+      left.id.localeCompare(right.id),
+  );
+
+  // New journals carry exact motor endpoints. Preserve those immutable
+  // coordinates first; they are the authority shared with the browser.
+  for (const resident of ordered) {
+    const locationId = effectiveLocation(resident, now);
+    const plan = navigationPlanFor(resident, spawnPositions);
+    const authoredMotor = hasAuthoredMotorProjection(resident);
+    const authoredSpawn =
+      locationId === 'spawn-lift' && spawnPositions.get(resident.id);
+    const position = resident.positionOverride
+      ? resident.positionOverride
+      : authoredMotor
+        ? now < plan.arrivesAtMs
+          ? navigationPositionAt(plan, now)
+          : plan.toPosition
+        : authoredSpawn;
+    if (!position) continue;
+    const fixed = cloneWorldPosition(position);
+    positions.set(resident.id, fixed);
+    reserved.push(fixed);
+  }
+
+  // Legacy journals did not author body coordinates. Allocate their settled
+  // bodies deterministically and collision-free instead of independently
+  // hashing every resident onto the same first slot.
+  for (const resident of ordered) {
+    if (positions.has(resident.id)) continue;
+    const locationId = effectiveLocation(resident, now);
+    const candidates = observationSlotsFor(locationId, resident.id);
+    const position = candidates.find(
+      (candidate) =>
+        facilityPositionIsWorldLegal(candidate) &&
+        reserved.every(
+          (occupied) => !residentCapsulesOverlap(candidate, occupied),
+        ),
+    );
+    const fallback =
+      position ?? legacyOverflowPosition(locationId, resident.id, reserved);
+    if (!fallback) continue;
+    const allocated = cloneWorldPosition(fallback);
+    positions.set(resident.id, allocated);
+    reserved.push(allocated);
+  }
+  return positions;
+}
+
+function selectAuthoredTargetSlot(
+  agents,
+  agentId,
+  targetId,
+  now = Date.now(),
+) {
+  const target = worldLocationById(targetId);
+  if (!target) return undefined;
+  const residents = activeResidents(agents);
+  const positions = projectedResidentPositions(residents, now);
+  const claimed = [];
+  for (const resident of residents) {
+    if (resident.id === agentId) continue;
+    const navigation = activeNavigation(resident, now);
+    const plan = navigationPlanFor(resident);
+    if (navigation?.toLocationId === targetId && plan) {
+      claimed.push(plan.toPosition);
+      continue;
+    }
+    if (effectiveLocation(resident, now) === targetId) {
+      const position = positions.get(resident.id);
+      if (position) claimed.push(position);
+    }
+  }
+  return preferredAuthoredSlots(targetId, agentId).find((candidate) =>
+    claimed.every(
+      (occupied) => !residentCapsulesOverlap(candidate, occupied),
+    ),
+  );
+}
+
+function effectiveMovementSpeed(pathLengthPx) {
+  if (pathLengthPx <= 0) return TRAVEL_SPEED_PX_PER_SECOND;
+  if (MIN_TRAVEL_MS <= 0) return TRAVEL_SPEED_PX_PER_SECOND;
+  return Math.min(
+    TRAVEL_SPEED_PX_PER_SECOND,
+    pathLengthPx / (MIN_TRAVEL_MS / 1_000),
+  );
+}
+
+function plannedNavigationPosition(plan, at) {
+  if (at <= plan.startedAtMs) return plan.fromPosition;
+  if (at >= plan.arrivesAtMs) return plan.toPosition;
+  const elapsedSeconds = (at - plan.startedAtMs) / 1_000;
+  return facilityPositionAlongPath(
+    plan.fromPosition,
+    plan.path,
+    Math.min(plan.pathLengthPx, elapsedSeconds * plan.speedPxPerSecond),
+  );
+}
+
+function conflictingResidentForPlan(
+  plan,
+  agents,
+  agentId,
+  reserveFromMs,
+) {
+  const residents = activeResidents(agents).filter(
+    (resident) => resident.id !== agentId,
+  );
+  const currentPositions = projectedResidentPositions(residents, reserveFromMs);
+  const otherPlans = new Map(
+    residents.map((resident) => [
+      resident.id,
+      activeNavigation(resident, reserveFromMs)
+        ? navigationPlanFor(resident)
+        : undefined,
+    ]),
+  );
+  const reservationEndsAtMs = Math.max(
+    plan.arrivesAtMs,
+    ...[...otherPlans.values()]
+      .filter(Boolean)
+      .map((otherPlan) => otherPlan.arrivesAtMs),
+  );
+  const reservationDurationMs = Math.max(
+    1,
+    reservationEndsAtMs - reserveFromMs,
+  );
+  const samples = Math.max(
+    1,
+    Math.ceil(reservationDurationMs / 32),
+    Math.ceil(plan.pathLengthPx / 2),
+  );
+  for (let sample = 0; sample <= samples; sample += 1) {
+    const at = reserveFromMs + (reservationDurationMs * sample) / samples;
+    const proposedPosition = plannedNavigationPosition(plan, at);
+    for (const resident of residents) {
+      const otherPlan = otherPlans.get(resident.id);
+      const otherPosition = otherPlan
+        ? navigationPositionAt(otherPlan, at)
+        : currentPositions.get(resident.id);
+      if (
+        otherPosition &&
+        residentCapsulesOverlap(proposedPosition, otherPosition)
+      ) {
+        return resident;
+      }
+    }
+  }
+  return undefined;
 }
 
 function bearingLabel(left, right) {
@@ -2928,72 +3425,82 @@ function locationClaims(agents, targetId, exceptAgentId, now = Date.now()) {
   return { present, reserved };
 }
 
-function laneUsers(
+function proposedMovementPlan(
   agents,
+  agentId,
   fromLocationId,
   toLocationId,
-  exceptAgentId,
-  now = Date.now(),
+  acceptedAtMs = Date.now(),
 ) {
-  const requested = new Set([fromLocationId, toLocationId]);
-  const sharesChokepoint = (leftLocationId, rightLocationId) =>
-    [leftLocationId, rightLocationId].some((locationId) => {
-      if (!requested.has(locationId)) return false;
-      const location = worldLocationById(locationId);
-      return (
-        location?.kind === 'portal' ||
-        location?.roomId === 'corridor' ||
-        location?.capacity === 1
-      );
-    });
-  const sharesCorridorChokepoint = (leftLocationId, rightLocationId) =>
-    [leftLocationId, rightLocationId].some((locationId) => {
-      if (!requested.has(locationId)) return false;
-      return worldLocationById(locationId)?.roomId === 'corridor';
-    });
-  const active = activeResidents(agents).filter((candidate) => {
-    if (candidate.id === exceptAgentId) return false;
-    const navigation = activeNavigation(candidate, now);
-    if (!navigation) return false;
-    const sameLane =
-      (navigation.fromLocationId === fromLocationId &&
-        navigation.toLocationId === toLocationId) ||
-      (navigation.fromLocationId === toLocationId &&
-        navigation.toLocationId === fromLocationId);
-    if (sameLane) return true;
-
-    // Adjacent moves can still collide when they share the same doorway,
-    // single-capacity waypoint, or corridor intersection. Reserve that whole
-    // chokepoint until the first traversal has factually arrived.
-    return sharesChokepoint(navigation.fromLocationId, navigation.toLocationId);
-  });
-  const activeIds = new Set(active.map((candidate) => candidate.id));
-  const settling = [];
-  for (const event of currentRunEvents().slice().reverse()) {
-    if (event.kind !== 'world.navigation') continue;
-    if (event.agentId === exceptAgentId || activeIds.has(event.agentId))
-      continue;
-    const arrivesAt = Date.parse(event.payload.arrivesAt);
-    if (now - arrivesAt >= CORRIDOR_TRANSIT_CLEARANCE_MS) continue;
-    if (arrivesAt > now) continue;
-    if (
-      !sharesCorridorChokepoint(
-        event.payload.fromLocationId,
-        event.payload.toLocationId,
-      )
-    ) {
-      continue;
-    }
-    const candidate = agents.get(event.agentId);
-    if (
-      candidate &&
-      !new Set(['completed', 'failed', 'canceled']).has(candidate.status)
-    ) {
-      settling.push(candidate);
-      activeIds.add(candidate.id);
-    }
+  const target = worldLocationById(toLocationId);
+  if (!target) return undefined;
+  const residents = activeResidents(agents);
+  const residentPositions = projectedResidentPositions(
+    residents,
+    acceptedAtMs,
+  );
+  const fromPosition = residentPositions.get(agentId);
+  const toPosition = selectAuthoredTargetSlot(
+    agents,
+    agentId,
+    toLocationId,
+    acceptedAtMs,
+  );
+  if (!fromPosition || !toPosition) {
+    return {
+      fromPosition,
+      toPosition,
+      issue: !fromPosition ? 'missing_source' : 'destination_full',
+    };
   }
-  return [...active, ...settling];
+  const path = buildArenaPath(
+    fromPosition,
+    toPosition,
+    fromLocationId,
+    toLocationId,
+  );
+  if (path.length === 0 || !facilityPathIsSweptLegal(fromPosition, path)) {
+    return { fromPosition, toPosition, path, issue: 'unsafe_path' };
+  }
+  const pathLengthPx = facilityPathLengthPx(fromPosition, path);
+  if (!Number.isFinite(pathLengthPx) || pathLengthPx <= 0) {
+    return {
+      fromPosition,
+      toPosition,
+      path,
+      pathLengthPx,
+      issue: 'empty_path',
+    };
+  }
+  const maximumSpeedPxPerSecond = effectiveMovementSpeed(pathLengthPx);
+  const durationMs = Math.max(
+    1,
+    Math.ceil((pathLengthPx / maximumSpeedPxPerSecond) * 1_000),
+  );
+  // Duration is an integer millisecond contract. Derive the authored speed
+  // from that rounded duration so every consumer reaches the exact endpoint
+  // at the exact deadline without tolerance drift or a final snap.
+  const speedPxPerSecond = pathLengthPx / (durationMs / 1_000);
+  const startedAtMs = acceptedAtMs + NAVIGATION_START_LEAD_MS;
+  const arrivesAtMs = startedAtMs + durationMs;
+  const plan = {
+    fromPosition,
+    toPosition,
+    path,
+    pathLengthPx,
+    speedPxPerSecond,
+    startedAtMs,
+    arrivesAtMs,
+  };
+  return {
+    ...plan,
+    conflictingResident: conflictingResidentForPlan(
+      plan,
+      agents,
+      agentId,
+      acceptedAtMs,
+    ),
+  };
 }
 
 function movementAwareness(
@@ -3006,7 +3513,16 @@ function movementAwareness(
   const target = worldLocationById(toLocationId);
   if (!target) return undefined;
   const claims = locationClaims(agents, toLocationId, agentId, now);
-  const traffic = laneUsers(agents, fromLocationId, toLocationId, agentId, now);
+  const proposal = proposedMovementPlan(
+    agents,
+    agentId,
+    fromLocationId,
+    toLocationId,
+    now,
+  );
+  const traffic = proposal?.conflictingResident
+    ? [proposal.conflictingResident]
+    : [];
   const claimedBy = new Map(
     [...claims.present, ...claims.reserved].map((candidate) => [
       candidate.id,
@@ -3015,9 +3531,9 @@ function movementAwareness(
   );
   const remainingCapacity = Math.max(0, target.capacity - claimedBy.size);
   let status = 'open';
-  if (traffic.length > 0) status = 'yield';
-  else if (claims.present.length >= target.capacity) status = 'occupied';
-  else if (claimedBy.size >= target.capacity) status = 'reserved';
+  if (proposal?.issue === 'destination_full') {
+    status = claims.reserved.length > 0 ? 'reserved' : 'occupied';
+  } else if (proposal?.issue || traffic.length > 0) status = 'yield';
   else if (claimedBy.size > 0) status = 'shared';
   return {
     status,
@@ -3027,6 +3543,7 @@ function movementAwareness(
     present: claims.present,
     reserved: claims.reserved,
     traffic,
+    proposal,
   };
 }
 
@@ -3124,7 +3641,8 @@ function assertSpeechReach(agentId, targetAgentId, observationId) {
   if (new Set(['completed', 'failed', 'canceled']).has(target.status)) {
     throw httpError(409, 'That person is no longer present');
   }
-  if (activeNavigation(speaker) || activeNavigation(target)) {
+  const now = Date.now();
+  if (activeNavigation(speaker, now) || activeNavigation(target, now)) {
     throw httpError(409, 'Both people must be stationary to speak');
   }
   const speakerLocationId = effectiveLocation(speaker);
@@ -3139,10 +3657,14 @@ function assertSpeechReach(agentId, targetAgentId, observationId) {
   ) {
     throw httpError(409, 'A wall separates the two people');
   }
-  const distancePx = metricDistance(
-    speakerLocation.position,
-    targetLocation.position,
-  );
+  const active = activeResidents(agents);
+  const residentPositions = projectedResidentPositions(active, now);
+  const speakerPosition = residentPositions.get(agentId);
+  const targetPosition = residentPositions.get(targetAgentId);
+  if (!speakerPosition || !targetPosition) {
+    throw httpError(409, 'The local body positions are not grounded');
+  }
+  const distancePx = metricDistance(speakerPosition, targetPosition);
   const perceivedTarget = observation.people.find(
     (person) => person.id === targetAgentId,
   );
@@ -3161,17 +3683,15 @@ function assertSpeechReach(agentId, targetAgentId, observationId) {
       (candidate) =>
         candidate.id !== agentId &&
         !new Set(['completed', 'failed', 'canceled']).has(candidate.status) &&
-        !activeNavigation(candidate) &&
-        roomIdForLocation(effectiveLocation(candidate)) ===
+        !activeNavigation(candidate, now) &&
+        roomIdForLocation(effectiveLocation(candidate, now)) ===
           roomIdForLocation(speakerLocationId),
     )
     .filter((candidate) => {
-      const candidateLocation = worldLocationById(effectiveLocation(candidate));
-      return (
-        candidateLocation &&
-        metricDistance(speakerLocation.position, candidateLocation.position) <
-          SOCIAL_RANGE_PX
-      );
+      const candidatePosition = residentPositions.get(candidate.id);
+      return candidatePosition
+        ? metricDistance(speakerPosition, candidatePosition) < SOCIAL_RANGE_PX
+        : false;
     })
     .map((candidate) => candidate.id)
     .sort((left, right) => left.localeCompare(right));
@@ -3758,12 +4278,45 @@ function compileObservation(agentId, after = 0) {
     light,
     perception,
     localNeeds,
-    navigation,
-    space,
+    navigation: navigation
+      ? {
+          actionId: navigation.actionId,
+          fromLocationId: navigation.fromLocationId,
+          toLocationId: navigation.toLocationId,
+          startedAt: navigation.startedAt,
+          arrivesAt: navigation.arrivesAt,
+        }
+      : undefined,
+    space: {
+      presentAgentIds: space.presentAgentIds,
+      incoming: space.incoming,
+      leaving: space.leaving,
+    },
     people: people
-      .map((person) => ({ ...person }))
+      .map((person) => ({
+        id: person.id,
+        role: person.role,
+        activity: person.activity,
+        locationId: person.locationId,
+        presence: person.presence,
+        visibility: person.visibility,
+        movement: person.movement,
+        moving: person.moving,
+        destinationId: person.destinationId,
+        arrivesAt: person.arrivesAt,
+      }))
       .sort((left, right) => left.id.localeCompare(right.id)),
-    exits,
+    // Bearings, distances, speaking thresholds, and exact route conflicts can
+    // change continuously while a peer traverses an already-authored motor
+    // event. They remain current in the returned packet, but do not make the
+    // packet stale without a new causal state transition. Action admission
+    // rechecks the exact trajectories at submission time.
+    exits: exits.map((exit) => ({
+      to: exit.to,
+      capacity: exit.capacity,
+      occupiedBy: exit.occupiedBy?.map((person) => person.id).sort(),
+      reservedBy: exit.reservedBy?.map((person) => person.id).sort(),
+    })),
     // Plant hydration is a continuously projected clock value. It remains
     // visible to residents, but must not invalidate an otherwise actionable
     // observation every time the displayed decimal ticks. Explicit
@@ -4240,38 +4793,58 @@ function performWorldAction(agentId, body) {
         'light_stewardship',
       );
     }
-    const awareness = movementAwareness(agents, agentId, locationId, target.id);
-    if (!awareness?.available) {
-      const involved =
-        awareness.status === 'yield'
-          ? awareness.traffic
-          : awareness.status === 'reserved'
-            ? awareness.reserved
-            : awareness.present;
-      const names = involved.map((candidate) => candidate.name).join(', ');
-      const message =
-        awareness.status === 'yield'
-          ? `${target.label} path is in use by ${names}; yield, then observe again`
-          : awareness.status === 'reserved'
-            ? `${target.label} is reserved for ${names}; observe or choose another local step`
-            : `${target.label} is occupied by ${names}; observe or choose another local step`;
-      const reasonCode =
-        awareness.status === 'yield'
-          ? 'path_yield'
-          : awareness.status === 'reserved'
-            ? 'path_reserved'
-            : 'destination_occupied';
-      throw httpError(409, message, reasonCode);
-    }
-    const distance =
-      doorwayTraversalDistancePx(locationId, target.id) ??
-      (from ? metricDistance(from.position, target.position) : 48);
-    const durationMs = Math.max(
-      MIN_TRAVEL_MS,
-      Math.min(4_000, (distance / TRAVEL_SPEED_PX_PER_SECOND) * 1_000),
+    const acceptedAtMs = Date.now();
+    const awareness = movementAwareness(
+      agents,
+      agentId,
+      locationId,
+      target.id,
+      acceptedAtMs,
     );
-    const startedAt = new Date();
-    const arrivesAt = new Date(startedAt.getTime() + durationMs);
+    const proposal = awareness?.proposal;
+    const fromPosition = proposal?.fromPosition;
+    if (!fromPosition) {
+      throw httpError(
+        500,
+        `No authoritative standing position is available at ${locationId}`,
+      );
+    }
+    const toPosition = proposal?.toPosition;
+    if (!toPosition) {
+      const reserved = awareness?.reserved ?? [];
+      const present = awareness?.present ?? [];
+      const involved = [...reserved, ...present];
+      const names = involved.map((candidate) => candidate.name).join(', ');
+      throw httpError(
+        409,
+        names
+          ? `${target.label} has no free authored standing slot; occupied or reserved by ${names}`
+          : `${target.label} has no free authored standing slot`,
+        reserved.length > 0 ? 'path_reserved' : 'destination_occupied',
+      );
+    }
+    if (proposal.issue) {
+      throw httpError(
+        500,
+        `No collision-safe route is available from ${locationId} to ${target.id}`,
+      );
+    }
+    const {
+      path,
+      speedPxPerSecond,
+      startedAtMs,
+      arrivesAtMs,
+      conflictingResident,
+    } = proposal;
+    if (conflictingResident) {
+      throw httpError(
+        409,
+        `${target.label} route conflicts with ${conflictingResident.name}; yield, then observe again`,
+        'path_reserved',
+      );
+    }
+    const startedAt = new Date(startedAtMs);
+    const arrivesAt = new Date(arrivesAtMs);
     const event = appendEvent({
       kind: 'world.navigation',
       agentId,
@@ -4280,6 +4853,10 @@ function performWorldAction(agentId, body) {
         observationId: body.observationId,
         fromLocationId: locationId,
         toLocationId: target.id,
+        fromPosition: cloneWorldPosition(fromPosition),
+        toPosition: cloneWorldPosition(toPosition),
+        path: path.map(cloneWorldPosition),
+        speedPxPerSecond,
         startedAt: startedAt.toISOString(),
         arrivesAt: arrivesAt.toISOString(),
         ...(hasText(body, 'reason') ? { reason: body.reason.trim() } : {}),
@@ -4594,6 +5171,19 @@ function appendEvent(body, source = 'codex') {
       `Agent ${body.agentId.trim()} is already spawned in this run`,
     );
   }
+  if (kind === 'agent.spawned') {
+    const position = selectImmutableSpawnPosition(body.agentId.trim());
+    if (!position) {
+      throw new Error('Commons arrival point has no collision-safe spawn slot');
+    }
+    body = {
+      ...body,
+      payload: {
+        ...body.payload,
+        position,
+      },
+    };
+  }
   if (
     AGENT_EVENT_KINDS.has(kind) &&
     kind !== 'agent.spawned' &&
@@ -4610,6 +5200,36 @@ function appendEvent(body, source = 'codex') {
     agentIsTerminal(body.agentId.trim())
   ) {
     throw new Error(`Agent ${body.agentId.trim()} is no longer active`);
+  }
+
+  if (kind === 'task.assigned' && agentIsTerminal(body.agentId.trim())) {
+    const agents = projectAgentStates();
+    const prior = agents.get(body.agentId.trim());
+    const navigation = activeNavigation(prior);
+    if (navigation) {
+      throw httpError(
+        409,
+        `Wait for the prior movement to arrive at ${navigation.toLocationId} before reactivating this identity`,
+      );
+    }
+    const position = selectReactivationPosition(
+      body.agentId.trim(),
+      prior,
+      agents,
+    );
+    if (!position) {
+      throw httpError(
+        409,
+        `No collision-safe standing slot is available at ${effectiveLocation(prior)} for reactivation`,
+      );
+    }
+    body = {
+      ...body,
+      payload: {
+        ...body.payload,
+        position,
+      },
+    };
   }
 
   if (kind === 'agent.completed') {

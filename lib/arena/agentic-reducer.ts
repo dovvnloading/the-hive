@@ -1,23 +1,22 @@
 import {
   FACILITY_PROPS,
   allocatePresentationIndex,
-  buildArenaPath,
   inferToolCapability,
-  isFacilityPortalTransfer,
   resourceById,
   slotForAgent,
   stationById,
 } from './agentic-catalog';
-import { selectFacilityActivity } from './facility-protocol.mjs';
 import {
-  ARENA_WORLD_HEIGHT,
-  ARENA_WORLD_WIDTH,
-  resolveAvatarCollisions,
-} from './agentic-spatial';
+  facilityPathIsSweptLegal,
+  facilityPathTimingIsConsistent,
+  selectFacilityActivity,
+} from './facility-protocol.mjs';
+import { ARENA_WORLD_HEIGHT, ARENA_WORLD_WIDTH } from './agentic-spatial';
 import type {
   AgentArenaAction,
   AgentArenaState,
   AvatarDirection,
+  AvatarNavigationProjection,
   AvatarProjection,
   BoardMessageProjection,
   ChatIngressProjection,
@@ -70,34 +69,260 @@ export function createAgentArenaState(): AgentArenaState {
   };
 }
 
-function reservedStationPositions(
+const POSITION_EPSILON = 0.0001;
+const NEARBY_DISTANCE_PX = 72;
+
+function samePosition(left: Vec2, right: Vec2) {
+  return (
+    Math.abs(left.x - right.x) < POSITION_EPSILON &&
+    Math.abs(left.y - right.y) < POSITION_EPSILON
+  );
+}
+
+function legacyStationPosition(stationId: string): Vec2 {
+  const station = stationById(stationId);
+  return { ...(station.slots[0] ?? station.position) };
+}
+
+function legacyReservedPositions(
   state: AgentArenaState,
-  stationId: string,
   exceptAgentId: string,
 ) {
-  const targetRoomId = stationById(stationId).roomId;
-  return state.avatars
-    .filter((avatar) => {
-      if (avatar.agentId === exceptAgentId) return false;
-      const occupiedStationId = avatar.targetStationId ?? avatar.stationId;
-      return stationById(occupiedStationId).roomId === targetRoomId;
-    })
-    .map((avatar) =>
-      avatar.targetStationId === stationId && avatar.path.length > 0
-        ? avatar.path[avatar.path.length - 1]
-        : avatar.position,
-    );
+  return state.avatars.flatMap((avatar) => {
+    if (avatar.agentId === exceptAgentId) return [];
+    return [
+      avatar.position,
+      ...(avatar.navigation ? [avatar.navigation.toPosition] : []),
+    ];
+  });
+}
+
+function legacyStationSlot(
+  state: AgentArenaState,
+  stationId: string,
+  agentId: string,
+) {
+  return slotForAgent(
+    stationId,
+    agentId,
+    legacyReservedPositions(state, agentId),
+  );
+}
+
+function metricDistance(left: Vec2, right: Vec2) {
+  const dx = ((right.x - left.x) / 100) * ARENA_WORLD_WIDTH;
+  const dy = ((right.y - left.y) / 100) * ARENA_WORLD_HEIGHT;
+  return Math.hypot(dx, dy);
+}
+
+function directionFor(delta: Vec2): AvatarDirection {
+  if (Math.abs(delta.x) > Math.abs(delta.y))
+    return delta.x > 0 ? 'east' : 'west';
+  return delta.y > 0 ? 'south' : 'north';
+}
+
+function normalizedMotorPath(from: Vec2, path: Vec2[]) {
+  return [from, ...path].reduce<Vec2[]>((points, point) => {
+    if (
+      points.length === 0 ||
+      !samePosition(points[points.length - 1], point)
+    ) {
+      points.push({ ...point });
+    }
+    return points;
+  }, []);
+}
+
+function projectNavigationAt(
+  navigation: AvatarNavigationProjection,
+  at: number,
+  fallbackDirection: AvatarDirection,
+) {
+  const done = at >= navigation.arrivesAt;
+  if (navigation.legacyFrozen) {
+    return {
+      position: {
+        ...(done ? navigation.toPosition : navigation.fromPosition),
+      },
+      direction: fallbackDirection,
+      isMoving: false,
+      done,
+    };
+  }
+
+  const points = navigation.path;
+  const segments = points.slice(1).map((point, index) => ({
+    from: points[index],
+    to: point,
+    distance: metricDistance(points[index], point),
+  }));
+  const totalDistance = segments.reduce(
+    (total, segment) => total + segment.distance,
+    0,
+  );
+  const elapsed = Math.max(0, at - navigation.startedAt);
+  let remaining = done
+    ? totalDistance
+    : Math.min(totalDistance, (elapsed / 1_000) * navigation.speedPxPerSecond);
+
+  for (const segment of segments) {
+    if (segment.distance <= POSITION_EPSILON) continue;
+    const direction = directionFor({
+      x: segment.to.x - segment.from.x,
+      y: segment.to.y - segment.from.y,
+    });
+    if (remaining <= segment.distance) {
+      const segmentProgress = remaining / segment.distance;
+      return {
+        position: {
+          x: segment.from.x + (segment.to.x - segment.from.x) * segmentProgress,
+          y: segment.from.y + (segment.to.y - segment.from.y) * segmentProgress,
+        },
+        direction,
+        isMoving:
+          at >= navigation.startedAt &&
+          !done &&
+          navigation.speedPxPerSecond > 0 &&
+          totalDistance > POSITION_EPSILON,
+        done,
+      };
+    }
+    remaining -= segment.distance;
+  }
+
+  const finalSegment = segments[segments.length - 1];
+  return {
+    position: { ...navigation.toPosition },
+    direction: finalSegment
+      ? directionFor({
+          x: finalSegment.to.x - finalSegment.from.x,
+          y: finalSegment.to.y - finalSegment.from.y,
+        })
+      : fallbackDirection,
+    isMoving: false,
+    done,
+  };
+}
+
+function navigationProjection(
+  avatar: AvatarProjection,
+  event: Extract<RuntimeEvent, { kind: 'world.navigation' }>,
+  receivedAt: number,
+  legacyToPosition: Vec2,
+): AvatarNavigationProjection | undefined {
+  const { payload } = event;
+  const startedAt = Date.parse(payload.startedAt);
+  const arrivesAt = Date.parse(payload.arrivesAt);
+  const hasAnyMotorField = [
+    payload.fromPosition,
+    payload.toPosition,
+    payload.path,
+    payload.speedPxPerSecond,
+  ].some((value) => value !== undefined);
+  if (
+    payload.fromPosition &&
+    payload.toPosition &&
+    payload.path &&
+    payload.path.length > 0 &&
+    samePosition(payload.path[payload.path.length - 1], payload.toPosition) &&
+    payload.speedPxPerSecond !== undefined &&
+    Number.isFinite(payload.speedPxPerSecond) &&
+    payload.speedPxPerSecond > 0 &&
+    Number.isFinite(startedAt) &&
+    Number.isFinite(arrivesAt) &&
+    arrivesAt > startedAt &&
+    facilityPathIsSweptLegal(payload.fromPosition, payload.path) &&
+    facilityPathTimingIsConsistent(
+      payload.fromPosition,
+      payload.path,
+      payload.speedPxPerSecond,
+      arrivesAt - startedAt,
+    )
+  ) {
+    return {
+      actionId: payload.actionId,
+      fromStationId: payload.fromLocationId,
+      toStationId: payload.toLocationId,
+      fromPosition: { ...payload.fromPosition },
+      toPosition: { ...payload.toPosition },
+      path: normalizedMotorPath(payload.fromPosition, payload.path),
+      speedPxPerSecond: payload.speedPxPerSecond,
+      startedAt,
+      arrivesAt,
+    };
+  }
+  if (hasAnyMotorField) return undefined;
+
+  // An old journal has no physical route. Historical events hydrate to the
+  // authored station without animation; a live legacy event remains frozen
+  // until its semantic arrival rather than recreating unsafe client routing.
+  return {
+    actionId: payload.actionId,
+    fromStationId: payload.fromLocationId,
+    toStationId: payload.toLocationId,
+    fromPosition: { ...avatar.position },
+    toPosition: { ...legacyToPosition },
+    path: normalizedMotorPath(avatar.position, [legacyToPosition]),
+    speedPxPerSecond: 0,
+    startedAt,
+    arrivesAt,
+    legacyFrozen: true,
+  };
+}
+
+function projectAvatarAt(avatar: AvatarProjection, at: number) {
+  if (!avatar.navigation) return avatar;
+  const projection = projectNavigationAt(
+    avatar.navigation,
+    at,
+    avatar.direction,
+  );
+  if (!projection.done) {
+    return {
+      ...avatar,
+      position: projection.position,
+      direction: projection.direction,
+      isMoving: projection.isMoving,
+    };
+  }
+  return {
+    ...avatar,
+    position: projection.position,
+    path: [],
+    direction: projection.direction,
+    isMoving: false,
+    stationId: avatar.navigation.toStationId,
+    targetStationId: undefined,
+    lastStationId: avatar.navigation.fromStationId,
+    navigation: undefined,
+    routeDelayMs: undefined,
+    portalTransfer: false,
+    isYielding: false,
+    yieldingToAgentId: undefined,
+    yieldMs: 0,
+  };
+}
+
+function annotateNearbyAgents(avatars: AvatarProjection[]) {
+  return avatars.map((avatar) => ({
+    ...avatar,
+    nearbyAgentIds: avatars
+      .filter(
+        (candidate) =>
+          candidate.agentId !== avatar.agentId &&
+          metricDistance(candidate.position, avatar.position) <=
+            NEARBY_DISTANCE_PX,
+      )
+      .map((candidate) => candidate.agentId)
+      .sort(),
+  }));
 }
 
 function reactivateAvatar(state: AgentArenaState, agentId: string) {
   if (state.avatars.some((avatar) => avatar.agentId === agentId)) return state;
   const agent = state.agents.find((candidate) => candidate.id === agentId);
   const stationId = agent?.currentLocationId ?? 'spawn-lift';
-  const position = slotForAgent(
-    stationId,
-    agentId,
-    reservedStationPositions(state, stationId, agentId),
-  );
+  const position = agent?.currentPosition ?? legacyStationPosition(stationId);
   const routeOrder =
     state.avatars.reduce(
       (maximum, avatar) => Math.max(maximum, avatar.routeOrder ?? 0),
@@ -113,93 +338,37 @@ function reactivateAvatar(state: AgentArenaState, agentId: string) {
     stationId,
     lastStationId: stationId,
   };
-  const restored =
-    agent?.navigation && Date.now() < Date.parse(agent.navigation.arrivesAt)
-      ? routeAvatarToStation(
-          avatar,
-          agent.navigation.toLocationId,
-          slotForAgent(
-            agent.navigation.toLocationId,
-            agentId,
-            reservedStationPositions(
-              state,
-              agent.navigation.toLocationId,
-              agentId,
-            ),
-          ),
-        )
-      : avatar;
   return {
     ...state,
-    avatars: [...state.avatars, restored],
+    avatars: [...state.avatars, avatar],
   };
 }
 
 function removeTerminalAvatar(state: AgentArenaState, agentId: string) {
+  const avatar = state.avatars.find(
+    (candidate) => candidate.agentId === agentId,
+  );
+  const terminalPosition = avatar?.navigation?.toPosition ?? avatar?.position;
+  const terminalLocationId =
+    avatar?.navigation?.toStationId ?? avatar?.stationId;
   return {
     ...state,
+    agents: state.agents.map((agent) =>
+      agent.id === agentId
+        ? {
+            ...agent,
+            currentLocationId:
+              terminalLocationId ?? agent.currentLocationId,
+            currentPosition: terminalPosition
+              ? { ...terminalPosition }
+              : agent.currentPosition,
+            navigation: undefined,
+          }
+        : agent,
+    ),
     avatars: state.avatars.filter((avatar) => avatar.agentId !== agentId),
     followedAgentId:
       state.followedAgentId === agentId ? undefined : state.followedAgentId,
-  };
-}
-
-function routeAvatarToStation(
-  avatar: AvatarProjection,
-  stationId: string,
-  destination = slotForAgent(stationId, avatar.agentId),
-): AvatarProjection {
-  const currentTarget = avatar.targetStationId ?? avatar.stationId;
-  if (!stationId || stationId === currentTarget) return avatar;
-
-  const portalTransfer = isFacilityPortalTransfer(avatar.stationId, stationId);
-  if (!avatar.isMoving && portalTransfer) {
-    const includesLift = new Set([avatar.stationId, stationId]).has(
-      'spawn-lift',
-    );
-    return {
-      ...avatar,
-      lastStationId: avatar.stationId,
-      targetStationId: stationId,
-      routeDelayMs: includesLift ? 420 : 260,
-      portalTransfer: true,
-      path: [{ ...destination }],
-      isMoving: true,
-    };
-  }
-
-  if (avatar.isMoving && avatar.path.length > 0 && avatar.targetStationId) {
-    const extensionStart = avatar.path[avatar.path.length - 1];
-    const extension = buildArenaPath(
-      extensionStart,
-      destination,
-      avatar.targetStationId,
-      stationId,
-    );
-    return {
-      ...avatar,
-      targetStationId: stationId,
-      path: [...avatar.path, ...extension],
-      portalTransfer: false,
-      isMoving: true,
-    };
-  }
-
-  const path = buildArenaPath(
-    avatar.position,
-    destination,
-    avatar.stationId,
-    stationId,
-  );
-
-  return {
-    ...avatar,
-    lastStationId: avatar.stationId,
-    targetStationId: stationId,
-    routeDelayMs: undefined,
-    portalTransfer: false,
-    path,
-    isMoving: true,
   };
 }
 
@@ -213,72 +382,6 @@ function updateAgent(
     agents: state.agents.map((agent) =>
       agent.id === agentId ? updater(agent) : agent,
     ),
-  };
-}
-
-function routeAvatarForNavigation(
-  state: AgentArenaState,
-  agentId: string,
-  locationId: string,
-) {
-  const destination = slotForAgent(
-    locationId,
-    agentId,
-    reservedStationPositions(state, locationId, agentId),
-  );
-  return {
-    ...state,
-    avatars: state.avatars.map((avatar) =>
-      avatar.agentId === agentId
-        ? routeAvatarToStation(avatar, locationId, destination)
-        : avatar,
-    ),
-  };
-}
-
-function settleElapsedNavigations(state: AgentArenaState, at: number) {
-  const arrived = new Map(
-    state.agents
-      .filter(
-        (agent) =>
-          agent.navigation && at >= Date.parse(agent.navigation.arrivesAt),
-      )
-      .map((agent) => [agent.id, agent.navigation!.toLocationId]),
-  );
-  if (arrived.size === 0) return state;
-  return {
-    ...state,
-    agents: state.agents.map((agent) =>
-      arrived.has(agent.id)
-        ? {
-            ...agent,
-            currentLocationId: arrived.get(agent.id)!,
-            navigation: undefined,
-          }
-        : agent,
-    ),
-    avatars: state.avatars.map((avatar) => {
-      const stationId = arrived.get(avatar.agentId);
-      if (!stationId) return avatar;
-      const destination =
-        avatar.targetStationId === stationId && avatar.path.length > 0
-          ? avatar.path[avatar.path.length - 1]
-          : slotForAgent(
-              stationId,
-              avatar.agentId,
-              reservedStationPositions(state, stationId, avatar.agentId),
-            );
-      return {
-        ...avatar,
-        position: { ...destination },
-        path: [],
-        stationId,
-        targetStationId: undefined,
-        lastStationId: avatar.stationId,
-        portalTransfer: false,
-        isMoving: false,
-      };
-    }),
   };
 }
 
@@ -383,11 +486,6 @@ function applyRuntimeEvent(
     events: [event, ...state.events],
     lastSequence: Math.max(state.lastSequence, event.sequence),
   };
-  const eventTime = Date.parse(event.occurredAt);
-  next = settleElapsedNavigations(
-    next,
-    Number.isFinite(eventTime) ? eventTime : Date.now(),
-  );
 
   if (event.kind === 'run.completed') {
     return { ...next, runStatus: 'completed', summary: event.payload.summary };
@@ -459,11 +557,9 @@ function applyRuntimeEvent(
 
   if (event.kind === 'agent.spawned') {
     const stationId = 'spawn-lift';
-    const position = slotForAgent(
-      stationId,
-      event.agentId,
-      reservedStationPositions(next, stationId, event.agentId),
-    );
+    const position = event.payload.position
+      ? { ...event.payload.position }
+      : legacyStationSlot(next, stationId, event.agentId);
     const agent: RuntimeAgent = {
       id: event.agentId,
       name: event.payload.name,
@@ -485,6 +581,7 @@ function applyRuntimeEvent(
       status: 'idle',
       summary: 'Joining the run',
       currentLocationId: stationId,
+      currentPosition: { ...position },
       artifactIds: [],
     };
     const avatar: AvatarProjection = {
@@ -525,36 +622,80 @@ function applyRuntimeEvent(
       currentTopicId: undefined,
       researchQuestion: undefined,
       blocker: undefined,
+      currentPosition: event.payload.position
+        ? { ...event.payload.position }
+        : agent.currentPosition,
     }));
     next = reactivateAvatar(next, event.agentId);
     return next;
   }
 
   if (event.kind === 'world.navigation') {
-    const alreadyArrived = Date.now() >= Date.parse(event.payload.arrivesAt);
+    const receivedAt = Date.now();
+    const currentAvatar = next.avatars.find(
+      (avatar) => avatar.agentId === event.agentId,
+    );
+    if (!currentAvatar) return next;
+    const navigation = navigationProjection(
+      currentAvatar,
+      event,
+      receivedAt,
+      legacyStationSlot(next, event.payload.toLocationId, event.agentId),
+    );
+    if (!navigation) return next;
+    const avatar = projectAvatarAt(
+      {
+        ...currentAvatar,
+        position: { ...navigation.fromPosition },
+        path: [...navigation.path],
+        isMoving: false,
+        navigation,
+        stationId: event.payload.fromLocationId,
+        targetStationId: event.payload.toLocationId,
+        lastStationId: currentAvatar.stationId,
+        routeDelayMs: undefined,
+        portalTransfer: false,
+        isYielding: false,
+        yieldingToAgentId: undefined,
+        yieldMs: 0,
+      },
+      receivedAt,
+    );
+    const arrived = avatar.navigation === undefined;
     next = updateAgent(next, event.agentId, (agent) => ({
       ...agent,
-      currentLocationId: event.payload.fromLocationId,
-      navigation: {
-        actionId: event.payload.actionId,
-        fromLocationId: event.payload.fromLocationId,
-        toLocationId: event.payload.toLocationId,
-        startedAt: event.payload.startedAt,
-        arrivesAt: event.payload.arrivesAt,
-      },
+      currentLocationId: arrived
+        ? event.payload.toLocationId
+        : event.payload.fromLocationId,
+      currentPosition: { ...avatar.position },
+      navigation: arrived
+        ? undefined
+        : {
+            actionId: event.payload.actionId,
+            fromLocationId: event.payload.fromLocationId,
+            toLocationId: event.payload.toLocationId,
+            startedAt: event.payload.startedAt,
+            arrivesAt: event.payload.arrivesAt,
+            fromPosition: event.payload.fromPosition
+              ? { ...event.payload.fromPosition }
+              : undefined,
+            toPosition: event.payload.toPosition
+              ? { ...event.payload.toPosition }
+              : undefined,
+            path: event.payload.path?.map((point) => ({ ...point })),
+            speedPxPerSecond: event.payload.speedPxPerSecond,
+          },
       engagedResourceId: undefined,
       currentResourceId: undefined,
       resourceQueued: undefined,
       lastInteraction: `Moved from ${event.payload.fromLocationId} to ${event.payload.toLocationId}`,
     }));
-    if (!alreadyArrived) {
-      return routeAvatarForNavigation(
-        next,
-        event.agentId,
-        event.payload.toLocationId,
-      );
-    }
-    return settleElapsedNavigations(next, Date.now());
+    return {
+      ...next,
+      avatars: next.avatars.map((candidate) =>
+        candidate.agentId === event.agentId ? avatar : candidate,
+      ),
+    };
   }
 
   if (event.kind === 'world.interaction') {
@@ -825,101 +966,6 @@ function applyRuntimeEvent(
   return next;
 }
 
-function directionFor(delta: Vec2): AvatarDirection {
-  if (Math.abs(delta.x) > Math.abs(delta.y))
-    return delta.x > 0 ? 'east' : 'west';
-  return delta.y > 0 ? 'south' : 'north';
-}
-
-function advanceAvatar(
-  avatar: AvatarProjection,
-  deltaMs: number,
-): AvatarProjection {
-  if ((avatar.routeDelayMs ?? 0) > 0) {
-    return {
-      ...avatar,
-      routeDelayMs: Math.max(0, (avatar.routeDelayMs ?? 0) - deltaMs),
-    };
-  }
-  if (avatar.portalTransfer && avatar.path.length > 0) {
-    const target = avatar.path[avatar.path.length - 1];
-    return {
-      ...avatar,
-      position: { ...target },
-      path: [],
-      stationId: avatar.targetStationId ?? avatar.stationId,
-      targetStationId: undefined,
-      routeDelayMs: undefined,
-      portalTransfer: false,
-      isMoving: false,
-    };
-  }
-  if (avatar.path.length === 0) {
-    if (!avatar.isMoving && !avatar.targetStationId) return avatar;
-    return {
-      ...avatar,
-      stationId: avatar.targetStationId ?? avatar.stationId,
-      targetStationId: undefined,
-      routeDelayMs: undefined,
-      portalTransfer: false,
-      isMoving: false,
-    };
-  }
-  const target = avatar.path[0];
-  const dx = target.x - avatar.position.x;
-  const dy = target.y - avatar.position.y;
-  const dxPixels = (dx / 100) * ARENA_WORLD_WIDTH;
-  const dyPixels = (dy / 100) * ARENA_WORLD_HEIGHT;
-  const distancePixels = Math.hypot(dxPixels, dyPixels);
-  const stepPixels = (deltaMs / 1000) * 96;
-  const direction = directionFor({ x: dx, y: dy });
-
-  if (distancePixels <= stepPixels || distancePixels < 0.75) {
-    const path = avatar.path.slice(1);
-    const arrived: AvatarProjection = {
-      ...avatar,
-      position: { ...target },
-      path,
-      direction,
-      stationId:
-        path.length === 0 && avatar.targetStationId
-          ? avatar.targetStationId
-          : avatar.stationId,
-      targetStationId: path.length === 0 ? undefined : avatar.targetStationId,
-      routeDelayMs: undefined,
-      portalTransfer: false,
-      isMoving: path.length > 0,
-    };
-    if (path.length > 0) return arrived;
-    return arrived;
-  }
-
-  return {
-    ...avatar,
-    position: {
-      x:
-        avatar.position.x +
-        ((dxPixels / distancePixels) * stepPixels * 100) / ARENA_WORLD_WIDTH,
-      y:
-        avatar.position.y +
-        ((dyPixels / distancePixels) * stepPixels * 100) / ARENA_WORLD_HEIGHT,
-    },
-    direction,
-    isMoving: true,
-  };
-}
-
-function advanceAvatars(avatars: AvatarProjection[], deltaMs: number) {
-  const sliceCount = Math.max(1, Math.ceil(deltaMs / 32));
-  const sliceMs = deltaMs / sliceCount;
-  let current = avatars;
-  for (let index = 0; index < sliceCount; index += 1) {
-    const proposals = current.map((avatar) => advanceAvatar(avatar, sliceMs));
-    current = resolveAvatarCollisions(current, proposals, sliceMs);
-  }
-  return current;
-}
-
 export function agentArenaReducer(
   state: AgentArenaState,
   action: AgentArenaAction,
@@ -927,7 +973,12 @@ export function agentArenaReducer(
   if (action.type === 'runtime.event')
     return applyRuntimeEvent(state, action.event);
   if (action.type === 'projection.tick') {
-    const avatars = advanceAvatars(state.avatars, action.deltaMs);
+    // Root production callers supply `now`. Archived worktree callers can
+    // still compile with deltaMs, but no delta is accumulated here.
+    const now = action.now ?? Date.now();
+    const avatars = annotateNearbyAgents(
+      state.avatars.map((avatar) => projectAvatarAt(avatar, now)),
+    );
     const avatarByAgentId = new Map(
       avatars.map((avatar) => [avatar.agentId, avatar]),
     );
@@ -936,18 +987,18 @@ export function agentArenaReducer(
       avatars,
       agents: state.agents.map((agent) => {
         const avatar = avatarByAgentId.get(agent.id);
-        if (
-          !agent.navigation ||
-          !avatar ||
-          avatar.isMoving ||
-          avatar.stationId !== agent.navigation.toLocationId
-        ) {
-          return agent;
-        }
+        if (!avatar) return agent;
+        const arrived =
+          agent.navigation &&
+          avatar.navigation === undefined &&
+          avatar.stationId === agent.navigation.toLocationId;
         return {
           ...agent,
-          currentLocationId: agent.navigation.toLocationId,
-          navigation: undefined,
+          currentLocationId: arrived
+            ? agent.navigation!.toLocationId
+            : agent.currentLocationId,
+          currentPosition: { ...avatar.position },
+          navigation: arrived ? undefined : agent.navigation,
         };
       }),
     };

@@ -13,9 +13,11 @@ import {
   WORLD_LOCATIONS,
   activitiesForResource,
   activityForCapability,
+  buildArenaPath,
   doorwayTraversalDistancePx,
   doorwayTraversalPoints,
   inferToolCapability,
+  isFacilityPortalTransfer,
   neighborsForLocation,
   resourceById,
   resourcesForCapability,
@@ -53,9 +55,11 @@ export {
   WORLD_LOCATIONS,
   activitiesForResource,
   activityForCapability,
+  buildArenaPath,
   doorwayTraversalDistancePx,
   doorwayTraversalPoints,
   inferToolCapability,
+  isFacilityPortalTransfer,
   neighborsForLocation,
   resourceById,
   resourcesForCapability,
@@ -242,226 +246,4 @@ export function slotForAgent(
 
 export function resourceCandidatesForCapability(capability: ToolCapability) {
   return resourcesForCapability(capability).map((resource) => resource.id);
-}
-
-function compactPath(points: Vec2[]) {
-  return points.filter((point, index) => {
-    if (index === 0) return true;
-    const previous = points[index - 1];
-    return (
-      Math.abs(previous.x - point.x) > 0.1 ||
-      Math.abs(previous.y - point.y) > 0.1
-    );
-  });
-}
-
-const ROOM_ROUTES: Record<
-  string,
-  { hubId: string; doorId: string; centerX: number; aisleY: number }
-> = {
-  research: {
-    hubId: 'research-hub',
-    doorId: 'door-research',
-    centerX: 18.75,
-    aisleY: 37.5,
-  },
-  command: {
-    hubId: 'command-hub',
-    doorId: 'door-command',
-    centerX: 45.833,
-    aisleY: 37.5,
-  },
-  tools: {
-    hubId: 'tools-hub',
-    doorId: 'door-tools',
-    centerX: 77.083,
-    aisleY: 37.5,
-  },
-  synthesis: {
-    hubId: 'synthesis-hub',
-    doorId: 'door-synthesis',
-    centerX: 22.917,
-    aisleY: 88,
-  },
-  context: {
-    hubId: 'context-hub',
-    doorId: 'door-context',
-    centerX: 52.083,
-    aisleY: 89.286,
-  },
-  build: {
-    hubId: 'build-hub',
-    doorId: 'door-build',
-    centerX: 77.083,
-    // Keep the walking capsule below the four physical chair footprints. The
-    // station `use` transition performs the final seated snap afterward.
-    aisleY: 90.067,
-  },
-};
-
-const ENTITY_HUB_APPROACH_PATHS: Record<string, readonly Vec2[]> = {
-  // The Research switch is reachable from the clear west side of the large
-  // workstation. Never route through the monitor bank to reach the wall.
-  'room-light-research': [
-    { x: FACILITY_LIGHT_LAYOUT.research.standPosition.x, y: 37.5 },
-    FACILITY_LIGHT_LAYOUT.research.standPosition,
-  ],
-  'archive-lamp': [{ x: 22.917, y: 37.5 }],
-  // Reach the wall board on its unobstructed east side, then fan out across
-  // the board face. The west chair beside the planning table is physical.
-  'comms-board': [
-    { x: 54.688, y: 37.5 },
-    { x: 54.688, y: 25 },
-  ],
-  'plant-tools': [{ x: 77.083, y: 25 }],
-  // Commons furniture fills the strip directly below the doorway. Stay in
-  // the clear left lane until below the raised journal desk, then cross the
-  // room along the open south aisle.
-  commons: [
-    { x: 44.661, y: 89.286 },
-    { x: 52.083, y: 89.286 },
-  ],
-  'plant-context': [
-    { x: 44.661, y: 89.286 },
-    { x: 52.083, y: 89.286 },
-  ],
-  'context-kiosk': [
-    { x: 44.661, y: 89.286 },
-    { x: 52.083, y: 89.286 },
-  ],
-  // The Commons switch is above the journal desk. Reach it directly from the
-  // landing instead of dropping into the occupied furniture aisle.
-  'room-light-context': [{ x: 45.833, y: 71.875 }],
-  // The Build switch sits above the verification bank. Use the clear gap
-  // between the bench and rigs, then turn along the wall-side floor strip.
-  'room-light-build': [
-    { x: 77.083, y: 90.067 },
-    { x: 77.083, y: 71.875 },
-    { x: 78.125, y: 71.875 },
-  ],
-};
-
-const PORTAL_TRANSFER_PAIRS = [['spawn-lift', 'context-hub']] as const;
-
-const PORTAL_TRANSFER_KEYS = new Set(
-  PORTAL_TRANSFER_PAIRS.map(([left, right]) => [left, right].sort().join('|')),
-);
-
-export function isFacilityPortalTransfer(
-  fromStationId: string | undefined,
-  toStationId: string | undefined,
-) {
-  if (!fromStationId || !toStationId) return false;
-  return PORTAL_TRANSFER_KEYS.has(
-    [fromStationId, toStationId].sort().join('|'),
-  );
-}
-
-function routeBetweenRoomEntityAndHub(
-  from: Vec2,
-  to: Vec2,
-  fromStationId: string,
-  toStationId: string,
-  route: (typeof ROOM_ROUTES)[string],
-) {
-  if (fromStationId === route.hubId) {
-    return [
-      { x: route.centerX, y: from.y },
-      { x: route.centerX, y: route.aisleY },
-      { x: to.x, y: route.aisleY },
-      to,
-    ];
-  }
-  if (toStationId === route.hubId) {
-    return [
-      { x: from.x, y: route.aisleY },
-      { x: route.centerX, y: route.aisleY },
-      { x: route.centerX, y: to.y },
-      to,
-    ];
-  }
-  return [to];
-}
-
-export function buildArenaPath(
-  from: Vec2,
-  to: Vec2,
-  fromStationId?: string,
-  toStationId?: string,
-): Vec2[] {
-  if (!fromStationId || !toStationId) return compactPath([{ ...to }]);
-  if (fromStationId === toStationId) return compactPath([{ ...to }]);
-
-  const fromLocation = worldLocationById(fromStationId);
-  const toLocation = worldLocationById(toStationId);
-  if (!fromLocation || !toLocation) return compactPath([{ ...to }]);
-
-  const doorwayPoints = doorwayTraversalPoints(fromStationId, toStationId);
-  if (doorwayPoints.length > 0) {
-    return compactPath([...doorwayPoints, { ...to }]);
-  }
-
-  // The arrival lift is the only remaining semantic transfer. Room doorways
-  // use explicit centerline paths above so bodies visibly cross each jamb.
-  if (isFacilityPortalTransfer(fromStationId, toStationId)) {
-    return compactPath([{ ...to }]);
-  }
-
-  if (fromLocation.roomId === toLocation.roomId) {
-    const route = ROOM_ROUTES[String(fromLocation.roomId)];
-    if (!route) return compactPath([{ ...to }]);
-
-    // Room hubs meet doors on the door centerline; no lateral displacement is
-    // allowed while the capsule is inside a narrow jamb span.
-    if (
-      new Set([fromStationId, toStationId]).has(route.hubId) &&
-      new Set([fromStationId, toStationId]).has(route.doorId)
-    ) {
-      return compactPath(
-        fromStationId === route.hubId
-          ? [{ x: route.centerX, y: from.y }, to]
-          : [{ x: route.centerX, y: to.y }, to],
-      );
-    }
-
-    if (fromStationId === route.hubId || toStationId === route.hubId) {
-      const entityId =
-        fromStationId === route.hubId ? toStationId : fromStationId;
-      const approach = ENTITY_HUB_APPROACH_PATHS[entityId];
-      if (approach) {
-        return compactPath(
-          fromStationId === route.hubId
-            ? [...approach, to]
-            : [...approach].reverse().concat(to),
-        );
-      }
-      return compactPath(
-        routeBetweenRoomEntityAndHub(
-          from,
-          to,
-          fromStationId,
-          toStationId,
-          route,
-        ),
-      );
-    }
-  }
-
-  const fromIsDoor = fromLocation.kind === 'portal';
-  const toIsDoor = toLocation.kind === 'portal';
-  const fromIsHall = fromLocation.roomId === 'corridor';
-  const toIsHall = toLocation.roomId === 'corridor';
-  if ((fromIsDoor && toIsHall) || (toIsDoor && fromIsHall)) {
-    const door = fromIsDoor ? fromLocation : toLocation;
-    return compactPath(
-      fromIsDoor
-        ? [{ x: Number(door.position.x), y: to.y }, to]
-        : [{ x: Number(door.position.x), y: from.y }, to],
-    );
-  }
-
-  // Corridor waypoints and the short threshold step between a door and its
-  // hall node are already obstacle-free; their stable slots create two-way
-  // lanes without asking a model to micromanage foot placement.
-  return compactPath([{ ...to }]);
 }

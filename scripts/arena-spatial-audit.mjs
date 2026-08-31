@@ -232,6 +232,7 @@ function routeAudit() {
   let directedEdges = 0;
   let variants = 0;
   let sampledPoints = 0;
+  let portalSweptPoints = 0;
 
   for (const edge of WORLD_EDGES) {
     for (const [fromId, toId] of [edge, [edge[1], edge[0]]]) {
@@ -246,9 +247,13 @@ function routeAudit() {
         for (let toSlot = 0; toSlot < toStation.slots.length; toSlot += 1) {
           variants += 1;
           let previous = fromStation.slots[fromSlot];
-          const targets = isFacilityPortalTransfer(fromId, toId)
-            ? [toStation.slots[toSlot]]
-            : buildArenaPath(previous, toStation.slots[toSlot], fromId, toId);
+          const portalTransfer = isFacilityPortalTransfer(fromId, toId);
+          const targets = buildArenaPath(
+            previous,
+            toStation.slots[toSlot],
+            fromId,
+            toId,
+          );
           for (const target of targets) {
             const fromPixels = worldPixels(previous);
             const toPixels = worldPixels(target);
@@ -256,11 +261,10 @@ function routeAudit() {
               toPixels.x - fromPixels.x,
               toPixels.y - fromPixels.y,
             );
-            const samples = isFacilityPortalTransfer(fromId, toId)
-              ? 1
-              : Math.max(1, Math.ceil(distance / 0.5));
+            const samples = Math.max(1, Math.ceil(distance / 0.5));
             for (let sample = 0; sample <= samples; sample += 1) {
               sampledPoints += 1;
+              if (portalTransfer) portalSweptPoints += 1;
               const progress = sample / samples;
               const point = {
                 x: previous.x + (target.x - previous.x) * progress,
@@ -285,7 +289,13 @@ function routeAudit() {
     }
   }
 
-  return { directedEdges, variants, sampledPoints, failures };
+  return {
+    directedEdges,
+    variants,
+    sampledPoints,
+    portalSweptPoints,
+    failures,
+  };
 }
 
 function reservationAudit(residentsPerStation) {

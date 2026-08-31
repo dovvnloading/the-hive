@@ -22,11 +22,16 @@ import {
   stationById,
 } from '../lib/arena/agentic-catalog.ts';
 import {
+  FACILITY_SPAWN_QUEUE_SLOTS,
+  RESIDENT_BODY_CLEARANCE_PX,
   activityById,
   activityForResource,
+  facilityPathIsSweptLegal,
   selectFacilityActivity,
 } from '../lib/arena/facility-protocol.mjs';
 import {
+  ARENA_WORLD_HEIGHT,
+  ARENA_WORLD_WIDTH,
   capsuleIsWorldLegal,
   capsulesOverlap,
   resolveAvatarCollisions,
@@ -172,6 +177,78 @@ void test('four simultaneous arrivals receive capsule-safe Commons positions', (
   }
 });
 
+void test('every authored Commons arrival lane preserves body clearance and a swept exit', () => {
+  const liftSlots = stationById('spawn-lift').slots;
+  const allSpawnPositions = [...liftSlots, ...FACILITY_SPAWN_QUEUE_SLOTS];
+  assert.equal(allSpawnPositions.length, 4);
+  for (let left = 0; left < allSpawnPositions.length; left += 1) {
+    for (let right = left + 1; right < allSpawnPositions.length; right += 1) {
+      assert.ok(
+        pixelDistance(allSpawnPositions[left], allSpawnPositions[right]) >=
+          RESIDENT_BODY_CLEARANCE_PX,
+        `spawn slots ${left} and ${right} are less than ${RESIDENT_BODY_CLEARANCE_PX}px apart`,
+      );
+      assert.equal(
+        capsulesOverlap(allSpawnPositions[left], allSpawnPositions[right]),
+        false,
+      );
+    }
+  }
+
+  const contextHub = stationById('context-hub').slots[0];
+  const plantTarget = stationById('plant-context').slots[0];
+  const westSlot = FACILITY_SPAWN_QUEUE_SLOTS.find(
+    (slot) => slot.x <= 47 && slot.y < 80,
+  );
+  const lowSlot = FACILITY_SPAWN_QUEUE_SLOTS.find((slot) => slot.y > 80);
+  assert.ok(westSlot);
+  assert.ok(lowSlot);
+  assert.ok(
+    pixelDistance(lowSlot, plantTarget) >= RESIDENT_BODY_CLEARANCE_PX,
+    'the low spawn queue bay must not block the Commons plant target',
+  );
+  assert.equal(capsulesOverlap(lowSlot, plantTarget), false);
+
+  const westExit = buildArenaPath(
+    westSlot,
+    contextHub,
+    'spawn-lift',
+    'context-hub',
+  );
+  assert.deepEqual(westExit, [contextHub], 'the west bay has direct egress');
+
+  const lowExit = buildArenaPath(
+    lowSlot,
+    contextHub,
+    'spawn-lift',
+    'context-hub',
+  );
+  const lowReturn = buildArenaPath(
+    contextHub,
+    lowSlot,
+    'context-hub',
+    'spawn-lift',
+  );
+  assert.deepEqual(lowExit.slice(0, 2), [
+    { x: 44.661, y: 89.286 },
+    { x: 44.661, y: 74.107 },
+  ]);
+  assert.equal(facilityPathIsSweptLegal(lowSlot, lowExit), true);
+  assert.equal(facilityPathIsSweptLegal(contextHub, lowReturn), true);
+
+  const mainLiftExit = buildArenaPath(
+    liftSlots[0],
+    contextHub,
+    'spawn-lift',
+    'context-hub',
+  );
+  assert.deepEqual(mainLiftExit.slice(0, 2), [
+    { x: 52.083, y: 74.5 },
+    { x: 47, y: 74.5 },
+  ]);
+  assert.equal(facilityPathIsSweptLegal(liftSlots[0], mainLiftExit), true);
+});
+
 void test('build plant remains outside the doorway opening and approach lane', () => {
   const doorway = FACILITY_COLLISION_GEOMETRY.southDoors.find(
     (door) => door.locationId === 'door-build',
@@ -261,6 +338,65 @@ function avatar(agentId, position, routeOrder = 0) {
   };
 }
 
+function pixelDistance(left, right) {
+  return Math.hypot(
+    ((right.x - left.x) / 100) * ARENA_WORLD_WIDTH,
+    ((right.y - left.y) / 100) * ARENA_WORLD_HEIGHT,
+  );
+}
+
+function pixelPathDistance(fromPosition, path) {
+  let previous = fromPosition;
+  return path.reduce((total, point) => {
+    const distance = pixelDistance(previous, point);
+    previous = point;
+    return total + distance;
+  }, 0);
+}
+
+function positionsArePairwiseClear(positions) {
+  for (let left = 0; left < positions.length; left += 1) {
+    for (let right = left + 1; right < positions.length; right += 1) {
+      if (capsulesOverlap(positions[left], positions[right])) return false;
+    }
+  }
+  return true;
+}
+
+function pathClearsStationaryBodies(fromPosition, path, stationaryPositions) {
+  let previous = fromPosition;
+  for (const target of path) {
+    const samples = Math.max(
+      1,
+      Math.ceil(pixelDistance(previous, target) / 0.5),
+    );
+    for (let sample = 0; sample <= samples; sample += 1) {
+      const progress = sample / samples;
+      const position = {
+        x: previous.x + (target.x - previous.x) * progress,
+        y: previous.y + (target.y - previous.y) * progress,
+      };
+      if (
+        stationaryPositions.some((stationary) =>
+          capsulesOverlap(position, stationary),
+        )
+      ) {
+        return false;
+      }
+    }
+    previous = target;
+  }
+  return true;
+}
+
+function assertVecAlmostEqual(actual, expected, message, epsilon = 0.0001) {
+  assert.ok(
+    Math.abs(actual.x - expected.x) <= epsilon &&
+      Math.abs(actual.y - expected.y) <= epsilon,
+    `${message}: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`,
+  );
+}
+
 void test('station reservations return distinct capsule-safe working slots', () => {
   const reserved = [];
   const assigned = ['ohm', 'dalton', 'sage', 'nova', 'kernel'].map(
@@ -295,6 +431,10 @@ void test('coverage audit exercises the full navmesh, routes, doors, overflow, a
   );
   assert.ok(report.routes.variants > 200);
   assert.ok(report.routes.sampledPoints > 50_000);
+  assert.ok(
+    report.routes.portalSweptPoints > 2,
+    'portal routes are swept between endpoints instead of exempted as jumps',
+  );
   assert.equal(report.routes.failures.length, 0);
   assert.equal(report.reservations.placements, STATIONS.length * 4);
   assert.equal(report.reservations.failures.length, 0);
@@ -333,9 +473,9 @@ void test('historical over-capacity hub replay keeps full character bodies apart
 
 void test('collective capsule resolution separates conflicting proposals', () => {
   const previous = [
-    avatar('atlas', { x: 45, y: 50 }, 0),
-    avatar('sage', { x: 49, y: 50 }, 1),
-    avatar('nova', { x: 53, y: 50 }, 2),
+    avatar('atlas', { x: 40, y: 50 }, 0),
+    avatar('sage', { x: 50, y: 50 }, 1),
+    avatar('nova', { x: 60, y: 50 }, 2),
   ];
   const proposals = previous.map((item) => ({
     ...item,
@@ -343,7 +483,6 @@ void test('collective capsule resolution separates conflicting proposals', () =>
     isMoving: true,
   }));
   const resolved = resolveAvatarCollisions(previous, proposals, 32);
-  assert.deepEqual(resolved[0].position, proposals[0].position);
   for (let left = 0; left < resolved.length; left += 1) {
     for (let right = left + 1; right < resolved.length; right += 1) {
       assert.equal(
@@ -353,6 +492,41 @@ void test('collective capsule resolution separates conflicting proposals', () =>
     }
   }
   assert.ok(resolved.some((item) => item.isYielding));
+});
+
+void test('a moving resident yields without displacing a stationary resident', () => {
+  const stationary = avatar('stationary', { x: 50, y: 50 }, 0);
+  const mover = {
+    ...avatar('mover', { x: 44, y: 50 }, 1),
+    path: [{ x: 56, y: 50 }],
+    targetStationId: 'hall-center',
+    isMoving: true,
+  };
+  const proposedMover = {
+    ...mover,
+    position: { x: 47.5, y: 50 },
+  };
+
+  const resolved = resolveAvatarCollisions(
+    [stationary, mover],
+    [stationary, proposedMover],
+    32,
+  );
+  const resolvedStationary = resolved.find(
+    (candidate) => candidate.agentId === stationary.agentId,
+  );
+  const resolvedMover = resolved.find(
+    (candidate) => candidate.agentId === mover.agentId,
+  );
+
+  assert.deepEqual(resolvedStationary.position, stationary.position);
+  assert.equal(resolvedStationary.isMoving, false);
+  assert.equal(resolvedMover.isYielding, true);
+  assert.equal(resolvedMover.yieldingToAgentId, stationary.agentId);
+  assert.equal(
+    capsulesOverlap(resolvedStationary.position, resolvedMover.position),
+    false,
+  );
 });
 
 void test('all station slots and semantic edge routes clear static world geometry', () => {
@@ -377,6 +551,11 @@ void test('all station slots and semantic edge routes clear static world geometr
       }
       let previous = fromStation.slots[0];
       const path = buildArenaPath(previous, toStation.slots[0], fromId, toId);
+      assert.deepEqual(
+        path.at(-1),
+        toStation.slots[0],
+        `${fromId}->${toId} does not end at its exact authored target`,
+      );
       for (const target of path) {
         const dx = ((target.x - previous.x) / 100) * 768;
         const dy = ((target.y - previous.y) / 100) * 448;
@@ -404,6 +583,174 @@ void test('all station slots and semantic edge routes clear static world geometr
     assert.equal(capsuleIsWorldLegal(slot), true);
     assert.ok(pixelY >= 339 && pixelY <= 341);
   }
+});
+
+void test('every directed edge provides occupant-aware egress without trapping full corridor or arrival rows', () => {
+  const failures = [];
+  const exercisedMultiSlotStations = new Set();
+  const exercisedDrainStates = new Set();
+  let directedEdges = 0;
+  let sourceSlots = 0;
+  let validTargetSiblingScenarios = 0;
+  let impossibleTargetSiblingScenarios = 0;
+
+  const occupancySlotsFor = (locationId) =>
+    locationId === 'spawn-lift'
+      ? [...stationById('spawn-lift').slots, ...FACILITY_SPAWN_QUEUE_SLOTS]
+      : stationById(locationId).slots;
+
+  function safeTargetOption(fromId, toId, fromSlot, sourceSiblings) {
+    const targetSlots = occupancySlotsFor(toId);
+    const targetOptions = targetSlots.map((toSlot, toSlotIndex) => {
+      const authoredTargetSiblings = targetSlots.filter(
+        (_, index) => index !== toSlotIndex,
+      );
+      const sourceBodies = [fromSlot, ...sourceSiblings];
+      const targetSiblings = authoredTargetSiblings.filter((candidate) =>
+        positionsArePairwiseClear([...sourceBodies, candidate]),
+      );
+      validTargetSiblingScenarios += targetSiblings.length;
+      impossibleTargetSiblingScenarios +=
+        authoredTargetSiblings.length - targetSiblings.length;
+      return {
+        toSlot,
+        targetSiblings,
+      };
+    });
+    // Adjacent portal and corridor slots can physically overlap. A target
+    // sibling that already overlaps the mover at its source is not a
+    // possible world state, so it cannot be used as evidence of a trap.
+    return targetOptions.find((option) => {
+      const path = buildArenaPath(fromSlot, option.toSlot, fromId, toId);
+      return (
+        path.length > 0 &&
+        facilityPathIsSweptLegal(fromSlot, path) &&
+        pathClearsStationaryBodies(fromSlot, path, [
+          ...sourceSiblings,
+          ...option.targetSiblings,
+        ])
+      );
+    });
+  }
+
+  for (const edge of WORLD_EDGES) {
+    for (const [fromId, toId] of [edge, [edge[1], edge[0]]]) {
+      directedEdges += 1;
+      const from = stationById(fromId);
+      if (from.slots.length > 1) exercisedMultiSlotStations.add(fromId);
+
+      if (
+        ['spawn-lift', 'hall-west', 'hall-center', 'hall-east'].includes(fromId)
+      ) {
+        const sourceSlotsForDrain = occupancySlotsFor(fromId);
+        assert.equal(
+          positionsArePairwiseClear(sourceSlotsForDrain),
+          true,
+          `${fromId} has an invalid full authored occupancy`,
+        );
+        const remainingSlotIndexes = sourceSlotsForDrain.map(
+          (_, index) => index,
+        );
+        while (remainingSlotIndexes.length > 0) {
+          exercisedDrainStates.add(
+            `${fromId}->${toId}:${remainingSlotIndexes.join(',')}`,
+          );
+          const safeSourceIndex = remainingSlotIndexes.find((fromSlotIndex) => {
+            const fromSlot = sourceSlotsForDrain[fromSlotIndex];
+            const sourceSiblings = remainingSlotIndexes
+              .filter((index) => index !== fromSlotIndex)
+              .map((index) => sourceSlotsForDrain[index]);
+            return safeTargetOption(fromId, toId, fromSlot, sourceSiblings);
+          });
+          if (safeSourceIndex === undefined) {
+            failures.push(
+              `${fromId}[${remainingSlotIndexes.join(',')}]->${toId}`,
+            );
+            break;
+          }
+          remainingSlotIndexes.splice(
+            remainingSlotIndexes.indexOf(safeSourceIndex),
+            1,
+          );
+        }
+        sourceSlots += sourceSlotsForDrain.length;
+        continue;
+      }
+
+      from.slots.forEach((fromSlot, fromSlotIndex) => {
+        sourceSlots += 1;
+        const sourceSiblings = from.slots.filter(
+          (_, index) => index !== fromSlotIndex,
+        );
+        assert.equal(
+          positionsArePairwiseClear([fromSlot, ...sourceSiblings]),
+          true,
+          `${fromId} has an invalid full authored occupancy`,
+        );
+
+        const safeOption = safeTargetOption(
+          fromId,
+          toId,
+          fromSlot,
+          sourceSiblings,
+        );
+        if (!safeOption) {
+          failures.push(`${fromId}[${fromSlotIndex}]->${toId}`);
+        }
+      });
+    }
+  }
+
+  assert.equal(directedEdges, WORLD_EDGES.length * 2);
+  assert.ok(sourceSlots > directedEdges);
+  assert.ok(validTargetSiblingScenarios > 0);
+  assert.ok(impossibleTargetSiblingScenarios > 0);
+  assert.ok(exercisedDrainStates.size > 0);
+
+  for (const stationId of [
+    'command-table',
+    'comms-board',
+    'context-kiosk',
+    'commons',
+    'research-hub',
+    'command-hub',
+    'tools-hub',
+  ]) {
+    assert.equal(stationById(stationId).slots.length, 2, stationId);
+    assert.equal(
+      exercisedMultiSlotStations.has(stationId),
+      true,
+      `${stationId} was not exercised as a full shared source`,
+    );
+  }
+  assert.equal(stationById('spawn-lift').slots.length, 2);
+  assert.equal(FACILITY_SPAWN_QUEUE_SLOTS.length, 2);
+  assert.equal(exercisedMultiSlotStations.has('spawn-lift'), true);
+  assert.equal(
+    [...exercisedDrainStates].some((state) => state.startsWith('spawn-lift->')),
+    true,
+    'the full four-position arrival row was not drained',
+  );
+  for (const corridorId of ['hall-west', 'hall-center', 'hall-east']) {
+    assert.equal(stationById(corridorId).slots.length, 4, corridorId);
+    assert.equal(
+      exercisedMultiSlotStations.has(corridorId),
+      true,
+      `${corridorId} full row was not exercised`,
+    );
+    assert.equal(
+      [...exercisedDrainStates].some((state) =>
+        state.startsWith(`${corridorId}->`),
+      ),
+      true,
+      `${corridorId} drain order was not exercised`,
+    );
+  }
+  assert.deepEqual(
+    failures,
+    [],
+    `occupant-aware egress traps: ${failures.join(', ')}`,
+  );
 });
 
 void test('seated resources stage walkers outside their seat collision bodies', () => {
@@ -758,8 +1105,21 @@ void test('navigation owns location until arrival and reassignment restores the 
     assert.deepEqual(state.agents[0], beforeSpeech.agent);
     assert.deepEqual(state.avatars[0], beforeSpeech.avatar);
 
-    const startedAt = new Date(base + 400).toISOString();
-    const arrivesAt = new Date(base + 60_000).toISOString();
+    const fromPosition = { ...state.avatars[0].position };
+    const toPosition = { ...stationById('context-hub').slots[0] };
+    const path = buildArenaPath(
+      fromPosition,
+      toPosition,
+      'spawn-lift',
+      'context-hub',
+    );
+    const speedPxPerSecond = 96;
+    const startedAtMs = base + 400;
+    const durationMs = Math.ceil(
+      (pixelPathDistance(fromPosition, path) / speedPxPerSecond) * 1_000,
+    );
+    const startedAt = new Date(startedAtMs).toISOString();
+    const arrivesAt = new Date(startedAtMs + durationMs).toISOString();
     state = agentArenaReducer(state, {
       type: 'runtime.event',
       event: event(
@@ -770,6 +1130,10 @@ void test('navigation owns location until arrival and reassignment restores the 
           observationId: 'obs-one',
           fromLocationId: 'spawn-lift',
           toLocationId: 'context-hub',
+          fromPosition,
+          toPosition,
+          path,
+          speedPxPerSecond,
           startedAt,
           arrivesAt,
         },
@@ -778,8 +1142,22 @@ void test('navigation owns location until arrival and reassignment restores the 
     });
     assert.equal(state.agents[0].currentLocationId, 'spawn-lift');
     assert.equal(state.avatars[0].targetStationId, 'context-hub');
-    assert.equal(state.avatars[0].portalTransfer, true);
+    assert.notEqual(state.avatars[0].portalTransfer, true);
+    assert.ok(state.avatars[0].navigation);
     assert.equal(capsuleIsWorldLegal(state.avatars[0].position), true);
+
+    state = agentArenaReducer(state, {
+      type: 'projection.tick',
+      now: Date.parse(arrivesAt),
+    });
+    assert.equal(state.agents[0].currentLocationId, 'context-hub');
+    assert.equal(state.agents[0].navigation, undefined);
+    assert.equal(state.avatars[0].stationId, 'context-hub');
+    assertVecAlmostEqual(
+      state.avatars[0].position,
+      toPosition,
+      'authoritative arrival settles on its declared endpoint',
+    );
 
     state = agentArenaReducer(state, {
       type: 'runtime.event',
@@ -809,6 +1187,17 @@ void test('navigation owns location until arrival and reassignment restores the 
     assert.equal(state.avatars[0].stationId, 'context-hub');
     assert.equal(state.avatars[0].isMoving, false);
 
+    const doorPosition = { ...stationById('door-context').slots[0] };
+    const doorPath = buildArenaPath(
+      toPosition,
+      doorPosition,
+      'context-hub',
+      'door-context',
+    );
+    const doorStartedAtMs = base + 70_100;
+    const doorDurationMs = Math.ceil(
+      (pixelPathDistance(toPosition, doorPath) / speedPxPerSecond) * 1_000,
+    );
     state = agentArenaReducer(state, {
       type: 'runtime.event',
       event: event(
@@ -819,16 +1208,990 @@ void test('navigation owns location until arrival and reassignment restores the 
           observationId: 'obs-door',
           fromLocationId: 'context-hub',
           toLocationId: 'door-context',
-          startedAt: new Date(base + 70_100).toISOString(),
-          arrivesAt: new Date(base + 71_000).toISOString(),
+          fromPosition: toPosition,
+          toPosition: doorPosition,
+          path: doorPath,
+          speedPxPerSecond,
+          startedAt: new Date(doorStartedAtMs).toISOString(),
+          arrivesAt: new Date(doorStartedAtMs + doorDurationMs).toISOString(),
         },
         { agentId: 'sage' },
       ),
     });
     assert.equal(state.avatars[0].portalTransfer, false);
     assert.equal(state.avatars[0].routeDelayMs, undefined);
-    assert.ok(state.avatars[0].path.length >= 5);
+    assert.ok(state.avatars[0].navigation.path.length >= 5);
     assert.equal(capsuleIsWorldLegal(state.avatars[0].position), true);
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('live navigation never teleports, stalls in a run cycle, or moves on an unrelated event', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now() + 60_000;
+  const runtimeEvent = (sequence, kind, payload, extra = {}) => ({
+    schemaVersion: 1,
+    eventId: `navigation-invariant-${sequence}`,
+    runId: 'run-navigation-invariant',
+    sequence,
+    occurredAt: new Date(base + sequence * 10).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: runtimeEvent(1, 'run.started', {
+        objective: 'Preserve continuous authored motion',
+      }),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: runtimeEvent(
+        2,
+        'agent.spawned',
+        { name: 'Walker', role: 'Navigation verifier' },
+        { agentId: 'walker' },
+      ),
+    });
+
+    const fromPosition = { ...state.avatars[0].position };
+    const toPosition = { ...stationById('context-hub').slots[0] };
+    const path = buildArenaPath(
+      fromPosition,
+      toPosition,
+      'spawn-lift',
+      'context-hub',
+    );
+    const speedPxPerSecond = 96;
+    const durationMs =
+      (pixelPathDistance(fromPosition, path) / speedPxPerSecond) * 1_000;
+    const startedAt = new Date(base + 100).toISOString();
+    const arrivesAt = new Date(base + 100 + durationMs).toISOString();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: {
+        ...runtimeEvent(
+          3,
+          'world.navigation',
+          {
+            actionId: 'continuous-spawn-exit',
+            observationId: 'obs-continuous-spawn-exit',
+            fromLocationId: 'spawn-lift',
+            toLocationId: 'context-hub',
+            fromPosition,
+            toPosition,
+            path,
+            speedPxPerSecond,
+            startedAt,
+            arrivesAt,
+          },
+          { agentId: 'walker' },
+        ),
+        occurredAt: startedAt,
+      },
+    });
+
+    const beforeUnrelatedPosition = { ...state.avatars[0].position };
+    const beforeUnrelatedNavigation = state.avatars[0].navigation;
+    const beforeUnrelatedPath = state.avatars[0].path;
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: {
+        ...runtimeEvent(
+          4,
+          'agent.activity',
+          {
+            phase: 'planning',
+            status: 'working',
+            summary: 'An unrelated event must not settle visual movement',
+          },
+          { agentId: 'walker' },
+        ),
+        occurredAt: new Date(Date.parse(arrivesAt) + 5_000).toISOString(),
+      },
+    });
+    assert.deepEqual(state.avatars[0].position, beforeUnrelatedPosition);
+    assert.strictEqual(
+      state.avatars[0].navigation,
+      beforeUnrelatedNavigation,
+      'an unrelated event cannot replace or settle visual navigation',
+    );
+    assert.strictEqual(
+      state.avatars[0].path,
+      beforeUnrelatedPath,
+      'an unrelated event cannot rewrite the visual route',
+    );
+    assert.notEqual(
+      state.avatars[0].portalTransfer,
+      true,
+      'the arrival lift must use swept motion rather than an unswept portal jump',
+    );
+
+    let previous = { ...state.avatars[0].position };
+    let movingFrames = 0;
+    let nonYieldingStallFrames = 0;
+    let projectionNow = Date.parse(startedAt);
+    for (
+      let frame = 0;
+      frame < 240 && state.avatars[0].navigation;
+      frame += 1
+    ) {
+      projectionNow += 16;
+      state = agentArenaReducer(state, {
+        type: 'projection.tick',
+        now: projectionNow,
+      });
+      const current = state.avatars[0];
+      const displacement = pixelDistance(previous, current.position);
+      assert.ok(
+        displacement <= (speedPxPerSecond * 16) / 1_000 + 0.02,
+        `frame ${frame} jumped ${displacement.toFixed(3)}px`,
+      );
+      if (current.isMoving) {
+        movingFrames += 1;
+        if (!current.isYielding && displacement < 0.01) {
+          nonYieldingStallFrames += 1;
+        } else {
+          nonYieldingStallFrames = 0;
+        }
+        assert.ok(
+          nonYieldingStallFrames < 16,
+          'a running avatar made no progress for more than 250ms',
+        );
+      }
+      previous = { ...current.position };
+    }
+    assert.ok(movingFrames > 1, 'movement is visibly interpolated');
+    assert.equal(state.avatars[0].isMoving, false);
+    assertVecAlmostEqual(
+      state.avatars[0].position,
+      toPosition,
+      'continuous navigation ends at the authoritative destination',
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('the canceled four-resident Commons sequence preserves bodies across authored movement', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now() + 120_000;
+  let sequence = 0;
+  const runtimeEvent = (kind, payload, extra = {}, occurredAt = base) => ({
+    schemaVersion: 1,
+    eventId: `canceled-sequence-${++sequence}`,
+    runId: 'run-canceled-sequence-replay',
+    sequence,
+    occurredAt: new Date(occurredAt).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  const spawnPositions = new Map([
+    ['steward-live', { x: 56.25, y: 75.893 }],
+    ['explorer-live', { x: 52.083, y: 75.893 }],
+    ['maker-live', { x: 45, y: 75 }],
+    ['critic-live', { x: 48, y: 86.2 }],
+  ]);
+  const identities = [
+    ['steward-live', 'Mara', 'Steward'],
+    ['explorer-live', 'Lumen', 'Explorer'],
+    ['maker-live', 'Forge', 'Maker'],
+    ['critic-live', 'Vale', 'Critic'],
+  ];
+  const positionFor = (state, agentId) => ({
+    ...state.avatars.find((avatar) => avatar.agentId === agentId).position,
+  });
+  const snapshotExcept = (state, movingAgentId) =>
+    new Map(
+      state.avatars
+        .filter((avatar) => avatar.agentId !== movingAgentId)
+        .map((avatar) => [avatar.agentId, { ...avatar.position }]),
+    );
+  const assertStationarySnapshot = (state, snapshot, context) => {
+    for (const [agentId, position] of snapshot) {
+      assert.deepEqual(
+        positionFor(state, agentId),
+        position,
+        `${agentId} was displaced during ${context}`,
+      );
+    }
+  };
+
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: runtimeEvent('run.started', {
+        objective: 'Replay the failed four-resident Commons sequence safely',
+      }),
+    });
+    for (const [agentId, name, role] of identities) {
+      state = agentArenaReducer(state, {
+        type: 'runtime.event',
+        event: runtimeEvent(
+          'agent.spawned',
+          { name, role, position: spawnPositions.get(agentId) },
+          { agentId },
+        ),
+      });
+    }
+
+    for (let left = 0; left < state.avatars.length; left += 1) {
+      assert.equal(capsuleIsWorldLegal(state.avatars[left].position), true);
+      for (let right = left + 1; right < state.avatars.length; right += 1) {
+        assert.equal(
+          capsulesOverlap(
+            state.avatars[left].position,
+            state.avatars[right].position,
+          ),
+          false,
+          `${state.avatars[left].agentId} overlaps ${state.avatars[right].agentId} at spawn`,
+        );
+      }
+    }
+
+    let logicalNow = base + 1_000;
+    const runMove = (
+      agentId,
+      fromLocationId,
+      toLocationId,
+      toPosition,
+      actionId,
+      beforeTicks,
+    ) => {
+      const fromPosition = positionFor(state, agentId);
+      const path = buildArenaPath(
+        fromPosition,
+        toPosition,
+        fromLocationId,
+        toLocationId,
+      );
+      assert.equal(
+        facilityPathIsSweptLegal(fromPosition, path),
+        true,
+        `${actionId} must have a wall-safe authored path`,
+      );
+      const speedPxPerSecond = 96;
+      const durationMs = Math.max(
+        1,
+        Math.ceil(
+          (pixelPathDistance(fromPosition, path) / speedPxPerSecond) * 1_000,
+        ),
+      );
+      const startedAt = logicalNow;
+      const arrivesAt = startedAt + durationMs;
+      const stationary = snapshotExcept(state, agentId);
+      state = agentArenaReducer(state, {
+        type: 'runtime.event',
+        event: runtimeEvent(
+          'world.navigation',
+          {
+            actionId,
+            observationId: `obs-${actionId}`,
+            fromLocationId,
+            toLocationId,
+            fromPosition,
+            toPosition,
+            path,
+            speedPxPerSecond,
+            startedAt: new Date(startedAt).toISOString(),
+            arrivesAt: new Date(arrivesAt).toISOString(),
+          },
+          { agentId },
+          startedAt,
+        ),
+      });
+      assertStationarySnapshot(state, stationary, `${actionId} receipt`);
+      beforeTicks?.({
+        arrivesAt,
+        fromPosition,
+        path,
+        stationary,
+      });
+
+      let previousPosition = positionFor(state, agentId);
+      let projectionNow = startedAt;
+      while (projectionNow < arrivesAt) {
+        const nextNow = Math.min(arrivesAt, projectionNow + 16);
+        state = agentArenaReducer(state, {
+          type: 'projection.tick',
+          now: nextNow,
+        });
+        const movingPosition = positionFor(state, agentId);
+        const displacement = pixelDistance(previousPosition, movingPosition);
+        assert.ok(
+          displacement <=
+            (speedPxPerSecond * (nextNow - projectionNow)) / 1_000 + 0.02,
+          `${actionId} jumped ${displacement.toFixed(3)}px`,
+        );
+        assert.deepEqual(
+          worldCollisionIds(movingPosition),
+          [],
+          `${actionId} entered wall geometry`,
+        );
+        assertStationarySnapshot(state, stationary, actionId);
+        for (let left = 0; left < state.avatars.length; left += 1) {
+          for (let right = left + 1; right < state.avatars.length; right += 1) {
+            assert.equal(
+              capsulesOverlap(
+                state.avatars[left].position,
+                state.avatars[right].position,
+              ),
+              false,
+              `${state.avatars[left].agentId} overlapped ${state.avatars[right].agentId} during ${actionId}`,
+            );
+          }
+        }
+        previousPosition = movingPosition;
+        projectionNow = nextNow;
+      }
+      const mover = state.avatars.find((avatar) => avatar.agentId === agentId);
+      assert.equal(mover.stationId, toLocationId);
+      assert.equal(mover.isMoving, false);
+      assert.equal(mover.navigation, undefined);
+      assertVecAlmostEqual(
+        mover.position,
+        toPosition,
+        `${actionId} must finish at its authored endpoint`,
+      );
+      logicalNow = arrivesAt + 100;
+    };
+
+    const contextHub = { ...stationById('context-hub').slots[0] };
+    const contextDoor = { ...stationById('door-context').slots[0] };
+    const contextPlant = { ...stationById('plant-context').slots[0] };
+
+    // In the corrected recovery order Forge clears the shared landing first;
+    // Lumen then traverses the exact two routes that previously pushed Forge
+    // and wall-rode against the Commons plant.
+    runMove(
+      'maker-live',
+      'spawn-lift',
+      'context-hub',
+      contextHub,
+      'maker-clears-spawn',
+    );
+    runMove(
+      'maker-live',
+      'context-hub',
+      'door-context',
+      contextDoor,
+      'maker-clears-landing',
+    );
+    runMove(
+      'explorer-live',
+      'spawn-lift',
+      'context-hub',
+      contextHub,
+      'explorer-recovers-to-context',
+    );
+    runMove(
+      'explorer-live',
+      'context-hub',
+      'plant-context',
+      contextPlant,
+      'explorer-approaches-plant',
+      ({ arrivesAt, stationary }) => {
+        const beforeUnrelatedPosition = positionFor(state, 'explorer-live');
+        const beforeUnrelatedNavigation = state.avatars.find(
+          (avatar) => avatar.agentId === 'explorer-live',
+        ).navigation;
+        state = agentArenaReducer(state, {
+          type: 'runtime.event',
+          event: runtimeEvent(
+            'agent.activity',
+            {
+              phase: 'planning',
+              status: 'working',
+              summary:
+                'An unrelated event cannot settle the plant approach early.',
+            },
+            { agentId: 'critic-live' },
+            arrivesAt + 5_000,
+          ),
+        });
+        assert.deepEqual(
+          positionFor(state, 'explorer-live'),
+          beforeUnrelatedPosition,
+          'an unrelated event snapped the Explorer along its path',
+        );
+        assert.strictEqual(
+          state.avatars.find((avatar) => avatar.agentId === 'explorer-live')
+            .navigation,
+          beforeUnrelatedNavigation,
+          'an unrelated event replaced the active trajectory',
+        );
+        assertStationarySnapshot(
+          state,
+          stationary,
+          'the unrelated event during the plant approach',
+        );
+      },
+    );
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('delayed navigation hydration lands atomically at its authoritative endpoint', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const now = Date.now();
+  const event = (sequence, kind, payload, extra = {}) => ({
+    schemaVersion: 1,
+    eventId: `delayed-navigation-${sequence}`,
+    runId: 'run-delayed-navigation',
+    sequence,
+    occurredAt: new Date(now - 10_000 + sequence).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(1, 'run.started', {
+        objective: 'Hydrate without replay motion',
+      }),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        2,
+        'agent.spawned',
+        { name: 'Late', role: 'Replay verifier' },
+        { agentId: 'late' },
+      ),
+    });
+    const fromPosition = { ...state.avatars[0].position };
+    const toPosition = { ...stationById('context-hub').slots[0] };
+    const path = buildArenaPath(
+      fromPosition,
+      toPosition,
+      'spawn-lift',
+      'context-hub',
+    );
+    const speedPxPerSecond = 96;
+    const durationMs = Math.ceil(
+      (pixelPathDistance(fromPosition, path) / speedPxPerSecond) * 1_000,
+    );
+    const arrivesAtMs = now - 7_000;
+    const startedAt = new Date(arrivesAtMs - durationMs).toISOString();
+    const arrivesAt = new Date(arrivesAtMs).toISOString();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: {
+        ...event(
+          3,
+          'world.navigation',
+          {
+            actionId: 'delayed-complete-move',
+            observationId: 'obs-delayed-complete-move',
+            fromLocationId: 'spawn-lift',
+            toLocationId: 'context-hub',
+            fromPosition,
+            toPosition,
+            path,
+            speedPxPerSecond,
+            startedAt,
+            arrivesAt,
+          },
+          { agentId: 'late' },
+        ),
+        occurredAt: startedAt,
+      },
+    });
+
+    assertVecAlmostEqual(
+      state.avatars[0].position,
+      toPosition,
+      'hydration applies the completed move in one reducer action',
+    );
+    assert.equal(state.avatars[0].isMoving, false);
+    assert.deepEqual(state.avatars[0].path, []);
+    assert.equal(state.avatars[0].stationId, 'context-hub');
+    assert.equal(state.agents[0].currentLocationId, 'context-hub');
+    assert.equal(state.agents[0].navigation, undefined);
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('legacy journals hydrate five positionless spawns into distinct Commons bodies', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now();
+  const event = (sequence, kind, payload, extra = {}) => ({
+    schemaVersion: 1,
+    eventId: `legacy-spawn-${sequence}`,
+    runId: 'run-legacy-spawns',
+    sequence,
+    occurredAt: new Date(base + sequence).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(1, 'run.started', { objective: 'Hydrate old residents' }),
+    });
+    for (const [index, agentId] of [
+      'steward-live',
+      'explorer-live',
+      'maker-live',
+      'critic-live',
+      'archivist-live',
+    ].entries()) {
+      state = agentArenaReducer(state, {
+        type: 'runtime.event',
+        event: event(
+          index + 2,
+          'agent.spawned',
+          { name: agentId, role: 'Legacy resident' },
+          { agentId },
+        ),
+      });
+    }
+
+    assert.equal(state.avatars.length, 5);
+    assert.equal(
+      new Set(
+        state.avatars.map(
+          (avatar) => `${avatar.position.x}:${avatar.position.y}`,
+        ),
+      ).size,
+      5,
+      'positionless legacy residents collapsed onto one spawn point',
+    );
+    for (let left = 0; left < state.avatars.length; left += 1) {
+      assert.equal(capsuleIsWorldLegal(state.avatars[left].position), true);
+      for (let right = left + 1; right < state.avatars.length; right += 1) {
+        assert.equal(
+          capsulesOverlap(
+            state.avatars[left].position,
+            state.avatars[right].position,
+          ),
+          false,
+          `${state.avatars[left].agentId} overlaps ${state.avatars[right].agentId}`,
+        );
+      }
+    }
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('an in-flight legacy navigation lands both body and semantic state at its deadline', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now() + 60_000;
+  const event = (sequence, kind, payload, extra = {}) => ({
+    schemaVersion: 1,
+    eventId: `legacy-navigation-${sequence}`,
+    runId: 'run-legacy-navigation',
+    sequence,
+    occurredAt: new Date(base + sequence).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(1, 'run.started', { objective: 'Finish an old move' }),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        2,
+        'agent.spawned',
+        { name: 'Legacy', role: 'Resident' },
+        { agentId: 'legacy' },
+      ),
+    });
+    const fromPosition = { ...state.avatars[0].position };
+    const startedAt = base + 100;
+    const arrivesAt = base + 1_000;
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: {
+        ...event(
+          3,
+          'world.navigation',
+          {
+            actionId: 'legacy-in-flight',
+            observationId: 'obs-legacy-in-flight',
+            fromLocationId: 'spawn-lift',
+            toLocationId: 'context-hub',
+            startedAt: new Date(startedAt).toISOString(),
+            arrivesAt: new Date(arrivesAt).toISOString(),
+          },
+          { agentId: 'legacy' },
+        ),
+        occurredAt: new Date(startedAt).toISOString(),
+      },
+    });
+
+    const reservedTarget = { ...state.avatars[0].navigation.toPosition };
+    assert.ok(
+      pixelDistance(fromPosition, reservedTarget) > 1,
+      'legacy navigation did not reserve a distinct target body position',
+    );
+    assert.deepEqual(state.avatars[0].position, fromPosition);
+    assert.equal(state.avatars[0].isMoving, false);
+    assert.equal(state.avatars[0].stationId, 'spawn-lift');
+    assert.equal(state.agents[0].currentLocationId, 'spawn-lift');
+
+    state = agentArenaReducer(state, {
+      type: 'projection.tick',
+      now: arrivesAt,
+    });
+    assertVecAlmostEqual(
+      state.avatars[0].position,
+      reservedTarget,
+      'legacy body did not land at its reserved target',
+    );
+    assert.equal(capsuleIsWorldLegal(state.avatars[0].position), true);
+    assert.equal(state.avatars[0].stationId, 'context-hub');
+    assert.equal(state.avatars[0].navigation, undefined);
+    assert.equal(state.agents[0].currentLocationId, 'context-hub');
+    assert.equal(state.agents[0].navigation, undefined);
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('malformed motor payloads cannot project, move, or snap a resident', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now() + 60_000;
+  const event = (sequence, kind, payload, extra = {}) => ({
+    schemaVersion: 1,
+    eventId: `invalid-motor-${sequence}`,
+    runId: 'run-invalid-motor',
+    sequence,
+    occurredAt: new Date(base + sequence).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(1, 'run.started', { objective: 'Reject invalid motors' }),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        2,
+        'agent.spawned',
+        { name: 'Motor Guard', role: 'Verifier' },
+        { agentId: 'motor-guard' },
+      ),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        3,
+        'task.assigned',
+        { objective: 'Remain at the authoritative spawn' },
+        { agentId: 'motor-guard', taskId: 'task-motor-guard' },
+      ),
+    });
+
+    const originalAvatar = structuredClone(state.avatars[0]);
+    const originalAgent = structuredClone(state.agents[0]);
+    const assertMotorStateUnchanged = () => {
+      assertVecAlmostEqual(
+        state.avatars[0].position,
+        originalAvatar.position,
+        'an invalid motor changed the body position',
+      );
+      assert.deepEqual(state.avatars[0].path, originalAvatar.path);
+      assert.equal(state.avatars[0].stationId, originalAvatar.stationId);
+      assert.equal(state.avatars[0].targetStationId, undefined);
+      assert.equal(state.avatars[0].navigation, undefined);
+      assert.equal(state.avatars[0].isMoving, false);
+      assert.equal(
+        state.agents[0].currentLocationId,
+        originalAgent.currentLocationId,
+      );
+      assert.deepEqual(
+        state.agents[0].currentPosition,
+        originalAgent.currentPosition,
+      );
+      assert.equal(state.agents[0].navigation, undefined);
+    };
+    const fromPosition = { ...originalAvatar.position };
+    const toPosition = { ...stationById('context-hub').slots[0] };
+    const path = buildArenaPath(
+      fromPosition,
+      toPosition,
+      'spawn-lift',
+      'context-hub',
+    );
+    const speedPxPerSecond = 96;
+    const exactDurationMs = Math.ceil(
+      (pixelPathDistance(fromPosition, path) / speedPxPerSecond) * 1_000,
+    );
+    const timingStartMs = base + 10_000;
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        4,
+        'world.navigation',
+        {
+          actionId: 'invalid-duration',
+          observationId: 'obs-invalid-duration',
+          fromLocationId: 'spawn-lift',
+          toLocationId: 'context-hub',
+          fromPosition,
+          toPosition,
+          path,
+          speedPxPerSecond,
+          startedAt: new Date(timingStartMs).toISOString(),
+          arrivesAt: new Date(
+            timingStartMs + exactDurationMs + 5_000,
+          ).toISOString(),
+        },
+        { agentId: 'motor-guard' },
+      ),
+    });
+    assertMotorStateUnchanged();
+    state = agentArenaReducer(state, {
+      type: 'projection.tick',
+      now: timingStartMs + exactDurationMs + 6_000,
+    });
+    assertMotorStateUnchanged();
+
+    const illegalEndpoint = { x: 49, y: 60 };
+    assert.ok(worldCollisionIds(illegalEndpoint).length > 0);
+    const illegalPath = [illegalEndpoint];
+    const illegalDurationMs = Math.ceil(
+      (pixelPathDistance(fromPosition, illegalPath) / speedPxPerSecond) * 1_000,
+    );
+    const illegalStartMs = base + 30_000;
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        5,
+        'world.navigation',
+        {
+          actionId: 'invalid-swept-path',
+          observationId: 'obs-invalid-swept-path',
+          fromLocationId: 'spawn-lift',
+          toLocationId: 'context-hub',
+          fromPosition,
+          toPosition: illegalEndpoint,
+          path: illegalPath,
+          speedPxPerSecond,
+          startedAt: new Date(illegalStartMs).toISOString(),
+          arrivesAt: new Date(illegalStartMs + illegalDurationMs).toISOString(),
+        },
+        { agentId: 'motor-guard' },
+      ),
+    });
+    assertMotorStateUnchanged();
+    state = agentArenaReducer(state, {
+      type: 'projection.tick',
+      now: illegalStartMs + illegalDurationMs + 1,
+    });
+    assertMotorStateUnchanged();
+  } finally {
+    await vite.close();
+  }
+});
+
+void test('a terminal resident reactivates at the authoritative in-flight endpoint', async () => {
+  const vite = await createViteServer({
+    root: resolve(import.meta.dirname, '..'),
+    configFile: false,
+    appType: 'custom',
+    logLevel: 'silent',
+    server: { middlewareMode: true },
+  });
+  const { agentArenaReducer, createAgentArenaState } = await vite.ssrLoadModule(
+    '/lib/arena/agentic-reducer.ts',
+  );
+  const base = Date.now() + 60_000;
+  const event = (sequence, kind, payload, extra = {}) => ({
+    schemaVersion: 1,
+    eventId: `terminal-endpoint-${sequence}`,
+    runId: 'run-terminal-endpoint',
+    sequence,
+    occurredAt: new Date(base + sequence).toISOString(),
+    source: 'codex',
+    kind,
+    payload,
+    ...extra,
+  });
+  try {
+    let state = createAgentArenaState();
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(1, 'run.started', {
+        objective: 'Reactivate only at the authored endpoint',
+      }),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        2,
+        'agent.spawned',
+        { name: 'Endpoint Keeper', role: 'Resident' },
+        { agentId: 'endpoint-keeper' },
+      ),
+    });
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        3,
+        'task.assigned',
+        { objective: 'Complete while moving' },
+        { agentId: 'endpoint-keeper', taskId: 'task-before-endpoint' },
+      ),
+    });
+    const fromPosition = { ...state.avatars[0].position };
+    const toPosition = { ...stationById('context-hub').slots[0] };
+    const path = buildArenaPath(
+      fromPosition,
+      toPosition,
+      'spawn-lift',
+      'context-hub',
+    );
+    const speedPxPerSecond = 96;
+    const durationMs = Math.ceil(
+      (pixelPathDistance(fromPosition, path) / speedPxPerSecond) * 1_000,
+    );
+    const startedAtMs = base + 10_000;
+    const arrivesAtMs = startedAtMs + durationMs;
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        4,
+        'world.navigation',
+        {
+          actionId: 'terminal-in-flight-move',
+          observationId: 'obs-terminal-in-flight-move',
+          fromLocationId: 'spawn-lift',
+          toLocationId: 'context-hub',
+          fromPosition,
+          toPosition,
+          path,
+          speedPxPerSecond,
+          startedAt: new Date(startedAtMs).toISOString(),
+          arrivesAt: new Date(arrivesAtMs).toISOString(),
+        },
+        { agentId: 'endpoint-keeper' },
+      ),
+    });
+    assert.ok(state.avatars[0].navigation);
+    assert.equal(state.agents[0].currentLocationId, 'spawn-lift');
+
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: event(
+        5,
+        'agent.completed',
+        { summary: 'Complete while the authoritative motor settles' },
+        { agentId: 'endpoint-keeper' },
+      ),
+    });
+    assert.equal(state.avatars.length, 0);
+    assert.equal(state.agents[0].currentLocationId, 'context-hub');
+    assertVecAlmostEqual(
+      state.agents[0].currentPosition,
+      toPosition,
+      'terminal lifecycle retains the authored endpoint',
+    );
+
+    state = agentArenaReducer(state, {
+      type: 'runtime.event',
+      event: {
+        ...event(
+          6,
+          'task.assigned',
+          { objective: 'Resume after the movement deadline' },
+          { agentId: 'endpoint-keeper', taskId: 'task-after-endpoint' },
+        ),
+        occurredAt: new Date(arrivesAtMs + 1).toISOString(),
+      },
+    });
+    assert.equal(state.avatars.length, 1);
+    assert.equal(state.avatars[0].stationId, 'context-hub');
+    assert.equal(state.avatars[0].isMoving, false);
+    assert.equal(state.avatars[0].navigation, undefined);
+    assertVecAlmostEqual(
+      state.avatars[0].position,
+      toPosition,
+      'reactivation restores the exact motor endpoint',
+    );
   } finally {
     await vite.close();
   }

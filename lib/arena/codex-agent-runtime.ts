@@ -5,7 +5,12 @@ import type {
   OperatorIntent,
   RuntimeConnectionStatus,
   RuntimeEvent,
+  Vec2,
 } from './agentic-types';
+import {
+  facilityPathIsSweptLegal,
+  facilityPathTimingIsConsistent,
+} from './facility-protocol.mjs';
 
 const DEFAULT_BRIDGE_ORIGIN = 'http://127.0.0.1:8787';
 const CONNECTED_POLL_DELAY_MS = 450;
@@ -30,6 +35,29 @@ function hasOptionalString(record: JsonRecord, key: string) {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
+}
+
+function isVec2(value: unknown): value is Vec2 {
+  return (
+    isRecord(value) &&
+    typeof value.x === 'number' &&
+    Number.isFinite(value.x) &&
+    typeof value.y === 'number' &&
+    Number.isFinite(value.y)
+  );
+}
+
+function isVec2Array(value: unknown): value is Vec2[] {
+  return Array.isArray(value) && value.every(isVec2);
+}
+
+function sameVec2(left: unknown, right: unknown) {
+  return (
+    isVec2(left) &&
+    isVec2(right) &&
+    Math.abs(left.x - right.x) < 0.0001 &&
+    Math.abs(left.y - right.y) < 0.0001
+  );
 }
 
 function hasOptionalStringArray(record: JsonRecord, key: string) {
@@ -116,9 +144,46 @@ function hasValidPayload(kind: RuntimeEvent['kind'], payload: JsonRecord) {
     );
   }
   if (kind === 'agent.spawned')
-    return isString(payload.name) && isString(payload.role);
-  if (kind === 'task.assigned') return isString(payload.objective);
+    return (
+      isString(payload.name) &&
+      isString(payload.role) &&
+      (payload.position === undefined || isVec2(payload.position))
+    );
+  if (kind === 'task.assigned')
+    return (
+      isString(payload.objective) &&
+      (payload.position === undefined || isVec2(payload.position))
+    );
   if (kind === 'world.navigation') {
+    const startedAt = Date.parse(String(payload.startedAt));
+    const arrivesAt = Date.parse(String(payload.arrivesAt));
+    const motionFields = [
+      payload.fromPosition,
+      payload.toPosition,
+      payload.path,
+      payload.speedPxPerSecond,
+    ];
+    const motionFieldCount = motionFields.filter(
+      (value) => value !== undefined,
+    ).length;
+    const hasValidMotionProjection =
+      motionFieldCount === 0 ||
+      (motionFieldCount === motionFields.length &&
+        isVec2(payload.fromPosition) &&
+        isVec2(payload.toPosition) &&
+        isVec2Array(payload.path) &&
+        payload.path.length > 0 &&
+        sameVec2(payload.path[payload.path.length - 1], payload.toPosition) &&
+        typeof payload.speedPxPerSecond === 'number' &&
+        Number.isFinite(payload.speedPxPerSecond) &&
+        payload.speedPxPerSecond > 0 &&
+        facilityPathIsSweptLegal(payload.fromPosition, payload.path) &&
+        facilityPathTimingIsConsistent(
+          payload.fromPosition,
+          payload.path,
+          payload.speedPxPerSecond,
+          arrivesAt - startedAt,
+        ));
     return (
       isString(payload.actionId) &&
       isString(payload.observationId) &&
@@ -126,8 +191,10 @@ function hasValidPayload(kind: RuntimeEvent['kind'], payload: JsonRecord) {
       isString(payload.toLocationId) &&
       isString(payload.startedAt) &&
       isString(payload.arrivesAt) &&
-      !Number.isNaN(Date.parse(payload.startedAt)) &&
-      !Number.isNaN(Date.parse(payload.arrivesAt)) &&
+      !Number.isNaN(startedAt) &&
+      !Number.isNaN(arrivesAt) &&
+      arrivesAt > startedAt &&
+      hasValidMotionProjection &&
       hasOptionalString(payload, 'reason')
     );
   }

@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
-import { agentArenaReducer, createAgentArenaState } from '@/lib/arena/agentic-reducer';
+import {
+  agentArenaReducer,
+  createAgentArenaState,
+} from '@/lib/arena/agentic-reducer';
 import { CodexAgentRuntime } from '@/lib/arena/codex-agent-runtime';
 import type {
   ArenaRuntime,
@@ -16,11 +19,15 @@ export const DEFAULT_AGENT_OBJECTIVE =
 
 /**
  * Adapts an agent runtime event stream into the arena's local visual projection.
- * Runtime events own semantic state; the animation frame only advances avatars
- * along routes chosen by the projection reducer.
+ * Runtime events own semantic state; the animation frame only samples
+ * bridge-authored routes at an absolute wall-clock time.
  */
 export function useAgentArena() {
-  const [state, dispatch] = useReducer(agentArenaReducer, undefined, createAgentArenaState);
+  const [state, dispatch] = useReducer(
+    agentArenaReducer,
+    undefined,
+    createAgentArenaState,
+  );
   const [runtime] = useState<ArenaRuntime>(() => new CodexAgentRuntime());
   const [connectionStatus, setConnectionStatus] =
     useState<RuntimeConnectionStatus>('connecting');
@@ -29,19 +36,18 @@ export function useAgentArena() {
     const unsubscribe = runtime.subscribe((event) => {
       dispatch({ type: 'runtime.event', event });
     });
-    const unsubscribeConnection = runtime.subscribeConnection(setConnectionStatus);
+    const unsubscribeConnection =
+      runtime.subscribeConnection(setConnectionStatus);
 
     runtime.start(DEFAULT_AGENT_OBJECTIVE);
 
     let frameId = 0;
-    let previousTime = performance.now();
 
     const advanceProjection = (time: number) => {
-      // A backgrounded tab can resume with a very large delta. Clamping keeps
-      // that browser concern from teleporting avatars through the projection.
-      const deltaMs = Math.min(Math.max(time - previousTime, 0), 120);
-      previousTime = time;
-      if (deltaMs > 0) dispatch({ type: 'projection.tick', deltaMs });
+      // Runtime navigation timestamps are epoch-based. requestAnimationFrame's
+      // timestamp is monotonic relative to timeOrigin, so this remains absolute
+      // across dropped/background frames without accumulating delta-time drift.
+      dispatch({ type: 'projection.tick', now: performance.timeOrigin + time });
       frameId = window.requestAnimationFrame(advanceProjection);
     };
 
@@ -56,7 +62,8 @@ export function useAgentArena() {
   }, [runtime]);
 
   const command = useCallback(
-    (intent: OperatorIntent): Promise<CommandReceipt> => runtime.command(intent),
+    (intent: OperatorIntent): Promise<CommandReceipt> =>
+      runtime.command(intent),
     [runtime],
   );
 

@@ -124,7 +124,11 @@ function resolveWorldMotion(previous: Vec2, proposed: Vec2) {
   }
 
   if (lastLegal) return lastLegal;
-  return capsuleIsWorldLegal(proposed) ? proposed : previous;
+
+  // An illegal prior position is corrupted input, not permission to repair by
+  // teleporting to an unrelated legal point. Preserve it so the authoritative
+  // motor layer can surface/reconcile the invariant without crossing a wall.
+  return previous;
 }
 
 function winsPriority(left: AvatarProjection, right: AvatarProjection) {
@@ -147,70 +151,15 @@ function winsPriority(left: AvatarProjection, right: AvatarProjection) {
   return left.agentId.localeCompare(right.agentId) < 0;
 }
 
-function separateFrom(position: Vec2, blocker: Vec2, salt: number): Vec2 {
-  const point = pixelPoint(position);
-  const obstacle = pixelPoint(blocker);
-  let dx = point.x - obstacle.x;
-  let dy = point.y - obstacle.y;
-  let distance = Math.hypot(dx, dy);
-  if (distance < 0.01) {
-    dx = salt % 2 === 0 ? 1 : -1;
-    dy = salt % 3 === 0 ? 0.35 : -0.35;
-    distance = Math.hypot(dx, dy);
-  }
-  const scale =
-    (MIN_CENTER_DISTANCE_PX + CAPSULE_SEGMENT_HALF_PX * 2 + 0.5) / distance;
-  return {
-    x: Math.max(
-      4,
-      Math.min(96, ((obstacle.x + dx * scale) / ARENA_WORLD_WIDTH) * 100),
-    ),
-    y: Math.max(
-      6,
-      Math.min(97, ((obstacle.y + dy * scale) / ARENA_WORLD_HEIGHT) * 100),
-    ),
-  };
-}
-
-function separateFromWithinWorld(position: Vec2, blocker: Vec2, salt: number) {
-  const direct = separateFrom(position, blocker, salt);
-  if (capsuleIsWorldLegal(direct) && !capsulesOverlap(direct, blocker)) {
-    return direct;
-  }
-
-  const origin = pixelPoint(position);
-  const obstacle = pixelPoint(blocker);
-  const separationPx =
-    MIN_CENTER_DISTANCE_PX + CAPSULE_SEGMENT_HALF_PX * 2 + 0.5;
-  const candidates = Array.from({ length: 16 }, (_, index) => {
-    const angle = ((index + salt) / 16) * Math.PI * 2;
-    return {
-      x:
-        ((obstacle.x + Math.cos(angle) * separationPx) / ARENA_WORLD_WIDTH) *
-        100,
-      y:
-        ((obstacle.y + Math.sin(angle) * separationPx) / ARENA_WORLD_HEIGHT) *
-        100,
-    };
-  })
-    .filter(
-      (candidate) =>
-        capsuleIsWorldLegal(candidate) && !capsulesOverlap(candidate, blocker),
-    )
-    .sort((left, right) => {
-      const leftPoint = pixelPoint(left);
-      const rightPoint = pixelPoint(right);
-      return (
-        Math.hypot(leftPoint.x - origin.x, leftPoint.y - origin.y) -
-        Math.hypot(rightPoint.x - origin.x, rightPoint.y - origin.y)
-      );
-    });
-  return candidates[0] ?? position;
+function positionChanged(left: Vec2, right: Vec2) {
+  const from = pixelPoint(left);
+  const to = pixelPoint(right);
+  return Math.hypot(to.x - from.x, to.y - from.y) >= 0.01;
 }
 
 /**
- * Resolves one small movement slice as a group. Movement remains deterministic:
- * an advancing avatar wins over staged traffic, then route order and agent id.
+ * Resolves one small movement slice as a group. Stationary residents are
+ * immutable; conflicting movers yield in stable route/agent priority order.
  */
 export function resolveAvatarCollisions(
   previous: AvatarProjection[],
@@ -218,62 +167,79 @@ export function resolveAvatarCollisions(
   deltaMs: number,
 ) {
   const prior = new Map(previous.map((avatar) => [avatar.agentId, avatar]));
-  const resolved: AvatarProjection[] = proposals.map((avatar) => {
+  const worldResolved: AvatarProjection[] = proposals.map((avatar) => {
     const priorAvatar = prior.get(avatar.agentId) ?? avatar;
-    const completedPortalTransfer =
-      priorAvatar.portalTransfer === true && avatar.portalTransfer !== true;
     return {
       ...avatar,
-      position:
-        completedPortalTransfer && capsuleIsWorldLegal(avatar.position)
-          ? avatar.position
-          : resolveWorldMotion(priorAvatar.position, avatar.position),
+      position: resolveWorldMotion(priorAvatar.position, avatar.position),
       isYielding: false,
       yieldingToAgentId: undefined,
     };
   });
 
-  for (let pass = 0; pass < 5; pass += 1) {
-    let changed = false;
-    for (let leftIndex = 0; leftIndex < resolved.length; leftIndex += 1) {
-      for (
-        let rightIndex = leftIndex + 1;
-        rightIndex < resolved.length;
-        rightIndex += 1
-      ) {
-        const left = resolved[leftIndex];
-        const right = resolved[rightIndex];
-        if (!capsulesOverlap(left.position, right.position)) continue;
+  const moving = worldResolved
+    .filter((avatar) => {
+      const priorAvatar = prior.get(avatar.agentId) ?? avatar;
+      return (
+        avatar.isMoving &&
+        positionChanged(priorAvatar.position, avatar.position)
+      );
+    })
+    .sort((left, right) => (winsPriority(left, right) ? -1 : 1));
+  const movingIds = new Set(moving.map((avatar) => avatar.agentId));
+  const accepted = new Map<string, AvatarProjection>();
 
-        const winner = winsPriority(left, right) ? left : right;
-        const loserIndex = winner === left ? rightIndex : leftIndex;
-        const loser = resolved[loserIndex];
-        const loserPrior = prior.get(loser.agentId) ?? loser;
-        let fallbackPosition = loserPrior.position;
-        if (capsulesOverlap(fallbackPosition, winner.position)) {
-          fallbackPosition = separateFromWithinWorld(
-            fallbackPosition,
-            winner.position,
-            loserIndex + pass,
-          );
-        }
-        fallbackPosition = resolveWorldMotion(
-          loserPrior.position,
-          fallbackPosition,
-        );
-        resolved[loserIndex] = {
-          ...loserPrior,
-          position: fallbackPosition,
-          direction: loser.direction,
-          isYielding: true,
-          yieldingToAgentId: winner.agentId,
-          yieldMs: (loserPrior.yieldMs ?? 0) + deltaMs,
-        };
-        changed = true;
-      }
-    }
-    if (!changed) break;
+  // A resident without a moving proposal is an immovable obstacle. Dynamic
+  // avoidance may pause a mover, but it must never author movement for someone
+  // whose own projection did not move.
+  for (const avatar of worldResolved) {
+    if (movingIds.has(avatar.agentId)) continue;
+    const priorAvatar = prior.get(avatar.agentId) ?? avatar;
+    accepted.set(avatar.agentId, {
+      ...avatar,
+      position: { ...priorAvatar.position },
+      isYielding: false,
+      yieldingToAgentId: undefined,
+      yieldMs: 0,
+    });
   }
+
+  for (const avatar of moving) {
+    const priorAvatar = prior.get(avatar.agentId) ?? avatar;
+    const priorBlocker = previous.find(
+      (candidate) =>
+        candidate.agentId !== avatar.agentId &&
+        capsulesOverlap(avatar.position, candidate.position),
+    );
+    const acceptedBlocker = [...accepted.values()].find(
+      (candidate) =>
+        candidate.agentId !== avatar.agentId &&
+        capsulesOverlap(avatar.position, candidate.position),
+    );
+    const blocker = priorBlocker ?? acceptedBlocker;
+    accepted.set(
+      avatar.agentId,
+      blocker
+        ? {
+            ...priorAvatar,
+            position: { ...priorAvatar.position },
+            direction: avatar.direction,
+            isYielding: true,
+            yieldingToAgentId: blocker.agentId,
+            yieldMs: (priorAvatar.yieldMs ?? 0) + deltaMs,
+          }
+        : {
+            ...avatar,
+            isYielding: false,
+            yieldingToAgentId: undefined,
+            yieldMs: 0,
+          },
+    );
+  }
+
+  const resolved = worldResolved.map(
+    (avatar) => accepted.get(avatar.agentId) ?? avatar,
+  );
 
   return resolved.map((avatar) => ({
     ...avatar,
