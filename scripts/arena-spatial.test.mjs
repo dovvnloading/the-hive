@@ -419,6 +419,51 @@ function pathClearsStationaryBodies(fromPosition, path, stationaryPositions) {
   return true;
 }
 
+void test('door-context egress retains a later hash-ordered hall slot when the first route crosses a parked resident', () => {
+  const fromPosition = { ...stationById('door-context').slots[0] };
+  const parkedPosition = { x: 52.25, y: 50 };
+  const reserved = [];
+  const hashOrderedSlots = stationById('hall-center').slots.map(() => {
+    const slot = slotForAgent('hall-center', 'mover-smoke', reserved);
+    reserved.push(slot);
+    return slot;
+  });
+
+  assert.deepEqual(hashOrderedSlots, [
+    { x: 56.75, y: 50 },
+    { x: 43.25, y: 50 },
+    { x: 47.75, y: 50 },
+    { x: 52.25, y: 50 },
+  ]);
+  assert.equal(capsulesOverlap(hashOrderedSlots[0], parkedPosition), false);
+  const firstPath = buildArenaPath(
+    fromPosition,
+    hashOrderedSlots[0],
+    'door-context',
+    'hall-center',
+  );
+  assert.equal(facilityPathIsSweptLegal(fromPosition, firstPath), true);
+  assert.equal(
+    pathClearsStationaryBodies(fromPosition, firstPath, [parkedPosition]),
+    false,
+  );
+
+  const selectedSlot = hashOrderedSlots.find((slot) => {
+    if (capsulesOverlap(slot, parkedPosition)) return false;
+    const path = buildArenaPath(
+      fromPosition,
+      slot,
+      'door-context',
+      'hall-center',
+    );
+    return (
+      facilityPathIsSweptLegal(fromPosition, path) &&
+      pathClearsStationaryBodies(fromPosition, path, [parkedPosition])
+    );
+  });
+  assert.deepEqual(selectedSlot, { x: 43.25, y: 50 });
+});
+
 function assertVecAlmostEqual(actual, expected, message, epsilon = 0.0001) {
   assert.ok(
     Math.abs(actual.x - expected.x) <= epsilon &&

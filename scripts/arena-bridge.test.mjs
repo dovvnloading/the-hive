@@ -2865,6 +2865,166 @@ void test("an occupied doorway can drain past a stationary adjacent corridor res
   ]);
 });
 
+void test("door-context movement retries a later hall-center slot when the first endpoint-clear route crosses Aster", async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), "hive-door-slot-retry-"));
+  const origin = `http://127.0.0.1:${port}`;
+  const runId = "run-door-slot-retry";
+  const occurredAt = new Date().toISOString();
+  const startedAt = new Date(Date.now() - 2_000).toISOString();
+  const arrivesAt = new Date(Date.now() - 1_000).toISOString();
+  const events = [
+    {
+      schemaVersion: 1,
+      eventId: "door-slot-retry-run",
+      runId,
+      sequence: 1,
+      occurredAt,
+      source: "codex",
+      kind: "run.started",
+      payload: { objective: "Retry every authored target slot safely" },
+    },
+    ...[
+      ["steward-smoke", "Aster", "Steward"],
+      ["mover-smoke", "Mover", "Movement verifier"],
+    ].map(([agentId, name, role], index) => ({
+      schemaVersion: 1,
+      eventId: `door-slot-retry-spawn-${agentId}`,
+      runId,
+      sequence: index + 2,
+      occurredAt,
+      source: "codex",
+      kind: "agent.spawned",
+      agentId,
+      payload: { name, role },
+    })),
+    ...[
+      ["steward-smoke", "spawn-lift", "hall-center"],
+      ["mover-smoke", "spawn-lift", "door-context"],
+    ].map(([agentId, fromLocationId, toLocationId], index) => ({
+      schemaVersion: 1,
+      eventId: `door-slot-retry-navigation-${agentId}`,
+      runId,
+      sequence: index + 4,
+      occurredAt,
+      source: "codex",
+      kind: "world.navigation",
+      agentId,
+      payload: {
+        actionId: `legacy-position-${agentId}`,
+        observationId: `legacy-observation-${agentId}`,
+        fromLocationId,
+        toLocationId,
+        startedAt,
+        arrivesAt,
+      },
+    })),
+  ];
+  const tokens = {
+    "steward-smoke":
+      "door-slot-retry-steward-token-0123456789abcdef0123456789abcdef",
+    "mover-smoke":
+      "door-slot-retry-mover-token-0123456789abcdef0123456789abcdef",
+  };
+  const credentials = Object.fromEntries(
+    Object.entries(tokens).map(([agentId, token]) => [
+      agentId,
+      {
+        hash: createHash("sha256").update(token).digest("hex"),
+        runId,
+        issuedAt: occurredAt,
+      },
+    ]),
+  );
+  await writeFile(
+    resolve(dataDir, "events.jsonl"),
+    `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+    "utf8",
+  );
+  await writeFile(
+    resolve(dataDir, "state.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      runId,
+      sequence: events.length,
+      intentSequence: 0,
+      startedAt: occurredAt,
+      updatedAt: occurredAt,
+    })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    resolve(dataDir, "agent-credentials.json"),
+    `${JSON.stringify(credentials)}\n`,
+    "utf8",
+  );
+
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, "--port", String(port), "--data-dir", dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: "100000",
+        ARENA_MIN_TRAVEL_MS: "800",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+  t.after(async () => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once("exit", resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  await waitForHealth(origin, child);
+
+  const moverScene = await observe(origin, tokens["mover-smoke"]);
+  assert.equal(moverScene.you.locationId, "door-context");
+  const hallExit = moverScene.exits.find((exit) => exit.to === "hall-center");
+  assert.ok(hallExit);
+  assert.equal(hallExit.capacity, 4);
+  assert.equal(hallExit.remainingCapacity, 3);
+  assert.equal(hallExit.status, "shared");
+  assert.equal(hallExit.available, true);
+  assert.deepEqual(
+    hallExit.occupiedBy.map((resident) => resident.id),
+    ["steward-smoke"],
+  );
+  assert.equal(hallExit.trafficBy, undefined);
+
+  const move = await boardRequest(
+    origin,
+    "/world/action",
+    tokens["mover-smoke"],
+    {
+      method: "POST",
+      body: JSON.stringify({
+        actionId: "mover-smoke-retries-hall-slot",
+        observationId: moverScene.observationId,
+        action: "move",
+        targetId: "hall-center",
+      }),
+    },
+  );
+  const moveBody = await json(move);
+  assert.equal(move.status, 201, moveBody.error);
+  assert.deepEqual(moveBody.event.payload.fromPosition, {
+    x: 44.792,
+    y: 50,
+  });
+  assert.deepEqual(moveBody.event.payload.toPosition, { x: 43.25, y: 50 });
+  assertNavigationPathIsSweptLegal(moveBody.event.payload);
+  assertNavigationPathClearsPositions(moveBody.event.payload, [
+    { x: 52.25, y: 50 },
+  ]);
+});
+
 void test("authenticated semantic world-action failures write redacted recovery receipts", async (t) => {
   const port = await availablePort();
   const dataDir = await mkdtemp(resolve(tmpdir(), "hive-action-rejections-"));

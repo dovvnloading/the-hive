@@ -3288,14 +3288,14 @@ function projectedResidentPositions(residents, now = Date.now()) {
   return positions;
 }
 
-function selectAuthoredTargetSlot(
+function availableAuthoredTargetSlots(
   agents,
   agentId,
   targetId,
   now = Date.now(),
 ) {
   const target = worldLocationById(targetId);
-  if (!target) return undefined;
+  if (!target) return [];
   const residents = activeResidents(agents);
   const positions = projectedResidentPositions(residents, now);
   const claimed = [];
@@ -3312,7 +3312,7 @@ function selectAuthoredTargetSlot(
       if (position) claimed.push(position);
     }
   }
-  return preferredAuthoredSlots(targetId, agentId).find((candidate) =>
+  return preferredAuthoredSlots(targetId, agentId).filter((candidate) =>
     claimed.every(
       (occupied) => !residentCapsulesOverlap(candidate, occupied),
     ),
@@ -3440,12 +3440,13 @@ function proposedMovementPlan(
     acceptedAtMs,
   );
   const fromPosition = residentPositions.get(agentId);
-  const toPosition = selectAuthoredTargetSlot(
+  const toPositions = availableAuthoredTargetSlots(
     agents,
     agentId,
     toLocationId,
     acceptedAtMs,
   );
+  const toPosition = toPositions[0];
   if (!fromPosition || !toPosition) {
     return {
       fromPosition,
@@ -3453,54 +3454,77 @@ function proposedMovementPlan(
       issue: !fromPosition ? 'missing_source' : 'destination_full',
     };
   }
-  const path = buildArenaPath(
-    fromPosition,
-    toPosition,
-    fromLocationId,
-    toLocationId,
-  );
-  if (path.length === 0 || !facilityPathIsSweptLegal(fromPosition, path)) {
-    return { fromPosition, toPosition, path, issue: 'unsafe_path' };
-  }
-  const pathLengthPx = facilityPathLengthPx(fromPosition, path);
-  if (!Number.isFinite(pathLengthPx) || pathLengthPx <= 0) {
-    return {
+  let firstConflictingProposal;
+  let firstInvalidProposal;
+  for (const candidatePosition of toPositions) {
+    const path = buildArenaPath(
       fromPosition,
-      toPosition,
-      path,
-      pathLengthPx,
-      issue: 'empty_path',
-    };
+      candidatePosition,
+      fromLocationId,
+      toLocationId,
+    );
+    let proposal;
+    if (path.length === 0 || !facilityPathIsSweptLegal(fromPosition, path)) {
+      proposal = {
+        fromPosition,
+        toPosition: candidatePosition,
+        path,
+        issue: 'unsafe_path',
+      };
+    } else {
+      const pathLengthPx = facilityPathLengthPx(fromPosition, path);
+      if (!Number.isFinite(pathLengthPx) || pathLengthPx <= 0) {
+        proposal = {
+          fromPosition,
+          toPosition: candidatePosition,
+          path,
+          pathLengthPx,
+          issue: 'empty_path',
+        };
+      } else {
+        const maximumSpeedPxPerSecond = effectiveMovementSpeed(pathLengthPx);
+        const durationMs = Math.max(
+          1,
+          Math.ceil((pathLengthPx / maximumSpeedPxPerSecond) * 1_000),
+        );
+        // Duration is an integer millisecond contract. Derive the authored
+        // speed from that rounded duration so every consumer reaches the exact
+        // endpoint at the exact deadline without tolerance drift or a final
+        // snap.
+        const speedPxPerSecond = pathLengthPx / (durationMs / 1_000);
+        const startedAtMs = acceptedAtMs + NAVIGATION_START_LEAD_MS;
+        const arrivesAtMs = startedAtMs + durationMs;
+        const plan = {
+          fromPosition,
+          toPosition: candidatePosition,
+          path,
+          pathLengthPx,
+          speedPxPerSecond,
+          startedAtMs,
+          arrivesAtMs,
+        };
+        proposal = {
+          ...plan,
+          conflictingResident: conflictingResidentForPlan(
+            plan,
+            agents,
+            agentId,
+            acceptedAtMs,
+          ),
+        };
+      }
+    }
+    if (!proposal.issue && !proposal.conflictingResident) return proposal;
+    if (proposal.conflictingResident) {
+      firstConflictingProposal ??= proposal;
+    } else {
+      firstInvalidProposal ??= proposal;
+    }
   }
-  const maximumSpeedPxPerSecond = effectiveMovementSpeed(pathLengthPx);
-  const durationMs = Math.max(
-    1,
-    Math.ceil((pathLengthPx / maximumSpeedPxPerSecond) * 1_000),
-  );
-  // Duration is an integer millisecond contract. Derive the authored speed
-  // from that rounded duration so every consumer reaches the exact endpoint
-  // at the exact deadline without tolerance drift or a final snap.
-  const speedPxPerSecond = pathLengthPx / (durationMs / 1_000);
-  const startedAtMs = acceptedAtMs + NAVIGATION_START_LEAD_MS;
-  const arrivesAtMs = startedAtMs + durationMs;
-  const plan = {
-    fromPosition,
-    toPosition,
-    path,
-    pathLengthPx,
-    speedPxPerSecond,
-    startedAtMs,
-    arrivesAtMs,
-  };
-  return {
-    ...plan,
-    conflictingResident: conflictingResidentForPlan(
-      plan,
-      agents,
-      agentId,
-      acceptedAtMs,
-    ),
-  };
+  // A claim-free endpoint with a statically valid but resident-conflicting
+  // route remains a yield instead of being obscured by another slot whose
+  // authored route is invalid. Both choices remain hash-order deterministic.
+  return firstConflictingProposal ?? firstInvalidProposal;
 }
 
 function movementAwareness(
