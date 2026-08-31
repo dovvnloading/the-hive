@@ -16,6 +16,11 @@ import {
 const RUN_ID = 'run_qualification_golden';
 const BASE_TIME = Date.parse('2026-08-30T12:00:00.000Z');
 const evaluatorPath = resolve(import.meta.dirname, 'arena-eval.mjs');
+const TERMINAL_KINDS_FOR_TEST = new Set([
+  'agent.completed',
+  'agent.failed',
+  'agent.stopped',
+]);
 
 const roster = Object.freeze({
   schemaVersion: 1,
@@ -491,6 +496,133 @@ function moveEventAfter(fixture, eventPredicate, predecessorPredicate) {
   resequence(fixture);
 }
 
+function addReactivation(
+  fixture,
+  { agentId = 'explorer', includeTerminal = true } = {},
+) {
+  const taskId = `task-${agentId}-reactivated`;
+  const initialAssignment = fixture.events.find(
+    (event) => event.kind === 'task.assigned' && event.agentId === agentId,
+  );
+  const initialTerminal = fixture.events.find(
+    (event) => TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === agentId,
+  );
+  const assignment = {
+    ...clone(initialAssignment),
+    eventId: `evt-${agentId}-reactivated-assignment`,
+    taskId,
+  };
+  const terminal = {
+    ...clone(initialTerminal),
+    eventId: `evt-${agentId}-reactivated-terminal`,
+    taskId,
+    payload: { summary: `${agentId} completed reactivated work` },
+  };
+  const runCompleteIndex = fixture.events.findIndex(
+    (event) => event.kind === 'run.completed',
+  );
+  fixture.events.splice(
+    runCompleteIndex,
+    0,
+    assignment,
+    ...(includeTerminal ? [terminal] : []),
+  );
+  resequence(fixture);
+  return { assignment, terminal };
+}
+
+function addStewardCoordinationResolution(
+  fixture,
+  { resolver = 'peer' } = {},
+) {
+  fixture.events = fixture.events.filter(
+    (event) =>
+      !(
+        event.kind === 'world.interaction' &&
+        event.payload.entityId === 'plant-context'
+      ),
+  );
+  const messageTemplate = fixture.events.find(
+    (event) =>
+      event.kind === 'board.message' &&
+      event.payload.messageId === 'message-change',
+  );
+  const acknowledgementTemplate = fixture.events.find(
+    (event) =>
+      event.kind === 'board.acknowledged' &&
+      event.payload.messageId === 'message-change',
+  );
+  const parent = {
+    ...clone(messageTemplate),
+    eventId: 'evt-steward-coordination-parent',
+    agentId: 'critic',
+    payload: {
+      ...clone(messageTemplate.payload),
+      messageId: 'message-steward-coordination-parent',
+      clientMessageId: 'client-steward-coordination-parent',
+      threadId: 'thread-steward-coordination',
+      topic: 'Coordination resolution',
+      messageType: 'decision',
+      audience: 'broadcast',
+      recipientAgentIds: [],
+      artifactIds: ['critic-test-result-1'],
+      text: 'The linked validation needs a coordinated resolution.',
+    },
+  };
+  const update = {
+    ...clone(parent),
+    eventId: 'evt-steward-coordination-update',
+    agentId: 'steward',
+    payload: {
+      ...clone(parent.payload),
+      messageId: 'message-steward-coordination-update',
+      clientMessageId: 'client-steward-coordination-update',
+      messageType: 'update',
+      replyToMessageId: parent.payload.messageId,
+      text: 'The linked validation supports resolving this coordination thread.',
+    },
+  };
+  const peerMessage =
+    resolver === 'steward'
+      ? {
+          ...clone(update),
+          eventId: 'evt-steward-coordination-peer-decision',
+          agentId: 'maker',
+          payload: {
+            ...clone(update.payload),
+            messageId: 'message-steward-coordination-peer-decision',
+            clientMessageId: 'client-steward-coordination-peer-decision',
+            messageType: 'decision',
+            replyToMessageId: update.payload.messageId,
+            text: 'The linked evidence supports this final decision.',
+          },
+        }
+      : undefined;
+  const resolvedMessage = peerMessage ?? update;
+  const resolved = {
+    ...clone(acknowledgementTemplate),
+    eventId: 'evt-steward-coordination-resolved',
+    agentId: resolver === 'steward' ? 'steward' : 'critic',
+    payload: {
+      messageId: resolvedMessage.payload.messageId,
+      state: 'resolved',
+    },
+  };
+  const firstTerminalIndex = fixture.events.findIndex((event) =>
+    TERMINAL_KINDS_FOR_TEST.has(event.kind),
+  );
+  fixture.events.splice(
+    firstTerminalIndex,
+    0,
+    parent,
+    update,
+    ...(peerMessage ? [peerMessage] : []),
+    resolved,
+  );
+  resequence(fixture);
+  return { parent, update, peerMessage, resolved };
+}
+
 async function invokeEvaluatorCli(
   t,
   fixture,
@@ -914,6 +1046,203 @@ void test('missing and directed assignments fail the assignment gate', () => {
   );
 });
 
+void test('a resident must spawn before its canonical assignment', () => {
+  const fixture = makeGolden();
+  moveEventAfter(
+    fixture,
+    (event) =>
+      event.kind === 'task.assigned' && event.agentId === 'explorer',
+    (event) => event.kind === 'run.started',
+  );
+
+  const report = evaluate(fixture);
+  assert.equal(assertionById(report, 'resident.assignments').status, 'fail');
+  assert.match(
+    assertionById(report, 'resident.assignments').details.join(' '),
+    /before its spawn/u,
+  );
+});
+
+void test('completed residents may receive a neutral reactivation with a unique task', () => {
+  const fixture = makeGolden();
+  addReactivation(fixture);
+  const report = evaluate(fixture);
+
+  assert.equal(assertionById(report, 'resident.assignments').status, 'pass');
+  assert.equal(assertionById(report, 'resident.terminals').status, 'pass');
+  assert.equal(assertionById(report, 'liveness.thirty_minutes').status, 'pass');
+});
+
+void test('reactivations cannot overlap or reuse an assignment taskId', () => {
+  const overlap = makeGolden();
+  const initialAssignment = overlap.events.find(
+    (event) =>
+      event.kind === 'task.assigned' && event.agentId === 'explorer',
+  );
+  const initialTerminalIndex = overlap.events.findIndex(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'explorer',
+  );
+  overlap.events[initialTerminalIndex].taskId = initialAssignment.taskId;
+  const overlappingAssignment = {
+    ...clone(initialAssignment),
+    eventId: 'evt-explorer-overlapping-assignment',
+    taskId: 'task-explorer-overlapping',
+  };
+  const overlappingTerminal = {
+    ...clone(overlap.events[initialTerminalIndex]),
+    eventId: 'evt-explorer-overlapping-terminal',
+    taskId: overlappingAssignment.taskId,
+    payload: { summary: 'Explorer completed overlapping work' },
+  };
+  overlap.events.splice(initialTerminalIndex, 0, overlappingAssignment);
+  overlap.events.splice(initialTerminalIndex + 2, 0, overlappingTerminal);
+  resequence(overlap);
+  const overlapReport = evaluate(overlap);
+  assert.equal(
+    assertionById(overlapReport, 'resident.assignments').status,
+    'fail',
+  );
+  assert.equal(
+    assertionById(overlapReport, 'resident.terminals').status,
+    'pass',
+  );
+
+  const reused = makeGolden();
+  const reactivation = addReactivation(reused);
+  reactivation.assignment.taskId = 'task-explorer';
+  reactivation.terminal.taskId = 'task-explorer';
+  assert.equal(
+    assertionById(evaluate(reused), 'resident.assignments').status,
+    'fail',
+  );
+});
+
+void test('every reactivation requires exactly one factual terminal', () => {
+  const missing = makeGolden();
+  addReactivation(missing, { includeTerminal: false });
+  const missingReport = evaluate(missing);
+  assert.equal(
+    assertionById(missingReport, 'resident.assignments').status,
+    'pass',
+  );
+  assert.equal(
+    assertionById(missingReport, 'resident.terminals').status,
+    'fail',
+  );
+
+  const duplicate = makeGolden();
+  const terminal = duplicate.events.find(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'explorer',
+  );
+  const runCompleteIndex = duplicate.events.findIndex(
+    (event) => event.kind === 'run.completed',
+  );
+  duplicate.events.splice(runCompleteIndex, 0, {
+    ...clone(terminal),
+    eventId: 'evt-explorer-duplicate-terminal',
+    payload: { summary: 'Explorer emitted a duplicate terminal' },
+  });
+  resequence(duplicate);
+  const duplicateReport = evaluate(duplicate);
+  assert.equal(
+    assertionById(duplicateReport, 'resident.assignments').status,
+    'pass',
+  );
+  assert.equal(
+    assertionById(duplicateReport, 'resident.terminals').status,
+    'fail',
+  );
+});
+
+void test('liveness is measured independently from each activation assignment', () => {
+  const slow = makeGolden();
+  const { assignment, terminal } = addReactivation(slow);
+  const assignmentTime = BASE_TIME + 60_000;
+  assignment.occurredAt = new Date(assignmentTime).toISOString();
+  terminal.occurredAt = new Date(
+    assignmentTime + 30 * 60 * 1_000 + 1_000,
+  ).toISOString();
+  slow.events.at(-1).occurredAt = new Date(
+    Date.parse(terminal.occurredAt) + 1_000,
+  ).toISOString();
+  const slowReport = evaluate(slow);
+  assert.equal(assertionById(slowReport, 'journal.integrity').status, 'pass');
+  assert.equal(
+    assertionById(slowReport, 'resident.assignments').status,
+    'pass',
+  );
+  assert.equal(
+    assertionById(slowReport, 'resident.terminals').status,
+    'pass',
+  );
+  assert.equal(
+    assertionById(slowReport, 'liveness.thirty_minutes').status,
+    'fail',
+  );
+  assert.match(
+    assertionById(slowReport, 'liveness.thirty_minutes').details.join(' '),
+    /task-explorer-reactivated/u,
+  );
+
+  const boundary = makeGolden();
+  const boundaryCycle = addReactivation(boundary);
+  const boundaryTime = BASE_TIME + 60_000;
+  boundaryCycle.assignment.occurredAt = new Date(boundaryTime).toISOString();
+  boundaryCycle.terminal.occurredAt = new Date(
+    boundaryTime + 30 * 60 * 1_000,
+  ).toISOString();
+  boundary.events.at(-1).occurredAt = new Date(
+    Date.parse(boundaryCycle.terminal.occurredAt) + 1_000,
+  ).toISOString();
+  assert.equal(
+    assertionById(evaluate(boundary), 'liveness.thirty_minutes').status,
+    'pass',
+  );
+
+  const blocked = makeGolden();
+  const blockedCycle = addReactivation(blocked);
+  const terminalIndex = blocked.events.indexOf(blockedCycle.terminal);
+  blocked.events.splice(terminalIndex, 0, {
+    schemaVersion: 1,
+    eventId: 'evt-explorer-reactivated-blocked',
+    sequence: 1,
+    occurredAt: new Date(BASE_TIME).toISOString(),
+    source: 'codex',
+    runId: RUN_ID,
+    agentId: 'explorer',
+    taskId: blockedCycle.assignment.taskId,
+    kind: 'agent.blocked',
+    payload: {
+      promptId: 'prompt-explorer-reactivated',
+      reason: 'question',
+      request: 'A factual answer is required to continue.',
+    },
+  });
+  resequence(blocked);
+  const blockedTime = BASE_TIME + 60_000;
+  blockedCycle.assignment.occurredAt = new Date(blockedTime).toISOString();
+  blocked.events[terminalIndex].occurredAt = new Date(
+    blockedTime + 60_000,
+  ).toISOString();
+  blockedCycle.terminal.occurredAt = new Date(
+    blockedTime + 30 * 60 * 1_000 + 1_000,
+  ).toISOString();
+  blocked.events.at(-1).occurredAt = new Date(
+    Date.parse(blockedCycle.terminal.occurredAt) + 1_000,
+  ).toISOString();
+  const blockedReport = evaluate(blocked);
+  assert.equal(
+    assertionById(blockedReport, 'journal.integrity').status,
+    'pass',
+  );
+  assert.equal(
+    assertionById(blockedReport, 'liveness.thirty_minutes').status,
+    'pass',
+  );
+});
+
 void test('broken artifact lineage fails the Critic and team chain gates', () => {
   const fixture = makeGolden();
   fixture.events.find(
@@ -1125,6 +1454,163 @@ void test('missing Maker change and non-independent Critic validation fail their
   }
   assert.equal(
     assertionById(evaluate(dependent), 'role.critic').status,
+    'fail',
+  );
+});
+
+void test('Steward coordination accepts both strict resolution orientations', () => {
+  const peerResolved = makeGolden();
+  const { update } = addStewardCoordinationResolution(peerResolved);
+  const proof = assertionById(evaluate(peerResolved), 'role.steward');
+
+  assert.equal(proof.status, 'pass');
+  assert.ok(proof.evidence.messageIds.includes(update.payload.messageId));
+  assert.ok(proof.evidence.artifactIds.includes('critic-test-result-1'));
+
+  const stewardResolved = makeGolden();
+  const stewardResolution = addStewardCoordinationResolution(
+    stewardResolved,
+    { resolver: 'steward' },
+  );
+  const stewardProof = assertionById(
+    evaluate(stewardResolved),
+    'role.steward',
+  );
+  assert.equal(stewardProof.status, 'pass');
+  assert.ok(
+    stewardProof.evidence.messageIds.includes(
+      stewardResolution.peerMessage.payload.messageId,
+    ),
+  );
+});
+
+void test('post-terminal Steward coordination is outside the activation lifecycle', () => {
+  const fixture = makeGolden();
+  const coordination = addStewardCoordinationResolution(fixture);
+  fixture.events = fixture.events.filter(
+    (event) =>
+      event !== coordination.update && event !== coordination.resolved,
+  );
+  const stewardTerminalIndex = fixture.events.findIndex(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'steward',
+  );
+  fixture.events.splice(
+    stewardTerminalIndex + 1,
+    0,
+    coordination.update,
+    coordination.resolved,
+  );
+  resequence(fixture);
+
+  const report = evaluate(fixture);
+  assert.equal(report.status, 'fail');
+  assert.equal(assertionById(report, 'resident.terminals').status, 'fail');
+  assert.match(
+    assertionById(report, 'resident.terminals').details.join(' '),
+    /board\.message.*outside an active assignment/u,
+  );
+});
+
+void test('Steward coordination requires valid prior artifacts and peer resolution', () => {
+  const unresolved = makeGolden();
+  const unresolvedProof = addStewardCoordinationResolution(unresolved);
+  unresolvedProof.resolved.payload.state = 'acknowledged';
+  assert.equal(
+    assertionById(evaluate(unresolved), 'role.steward').status,
+    'fail',
+  );
+
+  const wrongArtifact = makeGolden();
+  const wrongArtifactProof = addStewardCoordinationResolution(wrongArtifact);
+  wrongArtifactProof.update.payload.artifactIds = ['unknown-artifact'];
+  assert.equal(
+    assertionById(evaluate(wrongArtifact), 'role.steward').status,
+    'fail',
+  );
+
+  const futureArtifact = makeGolden();
+  const futureArtifactProof = addStewardCoordinationResolution(futureArtifact);
+  const artifactIndex = futureArtifact.events.findIndex(
+    (event) =>
+      event.kind === 'artifact.recorded' &&
+      event.payload.artifactId === 'critic-test-result-1',
+  );
+  const [artifact] = futureArtifact.events.splice(artifactIndex, 1);
+  const updateIndex = futureArtifact.events.indexOf(futureArtifactProof.update);
+  futureArtifact.events.splice(updateIndex + 1, 0, artifact);
+  resequence(futureArtifact);
+  assert.equal(
+    assertionById(evaluate(futureArtifact), 'role.steward').status,
+    'fail',
+  );
+
+  const unrelated = makeGolden();
+  const unrelatedProof = addStewardCoordinationResolution(unrelated, {
+    resolver: 'steward',
+  });
+  unrelatedProof.peerMessage.payload.threadId = 'thread-unrelated-decision';
+  delete unrelatedProof.peerMessage.payload.replyToMessageId;
+  assert.equal(
+    assertionById(evaluate(unrelated), 'role.steward').status,
+    'fail',
+  );
+});
+
+void test('Steward resolution must follow the latest causal message', () => {
+  const unresolvedTail = makeGolden();
+  const unresolvedTailProof =
+    addStewardCoordinationResolution(unresolvedTail);
+  const tailReply = {
+    ...clone(unresolvedTailProof.update),
+    eventId: 'evt-steward-coordination-later-reply',
+    agentId: 'maker',
+    payload: {
+      ...clone(unresolvedTailProof.update.payload),
+      messageId: 'message-steward-coordination-later-reply',
+      clientMessageId: 'client-steward-coordination-later-reply',
+      messageType: 'decision',
+      replyToMessageId: unresolvedTailProof.update.payload.messageId,
+      text: 'This later connected decision still needs resolution.',
+    },
+  };
+  const resolvedIndex = unresolvedTail.events.indexOf(
+    unresolvedTailProof.resolved,
+  );
+  unresolvedTail.events.splice(resolvedIndex + 1, 0, tailReply);
+  resequence(unresolvedTail);
+  assert.equal(
+    assertionById(evaluate(unresolvedTail), 'role.steward').status,
+    'fail',
+  );
+
+  const lateAuthor = makeGolden();
+  const lateAuthorProof = addStewardCoordinationResolution(lateAuthor);
+  lateAuthorProof.resolved.agentId = 'maker';
+  const lateAuthorMessage = {
+    ...clone(lateAuthorProof.update),
+    eventId: 'evt-steward-coordination-late-author',
+    agentId: 'maker',
+    payload: {
+      ...clone(lateAuthorProof.update.payload),
+      messageId: 'message-steward-coordination-late-author',
+      clientMessageId: 'client-steward-coordination-late-author',
+      messageType: 'update',
+      replyToMessageId: lateAuthorProof.update.payload.messageId,
+      text: 'The resolver joined only after acknowledging the earlier message.',
+    },
+  };
+  const lateResolutionIndex = lateAuthor.events.indexOf(
+    lateAuthorProof.resolved,
+  );
+  lateAuthor.events.splice(
+    lateResolutionIndex + 1,
+    0,
+    lateAuthorMessage,
+  );
+  resequence(lateAuthor);
+  assert.equal(
+    assertionById(evaluate(lateAuthor), 'role.steward').status,
     'fail',
   );
 });

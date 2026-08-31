@@ -93,6 +93,14 @@ const AGENT_EVENT_KINDS = new Set(
       kind.startsWith('proximity.'),
   ),
 );
+const ACTIVE_ASSIGNMENT_EVENT_KINDS = new Set(
+  [...AGENT_EVENT_KINDS].filter(
+    (kind) =>
+      kind !== 'agent.spawned' &&
+      kind !== 'task.assigned' &&
+      !TERMINAL_KINDS.has(kind),
+  ),
+);
 const ROOM_LIGHTS = Object.freeze(
   FACILITY_PROPS.filter((entity) => entity.kind === 'room-light').map(
     (entity) => ({ id: entity.id, initialPower: entity.initialState.power }),
@@ -798,6 +806,187 @@ function acceptedActionFor(receipt, events) {
   });
 }
 
+function causallyLinkedMessages(messages, origin) {
+  const messageById = new Map(
+    messages.map((message) => [message.payload.messageId, message]),
+  );
+  const adjacentIds = new Map(
+    messages.map((message) => [message.payload.messageId, new Set()]),
+  );
+  for (const message of messages) {
+    const parent = messageById.get(message.payload.replyToMessageId);
+    if (!parent || parent.sequence >= message.sequence) continue;
+    adjacentIds
+      .get(message.payload.messageId)
+      .add(parent.payload.messageId);
+    adjacentIds
+      .get(parent.payload.messageId)
+      .add(message.payload.messageId);
+  }
+  const connectedIds = new Set([origin.payload.messageId]);
+  const pendingIds = [origin.payload.messageId];
+  while (pendingIds.length > 0) {
+    const messageId = pendingIds.pop();
+    for (const adjacentId of adjacentIds.get(messageId) ?? []) {
+      if (connectedIds.has(adjacentId)) continue;
+      connectedIds.add(adjacentId);
+      pendingIds.push(adjacentId);
+    }
+  }
+  return messages.filter((message) =>
+    connectedIds.has(message.payload.messageId),
+  );
+}
+
+function residentActivationLifecycles(events, residents, runCompletion) {
+  const assignmentIssues = [];
+  const terminalIssues = [];
+  const cycles = [];
+  const mappedAgentIds = new Set(
+    residents.map((resident) => resident.agentId),
+  );
+  const assignments = events.filter((event) => event.kind === 'task.assigned');
+  const terminals = events.filter((event) => TERMINAL_KINDS.has(event.kind));
+  const assignmentByTaskId = new Map();
+
+  for (const assignment of assignments) {
+    const prior = assignmentByTaskId.get(assignment.taskId);
+    if (prior) {
+      assignmentIssues.push(
+        `taskId ${assignment.taskId} is assigned more than once`,
+      );
+    } else {
+      assignmentByTaskId.set(assignment.taskId, assignment);
+    }
+    if (!mappedAgentIds.has(assignment.agentId))
+      assignmentIssues.push('an assignment belongs to an unmapped identity');
+  }
+  if (terminals.some((event) => !mappedAgentIds.has(event.agentId)))
+    terminalIssues.push('a terminal event belongs to an unmapped identity');
+
+  for (const resident of residents) {
+    const ownAssignments = assignments.filter(
+      (event) => event.agentId === resident.agentId,
+    );
+    const canonicalAssignments = ownAssignments.filter(
+      (event) => event.taskId === resident.taskId,
+    );
+    if (canonicalAssignments.length !== 1) {
+      assignmentIssues.push(
+        `${resident.agentId} must have exactly one canonical roster assignment`,
+      );
+    }
+    if (
+      ownAssignments.length > 0 &&
+      ownAssignments[0].taskId !== resident.taskId
+    ) {
+      assignmentIssues.push(
+        `${resident.agentId} first assignment taskId does not match the roster`,
+      );
+    }
+    for (const assignment of ownAssignments) {
+      if (assignment.payload.mode !== 'self-directed') {
+        assignmentIssues.push(
+          `${resident.agentId} assignment ${assignment.taskId} is not self-directed`,
+        );
+      }
+      if (assignment.payload.objective !== RESIDENT_ASSIGNMENT) {
+        assignmentIssues.push(
+          `${resident.agentId} assignment ${assignment.taskId} is not the neutral resident assignment`,
+        );
+      }
+    }
+
+    const ownEvents = events.filter(
+      (event) => event.agentId === resident.agentId,
+    );
+    const openCycles = [];
+    const residentCycles = [];
+    let spawned = false;
+    for (const event of ownEvents) {
+      if (event.kind === 'agent.spawned') {
+        spawned = true;
+        continue;
+      }
+      if (event.kind === 'task.assigned') {
+        if (!spawned) {
+          assignmentIssues.push(
+            `${resident.agentId} assignment ${event.taskId} occurs before its spawn`,
+          );
+        }
+        if (openCycles.length > 0) {
+          assignmentIssues.push(
+            `${resident.agentId} assignment ${event.taskId} overlaps an unterminated activation`,
+          );
+        }
+        const cycle = { resident, assignment: event, terminal: undefined };
+        cycles.push(cycle);
+        residentCycles.push(cycle);
+        openCycles.push(cycle);
+        continue;
+      }
+
+      if (ACTIVE_ASSIGNMENT_EVENT_KINDS.has(event.kind)) {
+        if (openCycles.length === 0) {
+          terminalIssues.push(
+            `${resident.agentId} ${event.kind} ${event.eventId} occurs outside an active assignment`,
+          );
+        }
+        continue;
+      }
+
+      if (!TERMINAL_KINDS.has(event.kind)) continue;
+
+      let cycle;
+      if (hasText(event, 'taskId')) {
+        cycle = openCycles.find(
+          (candidate) => candidate.assignment.taskId === event.taskId,
+        );
+      } else if (openCycles.length === 1) {
+        [cycle] = openCycles;
+      } else if (openCycles.length > 1) {
+        terminalIssues.push(
+          `${resident.agentId} terminal ${event.eventId} cannot be paired across overlapping activations`,
+        );
+        continue;
+      }
+      if (!cycle) {
+        terminalIssues.push(
+          `${resident.agentId} terminal ${event.eventId} is duplicate or unpaired`,
+        );
+        continue;
+      }
+      cycle.terminal = event;
+      openCycles.splice(openCycles.indexOf(cycle), 1);
+    }
+
+    for (const cycle of residentCycles) {
+      if (!cycle.terminal) {
+        terminalIssues.push(
+          `${resident.agentId} activation ${cycle.assignment.taskId} lacks a factual terminal`,
+        );
+      }
+    }
+    if (residentCycles.length === 0) {
+      terminalIssues.push(
+        `${resident.agentId} has no activation to reach a factual terminal`,
+      );
+    }
+    const finalCycle = residentCycles.at(-1);
+    if (
+      finalCycle?.terminal &&
+      runCompletion &&
+      finalCycle.terminal.sequence >= runCompletion.sequence
+    ) {
+      terminalIssues.push(
+        `${resident.agentId} final activation is not terminal before run.completed`,
+      );
+    }
+  }
+
+  return { assignments, terminals, cycles, assignmentIssues, terminalIssues };
+}
+
 function runIntegrity(events, receipts, runId) {
   const issues = [];
   if (events.length === 0) issues.push(`selected run ${runId} has no events`);
@@ -1079,69 +1268,35 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
     ),
   );
 
-  const assignments = selectedEvents.filter(
-    (event) => event.kind === 'task.assigned',
+  const activationLifecycles = residentActivationLifecycles(
+    selectedEvents,
+    residents,
+    completedRuns.length === 1 ? completedRuns[0] : undefined,
   );
-  const assignmentIssues = [];
-  for (const resident of residents) {
-    const own = assignments.filter(
-      (event) => event.agentId === resident.agentId,
-    );
-    if (own.length !== 1) {
-      assignmentIssues.push(
-        `${resident.agentId} must have exactly one assignment`,
-      );
-      continue;
-    }
-    if (own[0].taskId !== resident.taskId)
-      assignmentIssues.push(
-        `${resident.agentId} assignment taskId does not match the roster`,
-      );
-    if (own[0].payload.mode !== 'self-directed')
-      assignmentIssues.push(
-        `${resident.agentId} assignment is not self-directed`,
-      );
-    if (own[0].payload.objective !== RESIDENT_ASSIGNMENT)
-      assignmentIssues.push(
-        `${resident.agentId} assignment text is not the neutral resident assignment`,
-      );
-  }
-  if (assignments.some((event) => !mappedAgentIds.has(event.agentId)))
-    assignmentIssues.push('an assignment belongs to an unmapped identity');
+  const { assignments, assignmentIssues } = activationLifecycles;
   assertions.push(
     assertion(
       'resident.assignments',
       assignmentIssues.length === 0 ? 'pass' : 'fail',
       assignmentIssues.length === 0
-        ? 'Each mapped identity received one self-directed assignment.'
-        : 'Assignments are missing, duplicated, directed, or mismatched.',
+        ? 'Each mapped identity has one canonical assignment and only neutral, non-overlapping reactivations.'
+        : 'Assignments are missing, reused, directed, mismatched, or overlapping.',
       evidence({ events: assignments }),
       assignmentIssues,
     ),
   );
 
-  const terminalEvents = selectedEvents.filter((event) =>
-    TERMINAL_KINDS.has(event.kind),
-  );
-  const terminalIssues = [];
-  for (const resident of residents) {
-    const own = terminalEvents.filter(
-      (event) => event.agentId === resident.agentId,
-    );
-    if (own.length !== 1)
-      terminalIssues.push(
-        `${resident.agentId} must have exactly one factual terminal event`,
-      );
-  }
-  if (terminalEvents.some((event) => !mappedAgentIds.has(event.agentId)))
-    terminalIssues.push('a terminal event belongs to an unmapped identity');
+  const {
+    terminals: terminalEvents,
+    terminalIssues,
+  } = activationLifecycles;
   assertions.push(
     assertion(
       'resident.terminals',
       terminalIssues.length === 0 ? 'pass' : 'fail',
       terminalIssues.length === 0
-        ? 'All four mapped residents reached factual terminal states.'
-        : 'One or more mapped residents lack a unique factual terminal state.',
+        ? 'Every resident activation has one factual terminal before run completion.'
+        : 'One or more resident activations has a missing, duplicate, unpaired, or late terminal.',
       evidence({ events: terminalEvents }),
       terminalIssues,
     ),
@@ -1464,7 +1619,6 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
       const coordinationMessages = selectedEvents.filter(
         (event) =>
           event.kind === 'board.message' &&
-          event.payload.messageType !== 'update' &&
           hasText(event.payload, 'topicId') &&
           event.payload.artifactIds?.some((artifactId) => {
             const artifact = indexes.artifacts.get(artifactId);
@@ -1483,34 +1637,62 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
         threads.set(message.payload.threadId, list);
       }
       for (const messages of threads.values()) {
-        const authors = new Set(messages.map((message) => message.agentId));
-        if (!authors.has(steward.agentId) || authors.size < 2) continue;
-        const replied = messages.some(
-          (message) =>
-            message.payload.replyToMessageId &&
-            messages.some(
-              (prior) =>
-                prior.payload.messageId === message.payload.replyToMessageId &&
-                prior.sequence < message.sequence &&
-                prior.agentId !== message.agentId,
-            ),
-        );
-        if (!replied) continue;
-        const last = messages.at(-1);
-        const resolved = [...indexes.acknowledgements.values()]
-          .flat()
-          .find(
-            (ack) =>
-              ack.payload.messageId === last.payload.messageId &&
-              ack.agentId !== last.agentId &&
-              authors.has(ack.agentId) &&
-              ack.payload.state === 'resolved' &&
-              ack.sequence > last.sequence,
+        for (const stewardMessage of messages.filter(
+          (message) => message.agentId === steward.agentId,
+        )) {
+          const topicMessages = messages.filter(
+            (message) =>
+              message.payload.topicId === stewardMessage.payload.topicId,
           );
-        if (resolved) {
-          stewardProof = { kind: 'coordination', messages, resolved };
+          const repliedTo = topicMessages.find(
+            (prior) =>
+              prior.payload.messageId ===
+                stewardMessage.payload.replyToMessageId &&
+              prior.sequence < stewardMessage.sequence &&
+              prior.agentId !== steward.agentId,
+          );
+          if (!repliedTo) continue;
+          const causalMessages = causallyLinkedMessages(
+            topicMessages,
+            stewardMessage,
+          );
+          if (new Set(causalMessages.map((message) => message.agentId)).size < 2)
+            continue;
+          const tail = causalMessages.at(-1);
+          const acknowledgements = [
+            ...indexes.acknowledgements.values(),
+          ].flat();
+          const resolved = acknowledgements.find(
+            (ack) =>
+              ack.payload.messageId === tail.payload.messageId &&
+              ack.agentId !== tail.agentId &&
+              ack.payload.state === 'resolved' &&
+              ack.sequence > tail.sequence &&
+              (tail.agentId === steward.agentId
+                ? tail === stewardMessage &&
+                  ack.agentId !== steward.agentId &&
+                  causalMessages.some(
+                    (message) =>
+                      message.agentId === ack.agentId &&
+                      message.sequence < ack.sequence,
+                  )
+                : ack.agentId === steward.agentId &&
+                  stewardMessage.sequence < tail.sequence),
+          );
+          if (!resolved) continue;
+          const artifacts = [stewardMessage, tail]
+            .flatMap((message) => message.payload.artifactIds ?? [])
+            .map((artifactId) => indexes.artifacts.get(artifactId))
+            .filter(Boolean);
+          stewardProof = {
+            kind: 'coordination',
+            messages: causalMessages,
+            artifacts,
+            resolved,
+          };
           break;
         }
+        if (stewardProof) break;
       }
     }
   }
@@ -1528,6 +1710,7 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
         : stewardProof
           ? evidence({
               events: [stewardProof.resolved],
+              artifacts: stewardProof.artifacts,
               messages: stewardProof.messages,
             })
           : evidence({}),
@@ -1702,33 +1885,41 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
 
   const livenessIssues = [];
   const livenessEvents = [];
-  const runStartTime = Date.parse(starts[0]?.occurredAt ?? '');
-  for (const resident of residents) {
+  for (const cycle of activationLifecycles.cycles) {
     const outcome = selectedEvents.find(
       (event) =>
-        event.agentId === resident.agentId &&
-        (TERMINAL_KINDS.has(event.kind) || event.kind === 'agent.blocked'),
+        event.agentId === cycle.resident.agentId &&
+        event.sequence > cycle.assignment.sequence &&
+        (!cycle.terminal || event.sequence <= cycle.terminal.sequence) &&
+        (event.kind === 'agent.blocked' || event === cycle.terminal),
     );
     if (!outcome) {
       livenessIssues.push(
-        `${resident.agentId} has no completion or factual blocker`,
+        `${cycle.resident.agentId} activation ${cycle.assignment.taskId} has no terminal or factual blocker`,
       );
       continue;
     }
-    livenessEvents.push(outcome);
+    livenessEvents.push(cycle.assignment, outcome);
+    const assignmentTime = Date.parse(cycle.assignment.occurredAt);
+    const outcomeTime = Date.parse(outcome.occurredAt);
     if (
-      !Number.isFinite(runStartTime) ||
-      Date.parse(outcome.occurredAt) - runStartTime > MAX_RUN_MS
-    )
-      livenessIssues.push(`${resident.agentId} exceeded the 30 minute window`);
+      !Number.isFinite(assignmentTime) ||
+      !Number.isFinite(outcomeTime) ||
+      outcomeTime < assignmentTime ||
+      outcomeTime - assignmentTime > MAX_RUN_MS
+    ) {
+      livenessIssues.push(
+        `${cycle.resident.agentId} activation ${cycle.assignment.taskId} exceeded the 30 minute window`,
+      );
+    }
   }
   assertions.push(
     assertion(
       'liveness.thirty_minutes',
       livenessIssues.length === 0 ? 'pass' : 'fail',
       livenessIssues.length === 0
-        ? 'All four residents finished or surfaced a factual blocker within 30 minutes.'
-        : 'One or more residents exceeded or lacked the liveness outcome window.',
+        ? 'Every resident activation finished or surfaced a factual blocker within 30 minutes of assignment.'
+        : 'One or more resident activations exceeded or lacked its assignment-based liveness outcome.',
       evidence({ events: livenessEvents }),
       livenessIssues,
     ),
