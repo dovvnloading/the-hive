@@ -105,7 +105,7 @@ Agent environment and research:
 
 Tools and communication:
   tool-start     --agent ID --tool NAME --summary TEXT [--capability NAME]
-                 [--topic-id ID] [--call-id ID]
+                 [--activity-id ID] [--topic-id ID] [--call-id ID]
   tool-finish    --agent ID --call-id ID --outcome succeeded|failed [--summary TEXT]
                  [--artifact-ids ID,ID]
   message        --agent ID --text TEXT [--channel commentary|final] [--target ID]
@@ -151,6 +151,7 @@ const COMMAND_FLAGS = {
     'tool',
     'summary',
     'capability',
+    'activity-id',
     'topic-id',
     'call-id',
     'task',
@@ -744,6 +745,7 @@ async function execute(command, args, flags, baseUrl) {
           tool: flags.tool,
           summary: flags.summary,
           ...(flags.capability ? { capability: flags.capability } : {}),
+          ...(flags['activity-id'] ? { activityId: flags['activity-id'] } : {}),
           ...(flags['topic-id'] ? { topicId: flags['topic-id'] } : {}),
         },
         flags,

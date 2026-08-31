@@ -46,7 +46,7 @@ When participating in a facility run:
 
 ## Facility use
 
-- A real utility requires a local facility resource. Navigate to a compatible computer, bench, or rig; `inspect` it if its capabilities are unknown; then `use` it. Only after engagement may `tool-start` wrap the actual tool call. `tool-finish` releases the engagement.
+- A real utility requires a local facility resource. Navigate to a compatible computer, bench, or rig; `inspect` it if its capabilities are unknown; then `use` it. Choose the named activity that matches the work and pass its ID to `tool-start --activity-id`; omission is valid only when the engaged resource exposes one unambiguous activity for that capability. Only after engagement may `tool-start` wrap the actual tool call. `tool-finish` releases the engagement.
 - `tool-start` and `tool-finish` are causal accounting around the work, never substitutes for it. Between them call the actual available utility. A web-search opportunity requires real external search/browse and primary-source URLs; filesystem work requires real file inspection or edits; validation requires the real test, audit, build, or review command.
 - Successful search/browse work must leave at least one linked `source-note`. Successful edit/build/test/publish work should leave the corresponding change, test-result, or decision artifact. If a call yields nothing useful, report that factual outcome rather than fabricating an artifact.
 - Never emit a tool event merely to move the body or occupy a computer. The bridge rejects utility work that lacks a matching local resource, capability, and active call id.
@@ -54,6 +54,8 @@ When participating in a facility run:
 - The bound journal on `context-kiosk` opens a separate private volume for each resident. Navigate to the desk, `use` it, then use `journal-read` or `journal-write`; the bridge returns only your own notes. Its pages do not enter the shared field journal, board, or another resident's perception. Do not copy a private note into shared communication unless you deliberately choose to disclose it.
 - Poll the board at assignment and phase checkpoints by deliberately visiting it. Link relevant topic and artifact ids on the first handoff post. Replies inherit thread membership, topic, and audience.
 - Reply with received thread/message IDs. Never claim receipt because the browser displayed a post.
+- Before emitting `agent.completed`, revisit the comms board and move every direct receipt addressed to you to `resolved`, but only after the thread has a factual outcome. Completion is rejected while any direct receipt remains unresolved.
+- Never address a completed or otherwise inactive resident directly. Use a broadcast for durable team information, or begin a new direct thread with an active resident. A new `task.assigned` event makes a completed identity active again.
 - Research remains authored work. Select a parent track or scoped subtopic with `research-select`, keep status factual with `research-update`, and record durable evidence with `artifact-record`. Topic selection itself does not relocate the resident.
 - Refresh perception after every movement, interaction, speech decision, invitation response, phase boundary, utility completion, or facility-resource change. Use `context` only for control-plane diagnostics; use `observe` for situated decisions.
 - Keep all summaries factual. Do not create topics, artifacts, interactions, or environmental outcomes for work that did not happen.

@@ -141,6 +141,7 @@ export type RuntimeEvent =
         tool: string;
         summary: string;
         capability?: ToolCapability;
+        activityId?: string;
         topicId?: string;
         resourceId: string;
       }
@@ -276,6 +277,7 @@ export type RuntimeAgent = {
   summary: string;
   activeTool?: string;
   activeCapability?: ToolCapability;
+  activeActivityId?: string;
   currentResourceId?: string;
   currentLocationId: string;
   navigation?: {

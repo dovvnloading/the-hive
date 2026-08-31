@@ -1099,6 +1099,519 @@ void test('board authenticates agents and preserves threads, receipts, and visib
   assert.equal(linesAfterReset, linesBeforeReset + 1);
 });
 
+void test('direct-message lifecycle blocks unresolved completion and inactive recipients', async (t) => {
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-board-lifecycle-'));
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ARENA_EMITTER_TOKEN: emitterToken,
+        ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+        ARENA_MIN_TRAVEL_MS: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+
+  t.after(async () => {
+    if (child.exitCode === null) child.kill('SIGTERM');
+    await new Promise((resolveExit) => {
+      if (child.exitCode !== null) resolveExit();
+      else child.once('exit', resolveExit);
+    });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  await waitForHealth(origin, child);
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'run.started',
+        reset: true,
+        payload: { objective: 'Exercise direct-message lifecycle invariants' },
+      })
+    ).status,
+    201,
+  );
+
+  const tokens = {};
+  for (const agentId of ['atlas', 'sage', 'nova']) {
+    const spawned = await postEvent(origin, {
+      kind: 'agent.spawned',
+      agentId,
+      payload: { name: agentId.toUpperCase(), role: 'Test resident' },
+    });
+    assert.equal(spawned.status, 201);
+    tokens[agentId] = (await json(spawned)).agentToken;
+    assert.equal(
+      (
+        await postEvent(origin, {
+          kind: 'task.assigned',
+          agentId,
+          taskId: `task-${agentId}-one`,
+          payload: { objective: 'Complete one accountable coordination arc' },
+        })
+      ).status,
+      201,
+    );
+    if (agentId !== 'nova') {
+      await walkTo(origin, tokens[agentId], 'comms-board');
+    }
+  }
+
+  for (const [agentId, topicId, artifactId] of [
+    ['atlas', 'topic-lifecycle', 'artifact-lifecycle-root'],
+    ['sage', 'topic-other', 'artifact-other-topic'],
+  ]) {
+    assert.equal(
+      (
+        await postEvent(origin, {
+          kind: 'research.topic.selected',
+          agentId,
+          payload: {
+            topicId,
+            title: topicId,
+            question: `What should ${topicId} establish?`,
+          },
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      (
+        await postEvent(origin, {
+          kind: 'artifact.recorded',
+          agentId,
+          payload: {
+            artifactId,
+            kind: 'decision',
+            title: artifactId,
+            summary: `Decision for ${topicId}`,
+            topicId,
+          },
+        })
+      ).status,
+      201,
+    );
+  }
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'artifact.recorded',
+        agentId: 'sage',
+        payload: {
+          artifactId: 'artifact-sage-result',
+          kind: 'test-result',
+          title: 'Sage lifecycle result',
+          summary: 'Independent result for the lifecycle topic',
+          topicId: 'topic-lifecycle',
+        },
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'artifact.recorded',
+        agentId: 'sage',
+        payload: {
+          artifactId: 'artifact-unscoped-decision',
+          kind: 'decision',
+          title: 'Unscoped lifecycle decision',
+          summary: 'A valid decision that is intentionally not topic-bound',
+        },
+      })
+    ).status,
+    201,
+  );
+
+  const unscopedArtifactMessage = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'sage-unscoped-artifact-update',
+        text: 'This non-handoff update carries an unscoped decision.',
+        topic: 'Unscoped coordination',
+        messageType: 'decision',
+        audience: 'broadcast',
+        recipientAgentIds: [],
+        artifactIds: ['artifact-unscoped-decision'],
+      }),
+    },
+  );
+  assert.equal(unscopedArtifactMessage.status, 201);
+  assert.equal(
+    (await json(unscopedArtifactMessage)).event.payload.topicId,
+    undefined,
+  );
+
+  const topicBoundArtifactOnUnscopedMessage = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'sage-topic-artifact-unscoped-message',
+        text: 'A topic-bound artifact cannot be attached without its topic.',
+        topic: 'Unscoped coordination',
+        messageType: 'decision',
+        audience: 'broadcast',
+        recipientAgentIds: [],
+        artifactIds: ['artifact-sage-result'],
+      }),
+    },
+  );
+  assert.equal(topicBoundArtifactOnUnscopedMessage.status, 409);
+  assert.match(
+    await topicBoundArtifactOnUnscopedMessage.text(),
+    /is not linked to the unscoped message/u,
+  );
+
+  const originalRequest = {
+    clientMessageId: 'atlas-to-sage-lifecycle',
+    text: 'Please verify the coordination outcome before completing.',
+    topic: 'Lifecycle invariant',
+    messageType: 'question',
+    audience: 'direct',
+    recipientAgentIds: ['sage'],
+    topicId: 'topic-lifecycle',
+  };
+  const directResponse = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    { method: 'POST', body: JSON.stringify(originalRequest) },
+  );
+  assert.equal(directResponse.status, 201);
+  const direct = (await json(directResponse)).event;
+
+  const crossTopicReply = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'sage-cross-topic-reply',
+        threadId: direct.payload.threadId,
+        text: 'This attachment belongs to the wrong topic.',
+        messageType: 'update',
+        artifactIds: ['artifact-other-topic'],
+      }),
+    },
+  );
+  assert.equal(crossTopicReply.status, 409);
+  assert.match(
+    await crossTopicReply.text(),
+    /is not linked to topic topic-lifecycle/u,
+  );
+
+  const linkedReplyRequest = {
+    clientMessageId: 'sage-linked-result-reply',
+    threadId: direct.payload.threadId,
+    text: 'The linked result resolves the requested verification.',
+    messageType: 'decision',
+    artifactIds: ['artifact-sage-result'],
+  };
+  const linkedReply = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify(linkedReplyRequest),
+    },
+  );
+  assert.equal(linkedReply.status, 201);
+  const linkedReplyEvent = (await json(linkedReply)).event;
+  assert.deepEqual(linkedReplyEvent.payload.artifactIds, [
+    'artifact-sage-result',
+  ]);
+
+  const exactLinkedReplyReplay = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    { method: 'POST', body: JSON.stringify(linkedReplyRequest) },
+  );
+  assert.equal(exactLinkedReplyReplay.status, 200);
+  assert.equal(
+    (await json(exactLinkedReplyReplay)).event.eventId,
+    linkedReplyEvent.eventId,
+  );
+
+  const omittedAttachmentReplay = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...linkedReplyRequest,
+        artifactIds: undefined,
+      }),
+    },
+  );
+  assert.equal(omittedAttachmentReplay.status, 409);
+
+  const conflictingAttachmentReplay = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        ...linkedReplyRequest,
+        artifactIds: ['artifact-lifecycle-root'],
+      }),
+    },
+  );
+  assert.equal(conflictingAttachmentReplay.status, 409);
+
+  const groupResponse = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'atlas-group-lifecycle',
+        text: 'Coordinate this lifecycle result together.',
+        topic: 'Group lifecycle',
+        messageType: 'update',
+        audience: 'direct',
+        recipientAgentIds: ['sage', 'nova'],
+        topicId: 'topic-lifecycle',
+      }),
+    },
+  );
+  assert.equal(groupResponse.status, 201);
+  const groupMessage = (await json(groupResponse)).event;
+
+  for (const state of ['read', 'acknowledged']) {
+    assert.equal(
+      (
+        await boardRequest(origin, '/board/ack', tokens.sage, {
+          method: 'POST',
+          body: JSON.stringify({
+            messageId: direct.payload.messageId,
+            state,
+          }),
+        })
+      ).status,
+      201,
+    );
+  }
+
+  const unresolvedCompletion = await postEvent(origin, {
+    kind: 'agent.completed',
+    agentId: 'sage',
+    payload: {
+      summary: 'This must remain active until the thread is resolved',
+    },
+  });
+  assert.equal(unresolvedCompletion.status, 409);
+  const unresolvedCompletionText = await unresolvedCompletion.text();
+  assert.match(unresolvedCompletionText, /Resolve direct board messages/u);
+  assert.match(
+    unresolvedCompletionText,
+    new RegExp(direct.payload.messageId, 'u'),
+  );
+
+  assert.equal(
+    (
+      await boardRequest(origin, '/board/ack', tokens.sage, {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: direct.payload.messageId,
+          state: 'resolved',
+        }),
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await boardRequest(origin, '/board/ack', tokens.sage, {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: groupMessage.payload.messageId,
+          state: 'resolved',
+        }),
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'agent.completed',
+        agentId: 'sage',
+        payload: { summary: 'Resolved the direct coordination thread' },
+      })
+    ).status,
+    201,
+  );
+
+  const exactReplay = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    { method: 'POST', body: JSON.stringify(originalRequest) },
+  );
+  assert.equal(exactReplay.status, 200);
+  assert.equal((await json(exactReplay)).event.eventId, direct.eventId);
+
+  await walkTo(origin, tokens.nova, 'comms-board');
+  const activeGroupReply = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.nova,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'nova-group-reply-after-sage-completed',
+        threadId: groupMessage.payload.threadId,
+        text: 'Atlas remains active, so the group thread can continue without Sage.',
+        messageType: 'update',
+      }),
+    },
+  );
+  assert.equal(activeGroupReply.status, 201);
+  const activeGroupReplyEvent = (await json(activeGroupReply)).event;
+  assert.deepEqual(activeGroupReplyEvent.payload.recipientAgentIds, ['atlas']);
+
+  const replyToInactive = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'atlas-reply-to-inactive-sage',
+        threadId: direct.payload.threadId,
+        text: 'This reply must wait until Sage is active again.',
+        messageType: 'update',
+      }),
+    },
+  );
+  assert.equal(replyToInactive.status, 409);
+  assert.match(await replyToInactive.text(), /no active recipient/u);
+
+  const newDirectToInactive = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'atlas-new-to-inactive-sage',
+        text: 'This new direct message must not be created.',
+        topic: 'Inactive target',
+        messageType: 'update',
+        audience: 'direct',
+        recipientAgentIds: ['sage'],
+      }),
+    },
+  );
+  assert.equal(newDirectToInactive.status, 409);
+  assert.match(await newDirectToInactive.text(), /inactive resident sage/u);
+
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'task.assigned',
+        agentId: 'sage',
+        taskId: 'task-sage-two',
+        payload: { objective: 'Rejoin active coordination' },
+      })
+    ).status,
+    201,
+  );
+
+  const reactivatedHistory = await json(
+    await boardRequest(origin, '/board?after=0', tokens.sage),
+  );
+  const historicalReply = reactivatedHistory.messages.find(
+    (message) =>
+      message.payload.messageId === activeGroupReplyEvent.payload.messageId,
+  );
+  assert.ok(
+    historicalReply,
+    'a reactivated thread member retains historical thread visibility',
+  );
+  assert.equal(
+    historicalReply.unread,
+    false,
+    'a reply sent while the resident was inactive is not delivered retroactively',
+  );
+
+  const reactivatedUnread = await json(
+    await boardRequest(origin, '/board?after=0&unread=true', tokens.sage),
+  );
+  assert.equal(
+    reactivatedUnread.messages.some(
+      (message) =>
+        message.payload.messageId === activeGroupReplyEvent.payload.messageId,
+    ),
+    false,
+  );
+
+  const excludedReplyAck = await boardRequest(
+    origin,
+    '/board/ack',
+    tokens.sage,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        messageId: activeGroupReplyEvent.payload.messageId,
+        state: 'read',
+      }),
+    },
+  );
+  assert.equal(excludedReplyAck.status, 403);
+  assert.match(await excludedReplyAck.text(), /not addressed/u);
+
+  const reactivatedContext = await json(
+    await boardRequest(origin, '/agent/context?after=0', tokens.sage),
+  );
+  assert.equal(
+    reactivatedContext.purpose.opportunities.some(
+      (opportunity) => opportunity.id === 'coordination:unread-board',
+    ),
+    false,
+  );
+
+  const directAfterReactivation = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.atlas,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'atlas-to-reactivated-sage',
+        text: 'Sage is active again and can receive direct work.',
+        topic: 'Reactivated target',
+        messageType: 'update',
+        audience: 'direct',
+        recipientAgentIds: ['sage'],
+      }),
+    },
+  );
+  assert.equal(directAfterReactivation.status, 201);
+});
+
 void test('proximity speech is voluntary, audible, replay-safe, and cannot fabricate collaboration', async (t) => {
   const port = await availablePort();
   const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-proximity-speech-'));
@@ -1491,10 +2004,7 @@ void test('shared social space stays approachable while in-use paths require yie
   );
   assert.equal(atlasToCommons.status, 201);
   await waitForStationaryLocation(tokens.atlas, 'commons');
-  let sageScene = await waitForStationaryLocation(
-    tokens.sage,
-    'spawn-lift',
-  );
+  let sageScene = await waitForStationaryLocation(tokens.sage, 'spawn-lift');
 
   const sageToHub = await boardRequest(origin, '/world/action', tokens.sage, {
     method: 'POST',
@@ -1552,10 +2062,7 @@ void test('shared social space stays approachable while in-use paths require yie
     },
   );
   assert.equal(socialApproach.status, 201);
-  const sharedCommons = await waitForStationaryLocation(
-    tokens.sage,
-    'commons',
-  );
+  const sharedCommons = await waitForStationaryLocation(tokens.sage, 'commons');
   assert.equal(sharedCommons.space.residentsPresent, 2);
   assert.deepEqual(
     sharedCommons.talk.map((person) => person.id),
@@ -1870,7 +2377,10 @@ void test('authenticated semantic world-action failures write redacted recovery 
   );
   assert.equal(staleResponse.status, 409);
   const staleBody = await json(staleResponse);
-  assert.notEqual(staleBody.observation.observationId, staleScene.observationId);
+  assert.notEqual(
+    staleBody.observation.observationId,
+    staleScene.observationId,
+  );
 
   const recoveredResponse = await boardRequest(
     origin,
@@ -1957,10 +2467,7 @@ void test('authenticated semantic world-action failures write redacted recovery 
     staleReceipt.returnedObservationId,
     staleBody.observation.observationId,
   );
-  assert.equal(
-    staleReceipt.currentEventSequence,
-    activity.sequence,
-  );
+  assert.equal(staleReceipt.currentEventSequence, activity.sequence);
   assert.equal(
     receipts.find((receipt) => receipt.actionId === 'beta-yields-path')
       .reasonCode,
@@ -2067,6 +2574,20 @@ void test('research computers, artifacts, and authenticated context remain agent
     commandContext.purpose.charterPath,
     '.codex/residents/EXPLORER.md',
   );
+  assert.ok(
+    commandContext.purpose.opportunities.some(
+      (opportunity) =>
+        opportunity.kind === 'open-inquiry' &&
+        opportunity.capability === 'search' &&
+        /real evidence/u.test(opportunity.suggestedAction),
+    ),
+  );
+  assert.ok(
+    commandContext.purpose.opportunities.some(
+      (opportunity) => opportunity.id === 'purpose:form-commitment',
+    ) === false,
+    'a directed Explorer gets evidence opportunities without a self-directed commitment prompt',
+  );
 
   const selfDirectedContext = await json(
     await boardRequest(origin, '/agent/context?after=0', atlasToken),
@@ -2083,27 +2604,17 @@ void test('research computers, artifacts, and authenticated context remain agent
     '.codex/residents/CORE.md',
   );
   assert.ok(selfDirectedContext.purpose.opportunities.length >= 3);
-  assert.ok(
+  assert.equal(
     selfDirectedContext.purpose.opportunities.some(
-      (opportunity) =>
-        opportunity.kind === 'open-inquiry' &&
-        opportunity.capability === 'search' &&
-        /real evidence/u.test(opportunity.suggestedAction),
+      (opportunity) => opportunity.kind === 'open-inquiry',
     ),
+    false,
   );
-  assert.deepEqual(
-    selfDirectedContext.purpose.opportunities
-      .filter((opportunity) => opportunity.id === 'inquiry:project-context')
-      .map((opportunity) => ({
-        resourceId: opportunity.resourceId,
-        capability: opportunity.capability,
-      })),
-    [{ resourceId: 'shell-console-a', capability: 'filesystem' }],
-  );
-  assert.ok(
+  assert.equal(
     selfDirectedContext.purpose.opportunities.some(
       (opportunity) => opportunity.id === 'purpose:form-commitment',
     ),
+    false,
   );
 
   const firstActivityResponse = await postEvent(origin, {
@@ -2188,7 +2699,10 @@ void test('research computers, artifacts, and authenticated context remain agent
   const replacementContext = await json(
     await boardRequest(origin, '/agent/context?after=0', atlasToken),
   );
-  assert.equal(replacementContext.purpose.commitment.id, replacementActivity.eventId);
+  assert.equal(
+    replacementContext.purpose.commitment.id,
+    replacementActivity.eventId,
+  );
   assert.equal(
     replacementContext.purpose.commitment.title,
     'Coordinate the next explicit evidence handoff',
@@ -2258,7 +2772,7 @@ void test('research computers, artifacts, and authenticated context remain agent
     payload: {
       toolCallId: 'tool-context-contribution',
       tool: 'private-journal.review',
-      summary: 'Reviewing context in support of Sage\'s active inquiry',
+      summary: "Reviewing context in support of Sage's active inquiry",
       capability: 'context',
       topicId: 'topic-tools',
     },
@@ -2270,12 +2784,12 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.equal(
     contributionContext.self.topic,
     undefined,
-    'using a utility on another resident\'s topic must not project topic ownership',
+    "using a utility on another resident's topic must not project topic ownership",
   );
   assert.equal(
     contributionContext.purpose.commitment.id,
     replacementActivity.eventId,
-    'a contributed tool call must not replace the resident\'s latest working activity',
+    "a contributed tool call must not replace the resident's latest working activity",
   );
   assert.deepEqual(contributionContext.purpose.activeContribution, {
     kind: 'research-topic-contribution',
@@ -2539,9 +3053,8 @@ void test('research computers, artifacts, and authenticated context remain agent
 
   let observation = await walkTo(origin, sageToken, 'research-computer-b');
   assert.equal(
-    observation.entities.find(
-      (entity) => entity.id === 'research-computer-b',
-    ).known,
+    observation.entities.find((entity) => entity.id === 'research-computer-b')
+      .known,
     undefined,
   );
   const inspectedComputer = await interactAt(
@@ -2557,10 +3070,7 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.deepEqual(knownComputer.affordances, ['inspect', 'use']);
   assert.deepEqual(
     knownComputer.activities.map((activity) => activity.id),
-    [
-      'research.search-primary-sources',
-      'research.browse-authoritative-source',
-    ],
+    ['research.search-primary-sources', 'research.browse-authoritative-source'],
   );
   const engaged = await interactAt(
     origin,
@@ -2573,10 +3083,7 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.equal(observation.you.engagedResourceId, 'research-computer-b');
   assert.deepEqual(
     observation.activities.map((activity) => activity.id),
-    [
-      'research.search-primary-sources',
-      'research.browse-authoritative-source',
-    ],
+    ['research.search-primary-sources', 'research.browse-authoritative-source'],
   );
   assert.match(observation.text, /^ACTIVITIES .*search-primary-sources/mu);
 
@@ -2594,6 +3101,42 @@ void test('research computers, artifacts, and authenticated context remain agent
   });
   assert.equal(staleArtifact.status, 201);
 
+  const wrongResourceActivity = await postEvent(origin, {
+    kind: 'tool.started',
+    agentId: 'sage',
+    payload: {
+      toolCallId: 'tool-wrong-resource-activity',
+      tool: 'web.search',
+      summary: 'Attempt an activity from a different workstation',
+      capability: 'search',
+      activityId: 'shell.run-scoped-command',
+      topicId: 'topic-tools',
+    },
+  });
+  assert.equal(wrongResourceActivity.status, 400);
+  assert.match(
+    await wrongResourceActivity.text(),
+    /does not belong to research-computer-b/u,
+  );
+
+  const wrongActivityCapability = await postEvent(origin, {
+    kind: 'tool.started',
+    agentId: 'sage',
+    payload: {
+      toolCallId: 'tool-wrong-activity-capability',
+      tool: 'web.search',
+      summary: 'Attempt an exact activity with the wrong capability',
+      capability: 'search',
+      activityId: 'research.browse-authoritative-source',
+      topicId: 'topic-tools',
+    },
+  });
+  assert.equal(wrongActivityCapability.status, 400);
+  assert.match(
+    await wrongActivityCapability.text(),
+    /requires browse, not search/u,
+  );
+
   const searchStart = await postEvent(origin, {
     kind: 'tool.started',
     agentId: 'sage',
@@ -2602,10 +3145,17 @@ void test('research computers, artifacts, and authenticated context remain agent
       tool: 'web.search',
       summary: 'Searching official agent orchestration documentation',
       capability: 'search',
+      activityId: 'research.search-primary-sources',
       topicId: 'topic-tools',
     },
   });
   assert.equal(searchStart.status, 201);
+  const searchStartEvent = (await json(searchStart)).event;
+  assert.equal(
+    searchStartEvent.payload.activityId,
+    'research.search-primary-sources',
+  );
+  assert.equal(searchStartEvent.payload.resourceId, 'research-computer-b');
 
   const evidenceFreeFinish = await postEvent(origin, {
     kind: 'tool.finished',
@@ -2651,12 +3201,15 @@ void test('research computers, artifacts, and authenticated context remain agent
     payload: {
       toolCallId: 'tool-search-1',
       outcome: 'succeeded',
-      summary: 'Attempted to claim another resident\'s evidence',
+      summary: "Attempted to claim another resident's evidence",
       artifactIds: ['artifact-source-other-resident'],
     },
   });
   assert.equal(foreignEvidenceFinish.status, 400);
-  assert.match(await foreignEvidenceFinish.text(), /authored by this resident/u);
+  assert.match(
+    await foreignEvidenceFinish.text(),
+    /authored by this resident/u,
+  );
 
   const researchContext = await json(
     await boardRequest(origin, '/agent/context?after=0', sageToken),
@@ -2686,10 +3239,7 @@ void test('research computers, artifacts, and authenticated context remain agent
     researchContext.room.resources
       .find((resource) => resource.id === 'research-computer-b')
       .activities.map((activity) => activity.id),
-    [
-      'research.search-primary-sources',
-      'research.browse-authoritative-source',
-    ],
+    ['research.search-primary-sources', 'research.browse-authoritative-source'],
   );
 
   const artifact = await postEvent(origin, {
@@ -2772,8 +3322,7 @@ void test('research computers, artifacts, and authenticated context remain agent
   assert.ok(
     coordinatedContext.purpose.opportunities.some(
       (opportunity) =>
-        opportunity.id ===
-          `handoff:coordinate:${linkedPayload.messageId}` &&
+        opportunity.id === `handoff:coordinate:${linkedPayload.messageId}` &&
         opportunity.topicId === 'topic-tools' &&
         opportunity.artifactIds.includes('artifact-source-1'),
     ),
@@ -2844,11 +3393,7 @@ void test('research computers, artifacts, and authenticated context remain agent
     'research-computer-b',
   );
 
-  const atlasAtBuildBench = await walkTo(
-    origin,
-    atlasToken,
-    'build-bench-a',
-  );
+  const atlasAtBuildBench = await walkTo(origin, atlasToken, 'build-bench-a');
   const atlasInspectedBuildBench = await interactAt(
     origin,
     atlasToken,
@@ -2928,6 +3473,164 @@ void test('research computers, artifacts, and authenticated context remain agent
     ).status,
     201,
   );
+
+  const atlasAtShell = await walkTo(origin, atlasToken, 'shell-console-a');
+  const atlasInspectedShell = await interactAt(
+    origin,
+    atlasToken,
+    atlasAtShell,
+    'shell-console-a',
+    'inspect',
+  );
+  await interactAt(
+    origin,
+    atlasToken,
+    atlasInspectedShell.observation,
+    'shell-console-a',
+    'use',
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'tool.started',
+        agentId: 'atlas',
+        payload: {
+          toolCallId: 'tool-shell-proof-1',
+          tool: 'npm test -- --runInBand',
+          summary: 'Run one bounded project validation command',
+          capability: 'shell',
+          activityId: 'shell.run-scoped-command',
+          topicId: 'topic-tools',
+        },
+      })
+    ).status,
+    201,
+  );
+  const unprovenShell = await postEvent(origin, {
+    kind: 'tool.finished',
+    agentId: 'atlas',
+    payload: {
+      toolCallId: 'tool-shell-proof-1',
+      outcome: 'succeeded',
+      summary: 'Claimed command success without a preserved result',
+    },
+  });
+  assert.equal(unprovenShell.status, 400);
+  assert.match(
+    await unprovenShell.text(),
+    /requires a linked test-result artifact/u,
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'artifact.recorded',
+        agentId: 'atlas',
+        payload: {
+          artifactId: 'artifact-shell-result',
+          kind: 'test-result',
+          title: 'Scoped command result',
+          summary: 'The bounded command exited successfully.',
+          topicId: 'topic-tools',
+        },
+      })
+    ).status,
+    201,
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'tool.finished',
+        agentId: 'atlas',
+        payload: {
+          toolCallId: 'tool-shell-proof-1',
+          outcome: 'succeeded',
+          summary: 'The bounded command completed successfully',
+          artifactIds: ['artifact-shell-result'],
+        },
+      })
+    ).status,
+    201,
+  );
+
+  const atlasAtConnector = await walkTo(
+    origin,
+    atlasToken,
+    'connector-console-b',
+  );
+  const atlasInspectedConnector = await interactAt(
+    origin,
+    atlasToken,
+    atlasAtConnector,
+    'connector-console-b',
+    'inspect',
+  );
+  await interactAt(
+    origin,
+    atlasToken,
+    atlasInspectedConnector.observation,
+    'connector-console-b',
+    'use',
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'tool.started',
+        agentId: 'atlas',
+        payload: {
+          toolCallId: 'tool-connector-failure-1',
+          tool: 'connector.query',
+          summary: 'Query one configured service if it exists',
+          capability: 'connector',
+          activityId: 'connector.query-configured-service',
+          topicId: 'topic-tools',
+        },
+      })
+    ).status,
+    201,
+  );
+  const unprovenConnector = await postEvent(origin, {
+    kind: 'tool.finished',
+    agentId: 'atlas',
+    payload: {
+      toolCallId: 'tool-connector-failure-1',
+      outcome: 'succeeded',
+      summary: 'Claimed connector success without durable evidence',
+    },
+  });
+  assert.equal(unprovenConnector.status, 400);
+  assert.match(
+    await unprovenConnector.text(),
+    /requires a linked source-note or change or decision artifact/u,
+  );
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'tool.finished',
+        agentId: 'atlas',
+        payload: {
+          toolCallId: 'tool-connector-failure-1',
+          outcome: 'failed',
+          summary:
+            'No configured service was available; no success was claimed',
+        },
+      })
+    ).status,
+    201,
+  );
+
+  await walkTo(origin, atlasToken, 'comms-board');
+  assert.equal(
+    (
+      await boardRequest(origin, '/board/ack', atlasToken, {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: linkedPayload.messageId,
+          state: 'resolved',
+        }),
+      })
+    ).status,
+    201,
+  );
   await walkTo(origin, atlasToken, 'commons');
 
   const finalContext = await json(
@@ -3003,12 +3706,40 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
           agentId,
           taskId: `task-${agentId}`,
           payload: {
-            objective: 'Establish a life and pursue useful work from your resident charter.',
+            objective:
+              'Establish a life and pursue useful work from your resident charter.',
             mode: 'self-directed',
           },
         })
       ).status,
       201,
+    );
+  }
+
+  const initialExplorerPurpose = await purpose('explorer');
+  assert.ok(
+    initialExplorerPurpose.opportunities.some(
+      (opportunity) => opportunity.id === 'purpose:form-commitment',
+    ),
+  );
+  assert.ok(
+    initialExplorerPurpose.opportunities.some(
+      (opportunity) => opportunity.kind === 'open-inquiry',
+    ),
+  );
+  for (const agentId of ['maker', 'critic', 'steward']) {
+    const initialPurpose = await purpose(agentId);
+    assert.equal(
+      initialPurpose.opportunities.some(
+        (opportunity) => opportunity.id === 'purpose:form-commitment',
+      ),
+      false,
+    );
+    assert.equal(
+      initialPurpose.opportunities.some(
+        (opportunity) => opportunity.kind === 'open-inquiry',
+      ),
+      false,
     );
   }
 
@@ -3047,7 +3778,12 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
       'https://example.test/artifact-maker-source',
     ],
     ['maker', 'artifact-maker-change', 'change', 'topic-critic'],
-    ['explorer', 'artifact-coordination-decision', 'decision', 'topic-coordinate'],
+    [
+      'explorer',
+      'artifact-coordination-decision',
+      'decision',
+      'topic-coordinate',
+    ],
     ['explorer', 'artifact-random-source', 'source-note', 'topic-random'],
   ]) {
     assert.equal(
@@ -3128,7 +3864,10 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
     },
   );
   assert.equal(incompleteHandoff.status, 400);
-  assert.match(await incompleteHandoff.text(), /topicId and at least one linked artifact/u);
+  assert.match(
+    await incompleteHandoff.text(),
+    /topicId and at least one linked artifact/u,
+  );
   const mismatchedHandoff = await boardRequest(
     origin,
     '/board/message',
@@ -3148,7 +3887,10 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
     },
   );
   assert.equal(mismatchedHandoff.status, 409);
-  assert.match(await mismatchedHandoff.text(), /is not linked to topic topic-gap/u);
+  assert.match(
+    await mismatchedHandoff.text(),
+    /is not linked to topic topic-gap/u,
+  );
 
   const makerHandoffResponse = await boardRequest(
     origin,
@@ -3231,6 +3973,51 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
   assert.equal(stewardHandoffResponse.status, 201);
   const stewardHandoff = (await json(stewardHandoffResponse)).event;
 
+  await walkTo(origin, tokens.explorer, 'research-hub');
+  for (const message of [makerHandoff, noUriHandoff, decisionMakerHandoff]) {
+    assert.equal(
+      (
+        await boardRequest(origin, '/board/ack', tokens.maker, {
+          method: 'POST',
+          body: JSON.stringify({
+            messageId: message.payload.messageId,
+            state: 'acknowledged',
+          }),
+        })
+      ).status,
+      201,
+    );
+  }
+  await walkTo(origin, tokens.maker, 'command-hub');
+  await walkTo(origin, tokens.critic, 'comms-board');
+  assert.equal(
+    (
+      await boardRequest(origin, '/board/ack', tokens.critic, {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: criticHandoff.payload.messageId,
+          state: 'acknowledged',
+        }),
+      })
+    ).status,
+    201,
+  );
+  await walkTo(origin, tokens.critic, 'command-table');
+  await walkTo(origin, tokens.steward, 'comms-board');
+  assert.equal(
+    (
+      await boardRequest(origin, '/board/ack', tokens.steward, {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: stewardHandoff.payload.messageId,
+          state: 'acknowledged',
+        }),
+      })
+    ).status,
+    201,
+  );
+  await walkTo(origin, tokens.steward, 'commons');
+
   async function purpose(agentId) {
     return (
       await json(
@@ -3242,8 +4029,7 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
   assert.ok(
     (await purpose('explorer')).opportunities.some(
       (opportunity) =>
-        opportunity.id ===
-          `handoff:explore:${gapQuestion.payload.messageId}` &&
+        opportunity.id === `handoff:explore:${gapQuestion.payload.messageId}` &&
         opportunity.topicId === 'topic-gap' &&
         opportunity.capability === 'search',
     ),
@@ -3252,8 +4038,7 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
   assert.ok(
     (await purpose('maker')).opportunities.some(
       (opportunity) =>
-        opportunity.id ===
-          `handoff:make:${makerHandoff.payload.messageId}` &&
+        opportunity.id === `handoff:make:${makerHandoff.payload.messageId}` &&
         opportunity.artifactIds.includes('artifact-maker-source') &&
         opportunity.capability === 'edit',
     ),
@@ -3261,8 +4046,7 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
   assert.equal(
     (await purpose('maker')).opportunities.some(
       (opportunity) =>
-        opportunity.id ===
-        `handoff:make:${noUriHandoff.payload.messageId}`,
+        opportunity.id === `handoff:make:${noUriHandoff.payload.messageId}`,
     ),
     false,
     'a handed-off source-note without an HTTP(S) URI must not create implementation work',
@@ -3276,14 +4060,14 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
     ),
     'an explicit decision handoff remains valid Maker work',
   );
-  assert.ok(
+  assert.equal(
     (await purpose('critic')).opportunities.some(
       (opportunity) =>
         opportunity.id ===
-          `handoff:critique:${criticHandoff.payload.messageId}` &&
-        opportunity.changeArtifactId === 'artifact-maker-change' &&
-        opportunity.capability === 'test',
+        `handoff:critique:${criticHandoff.payload.messageId}`,
     ),
+    false,
+    'a Critic handoff without the Maker self-test is not actionable validation work',
   );
   assert.ok(
     (await purpose('steward')).opportunities.some(
@@ -3310,13 +4094,50 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
     ).status,
     201,
   );
+  await walkTo(origin, tokens.maker, 'comms-board');
+  const completeCriticHandoffResponse = await boardRequest(
+    origin,
+    '/board/message',
+    tokens.maker,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        clientMessageId: 'handoff-critic-complete',
+        text: 'Please independently validate the linked change and Maker test.',
+        topic: 'Complete Critic handoff',
+        messageType: 'handoff',
+        audience: 'direct',
+        recipientAgentIds: ['critic'],
+        topicId: 'topic-critic',
+        artifactIds: ['artifact-maker-change', 'artifact-self-test'],
+      }),
+    },
+  );
+  assert.equal(completeCriticHandoffResponse.status, 201);
+  const completeCriticHandoff = (await json(completeCriticHandoffResponse))
+    .event;
+  await walkTo(origin, tokens.critic, 'comms-board');
+  assert.equal(
+    (
+      await boardRequest(origin, '/board/ack', tokens.critic, {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId: completeCriticHandoff.payload.messageId,
+          state: 'acknowledged',
+        }),
+      })
+    ).status,
+    201,
+  );
   assert.ok(
     (await purpose('critic')).opportunities.some(
       (opportunity) =>
         opportunity.id ===
-        `handoff:critique:${criticHandoff.payload.messageId}`,
+          `handoff:critique:${completeCriticHandoff.payload.messageId}` &&
+        opportunity.changeArtifactId === 'artifact-maker-change' &&
+        opportunity.makerTestArtifactId === 'artifact-self-test',
     ),
-    'the change author self-testing does not satisfy independent validation',
+    'the linked Maker change and self-test create actionable independent validation work',
   );
   assert.equal(
     (
@@ -3338,7 +4159,7 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
     (await purpose('critic')).opportunities.some(
       (opportunity) =>
         opportunity.id ===
-        `handoff:critique:${criticHandoff.payload.messageId}`,
+        `handoff:critique:${completeCriticHandoff.payload.messageId}`,
     ),
     false,
   );

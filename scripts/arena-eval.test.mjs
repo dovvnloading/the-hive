@@ -140,6 +140,7 @@ function makeGolden() {
       tool: 'web.search',
       summary: 'Search an authoritative source',
       capability: 'search',
+      activityId: 'research.search-primary-sources',
       topicId: 'topic-hive',
       resourceId: 'research-computer-b',
     },
@@ -214,6 +215,7 @@ function makeGolden() {
       tool: 'filesystem.edit',
       summary: 'Implement the evidence-backed change',
       capability: 'edit',
+      activityId: 'build.implement-linked-change',
       topicId: 'topic-hive',
       resourceId: 'build-bench-a',
     },
@@ -262,6 +264,7 @@ function makeGolden() {
       tool: 'npm.test',
       summary: 'Run the Maker test',
       capability: 'test',
+      activityId: 'verify.run-scoped-validation',
       topicId: 'topic-hive',
       resourceId: 'verify-rig-b',
     },
@@ -299,7 +302,7 @@ function makeGolden() {
       audience: 'direct',
       recipientAgentIds: ['critic'],
       topicId: 'topic-hive',
-      artifactIds: ['change-1'],
+      artifactIds: ['change-1', 'maker-test-result-1'],
       text: 'The linked change is ready for independent validation.',
     },
     { agentId: 'maker' },
@@ -329,7 +332,8 @@ function makeGolden() {
       toolCallId: 'critic-test-1',
       tool: 'npm.test',
       summary: 'Independently validate the Maker topic',
-      capability: 'test',
+      capability: 'review',
+      activityId: 'verify.independent-review',
       topicId: 'topic-hive',
       resourceId: 'verify-rig-b',
     },
@@ -353,6 +357,22 @@ function makeGolden() {
       outcome: 'succeeded',
       summary: 'Independent validation passed',
       artifactIds: ['critic-test-result-1'],
+    },
+    { agentId: 'critic' },
+  );
+  add(
+    'board.message',
+    {
+      messageId: 'message-validation-result',
+      clientMessageId: 'client-validation-result',
+      threadId: 'thread-validation-result',
+      topic: 'Independent validation result',
+      messageType: 'decision',
+      audience: 'broadcast',
+      recipientAgentIds: [],
+      topicId: 'topic-hive',
+      artifactIds: ['critic-test-result-1'],
+      text: 'The linked independent validation is complete.',
     },
     { agentId: 'critic' },
   );
@@ -505,7 +525,8 @@ function addReactivation(
     (event) => event.kind === 'task.assigned' && event.agentId === agentId,
   );
   const initialTerminal = fixture.events.find(
-    (event) => TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === agentId,
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === agentId,
   );
   const assignment = {
     ...clone(initialAssignment),
@@ -531,10 +552,105 @@ function addReactivation(
   return { assignment, terminal };
 }
 
-function addStewardCoordinationResolution(
-  fixture,
-  { resolver = 'peer' } = {},
-) {
+function addEarlierUnreviewedMakerProof(fixture) {
+  const template = (predicate) => clone(fixture.events.find(predicate));
+  const topic = template(
+    (event) =>
+      event.kind === 'research.topic.selected' &&
+      event.payload.topicId === 'topic-hive',
+  );
+  topic.eventId = 'evt-early-maker-topic';
+  topic.agentId = 'maker';
+  topic.payload = {
+    topicId: 'topic-early-maker',
+    title: 'Earlier unreviewed Maker work',
+    question: 'Can the Maker complete an unrelated local improvement?',
+  };
+
+  const buildUse = template(
+    (event) => event.payload?.actionId === 'use-build-bench',
+  );
+  buildUse.eventId = 'evt-early-maker-build-use';
+  buildUse.payload.actionId = 'use-build-bench-early';
+  const editStart = template(
+    (event) =>
+      event.payload?.toolCallId === 'edit-1' && event.kind === 'tool.started',
+  );
+  editStart.eventId = 'evt-early-maker-edit-start';
+  editStart.payload.toolCallId = 'edit-early';
+  editStart.payload.topicId = 'topic-early-maker';
+  const change = template((event) => event.payload?.artifactId === 'change-1');
+  change.eventId = 'evt-early-maker-change';
+  change.payload.artifactId = 'change-early';
+  change.payload.topicId = 'topic-early-maker';
+  const editFinish = template(
+    (event) =>
+      event.payload?.toolCallId === 'edit-1' && event.kind === 'tool.finished',
+  );
+  editFinish.eventId = 'evt-early-maker-edit-finish';
+  editFinish.payload.toolCallId = 'edit-early';
+  editFinish.payload.artifactIds = ['change-early'];
+
+  const verifyUse = template(
+    (event) => event.payload?.actionId === 'use-maker-verify-rig',
+  );
+  verifyUse.eventId = 'evt-early-maker-verify-use';
+  verifyUse.payload.actionId = 'use-maker-verify-rig-early';
+  const testStart = template(
+    (event) =>
+      event.payload?.toolCallId === 'maker-test-1' &&
+      event.kind === 'tool.started',
+  );
+  testStart.eventId = 'evt-early-maker-test-start';
+  testStart.payload.toolCallId = 'maker-test-early';
+  testStart.payload.topicId = 'topic-early-maker';
+  const testResult = template(
+    (event) => event.payload?.artifactId === 'maker-test-result-1',
+  );
+  testResult.eventId = 'evt-early-maker-test-result';
+  testResult.payload.artifactId = 'maker-test-result-early';
+  testResult.payload.topicId = 'topic-early-maker';
+  const testFinish = template(
+    (event) =>
+      event.payload?.toolCallId === 'maker-test-1' &&
+      event.kind === 'tool.finished',
+  );
+  testFinish.eventId = 'evt-early-maker-test-finish';
+  testFinish.payload.toolCallId = 'maker-test-early';
+  testFinish.payload.artifactIds = ['maker-test-result-early'];
+  const close = template(
+    (event) =>
+      event.kind === 'research.topic.updated' &&
+      event.payload.topicId === 'topic-hive',
+  );
+  close.eventId = 'evt-early-maker-topic-close';
+  close.agentId = 'maker';
+  close.payload.topicId = 'topic-early-maker';
+  close.payload.summary = 'Earlier Maker work completed without Critic review';
+
+  const insertionIndex = fixture.events.findIndex(
+    (event) =>
+      event.kind === 'research.topic.selected' &&
+      event.payload.topicId === 'topic-hive',
+  );
+  fixture.events.splice(
+    insertionIndex,
+    0,
+    topic,
+    buildUse,
+    editStart,
+    change,
+    editFinish,
+    verifyUse,
+    testStart,
+    testResult,
+    testFinish,
+    close,
+  );
+  resequence(fixture);
+}
+
+function addStewardCoordinationResolution(fixture, { resolver = 'peer' } = {}) {
   fixture.events = fixture.events.filter(
     (event) =>
       !(
@@ -783,9 +899,8 @@ void test('direct evaluator rejects malformed records with controlled input erro
       fixture.events[0].kind = 42;
     },
     (fixture) => {
-      delete fixture.events.find(
-        (event) => event.kind === 'board.message',
-      ).payload.recipientAgentIds;
+      delete fixture.events.find((event) => event.kind === 'board.message')
+        .payload.recipientAgentIds;
     },
     (fixture) => {
       fixture.events.find(
@@ -819,9 +934,8 @@ void test('CLI rejects malformed event and receipt records as input errors', asy
       fixture.events[0].kind = 42;
     },
     (fixture) => {
-      delete fixture.events.find(
-        (event) => event.kind === 'board.message',
-      ).payload.recipientAgentIds;
+      delete fixture.events.find((event) => event.kind === 'board.message')
+        .payload.recipientAgentIds;
     },
     (fixture) => {
       fixture.events.find(
@@ -922,9 +1036,8 @@ void test('explicit run keeps corrupt JSON and malformed selected-run records fa
   assert.match(corrupt.child.stderr, /is not valid JSON/u);
 
   const malformedEvent = makeGolden();
-  delete malformedEvent.events.find(
-    (event) => event.kind === 'tool.started',
-  ).payload.resourceId;
+  delete malformedEvent.events.find((event) => event.kind === 'tool.started')
+    .payload.resourceId;
   const eventResult = await invokeEvaluatorCli(t, malformedEvent);
   assert.equal(eventResult.child.status, 2, eventResult.child.stderr);
   assert.match(eventResult.child.stderr, /payload\.resourceId is required/u);
@@ -941,9 +1054,8 @@ void test('explicit run keeps corrupt JSON and malformed selected-run records fa
 
 void test('current run keeps malformed selected-run records fatal', async (t) => {
   const malformedEvent = makeGolden();
-  delete malformedEvent.events.find(
-    (event) => event.kind === 'tool.started',
-  ).payload.resourceId;
+  delete malformedEvent.events.find((event) => event.kind === 'tool.started')
+    .payload.resourceId;
   const eventResult = await invokeEvaluatorCli(t, malformedEvent, {
     run: 'current',
   });
@@ -1050,8 +1162,7 @@ void test('a resident must spawn before its canonical assignment', () => {
   const fixture = makeGolden();
   moveEventAfter(
     fixture,
-    (event) =>
-      event.kind === 'task.assigned' && event.agentId === 'explorer',
+    (event) => event.kind === 'task.assigned' && event.agentId === 'explorer',
     (event) => event.kind === 'run.started',
   );
 
@@ -1063,12 +1174,16 @@ void test('a resident must spawn before its canonical assignment', () => {
   );
 });
 
-void test('completed residents may receive a neutral reactivation with a unique task', () => {
+void test('qualification v1 rejects reactivation even when the general lifecycle is factual', () => {
   const fixture = makeGolden();
   addReactivation(fixture);
   const report = evaluate(fixture);
 
-  assert.equal(assertionById(report, 'resident.assignments').status, 'pass');
+  assert.equal(assertionById(report, 'resident.assignments').status, 'fail');
+  assert.match(
+    assertionById(report, 'resident.assignments').details.join(' '),
+    /exactly one qualification assignment/u,
+  );
   assert.equal(assertionById(report, 'resident.terminals').status, 'pass');
   assert.equal(assertionById(report, 'liveness.thirty_minutes').status, 'pass');
 });
@@ -1076,8 +1191,7 @@ void test('completed residents may receive a neutral reactivation with a unique 
 void test('reactivations cannot overlap or reuse an assignment taskId', () => {
   const overlap = makeGolden();
   const initialAssignment = overlap.events.find(
-    (event) =>
-      event.kind === 'task.assigned' && event.agentId === 'explorer',
+    (event) => event.kind === 'task.assigned' && event.agentId === 'explorer',
   );
   const initialTerminalIndex = overlap.events.findIndex(
     (event) =>
@@ -1124,7 +1238,7 @@ void test('every reactivation requires exactly one factual terminal', () => {
   const missingReport = evaluate(missing);
   assert.equal(
     assertionById(missingReport, 'resident.assignments').status,
-    'pass',
+    'fail',
   );
   assert.equal(
     assertionById(missingReport, 'resident.terminals').status,
@@ -1156,81 +1270,113 @@ void test('every reactivation requires exactly one factual terminal', () => {
   );
 });
 
-void test('liveness is measured independently from each activation assignment', () => {
+void test('liveness is measured from the single qualification assignment', () => {
   const slow = makeGolden();
-  const { assignment, terminal } = addReactivation(slow);
-  const assignmentTime = BASE_TIME + 60_000;
-  assignment.occurredAt = new Date(assignmentTime).toISOString();
-  terminal.occurredAt = new Date(
-    assignmentTime + 30 * 60 * 1_000 + 1_000,
-  ).toISOString();
-  slow.events.at(-1).occurredAt = new Date(
-    Date.parse(terminal.occurredAt) + 1_000,
-  ).toISOString();
+  const slowAssignment = slow.events.find(
+    (event) => event.kind === 'task.assigned' && event.agentId === 'explorer',
+  );
+  const slowTerminalIndex = slow.events.findIndex(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'explorer',
+  );
+  const slowTerminalTime =
+    Date.parse(slowAssignment.occurredAt) + 30 * 60 * 1_000 + 1_000;
+  for (let index = slowTerminalIndex; index < slow.events.length; index += 1) {
+    slow.events[index].occurredAt = new Date(
+      slowTerminalTime + (index - slowTerminalIndex) * 1_000,
+    ).toISOString();
+  }
   const slowReport = evaluate(slow);
   assert.equal(assertionById(slowReport, 'journal.integrity').status, 'pass');
   assert.equal(
     assertionById(slowReport, 'resident.assignments').status,
     'pass',
   );
-  assert.equal(
-    assertionById(slowReport, 'resident.terminals').status,
-    'pass',
-  );
+  assert.equal(assertionById(slowReport, 'resident.terminals').status, 'pass');
   assert.equal(
     assertionById(slowReport, 'liveness.thirty_minutes').status,
     'fail',
   );
   assert.match(
     assertionById(slowReport, 'liveness.thirty_minutes').details.join(' '),
-    /task-explorer-reactivated/u,
+    /task-explorer/u,
   );
 
   const boundary = makeGolden();
-  const boundaryCycle = addReactivation(boundary);
-  const boundaryTime = BASE_TIME + 60_000;
-  boundaryCycle.assignment.occurredAt = new Date(boundaryTime).toISOString();
-  boundaryCycle.terminal.occurredAt = new Date(
-    boundaryTime + 30 * 60 * 1_000,
-  ).toISOString();
-  boundary.events.at(-1).occurredAt = new Date(
-    Date.parse(boundaryCycle.terminal.occurredAt) + 1_000,
-  ).toISOString();
+  const boundaryAssignment = boundary.events.find(
+    (event) => event.kind === 'task.assigned' && event.agentId === 'explorer',
+  );
+  const boundaryTerminalIndex = boundary.events.findIndex(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'explorer',
+  );
+  const boundaryTerminalTime =
+    Date.parse(boundaryAssignment.occurredAt) + 30 * 60 * 1_000;
+  for (
+    let index = boundaryTerminalIndex;
+    index < boundary.events.length;
+    index += 1
+  ) {
+    boundary.events[index].occurredAt = new Date(
+      boundaryTerminalTime + (index - boundaryTerminalIndex) * 1_000,
+    ).toISOString();
+  }
   assert.equal(
     assertionById(evaluate(boundary), 'liveness.thirty_minutes').status,
     'pass',
   );
 
   const blocked = makeGolden();
-  const blockedCycle = addReactivation(blocked);
-  const terminalIndex = blocked.events.indexOf(blockedCycle.terminal);
-  blocked.events.splice(terminalIndex, 0, {
-    schemaVersion: 1,
-    eventId: 'evt-explorer-reactivated-blocked',
-    sequence: 1,
-    occurredAt: new Date(BASE_TIME).toISOString(),
-    source: 'codex',
-    runId: RUN_ID,
-    agentId: 'explorer',
-    taskId: blockedCycle.assignment.taskId,
-    kind: 'agent.blocked',
-    payload: {
-      promptId: 'prompt-explorer-reactivated',
-      reason: 'question',
-      request: 'A factual answer is required to continue.',
+  const blockedAssignment = blocked.events.find(
+    (event) => event.kind === 'task.assigned' && event.agentId === 'explorer',
+  );
+  const explorerTerminalIndex = blocked.events.findIndex(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'explorer',
+  );
+  const [explorerTerminal] = blocked.events.splice(explorerTerminalIndex, 1);
+  const runCompleteIndex = blocked.events.findIndex(
+    (event) => event.kind === 'run.completed',
+  );
+  blocked.events.splice(
+    runCompleteIndex,
+    0,
+    {
+      schemaVersion: 1,
+      eventId: 'evt-explorer-reactivated-blocked',
+      sequence: 1,
+      occurredAt: new Date(BASE_TIME).toISOString(),
+      source: 'codex',
+      runId: RUN_ID,
+      agentId: 'explorer',
+      taskId: blockedAssignment.taskId,
+      kind: 'agent.blocked',
+      payload: {
+        promptId: 'prompt-explorer-qualification',
+        reason: 'question',
+        request: 'A factual answer is required to continue.',
+      },
     },
-  });
+    explorerTerminal,
+  );
   resequence(blocked);
-  const blockedTime = BASE_TIME + 60_000;
-  blockedCycle.assignment.occurredAt = new Date(blockedTime).toISOString();
-  blocked.events[terminalIndex].occurredAt = new Date(
-    blockedTime + 60_000,
+  const blockedEvent = blocked.events.find(
+    (event) => event.eventId === 'evt-explorer-reactivated-blocked',
+  );
+  blockedEvent.occurredAt = new Date(
+    Date.parse(blockedAssignment.occurredAt) + 60_000,
   ).toISOString();
-  blockedCycle.terminal.occurredAt = new Date(
-    blockedTime + 30 * 60 * 1_000 + 1_000,
+  const blockedTerminalIndex = blocked.events.findIndex(
+    (event) =>
+      TERMINAL_KINDS_FOR_TEST.has(event.kind) && event.agentId === 'explorer',
+  );
+  const blockedTerminalTime =
+    Date.parse(blockedAssignment.occurredAt) + 30 * 60 * 1_000 + 1_000;
+  blocked.events[blockedTerminalIndex].occurredAt = new Date(
+    blockedTerminalTime,
   ).toISOString();
   blocked.events.at(-1).occurredAt = new Date(
-    Date.parse(blockedCycle.terminal.occurredAt) + 1_000,
+    blockedTerminalTime + 1_000,
   ).toISOString();
   const blockedReport = evaluate(blocked);
   assert.equal(
@@ -1285,6 +1431,26 @@ void test('tool lifecycles require a real compatible and actively used facility 
   ).payload.verb = 'inspect';
   assert.equal(
     assertionById(evaluate(notUsed), 'journal.integrity').status,
+    'fail',
+  );
+
+  const unknownActivity = makeGolden();
+  unknownActivity.events.find(
+    (event) =>
+      event.kind === 'tool.started' && event.payload.toolCallId === 'edit-1',
+  ).payload.activityId = 'build.activity-does-not-exist';
+  assert.equal(
+    assertionById(evaluate(unknownActivity), 'journal.integrity').status,
+    'fail',
+  );
+
+  const mismatchedActivity = makeGolden();
+  mismatchedActivity.events.find(
+    (event) =>
+      event.kind === 'tool.started' && event.payload.toolCallId === 'edit-1',
+  ).payload.activityId = 'build.compile-project';
+  assert.equal(
+    assertionById(evaluate(mismatchedActivity), 'journal.integrity').status,
     'fail',
   );
 });
@@ -1378,6 +1544,20 @@ void test('handoffs must precede recipient acknowledgement and work', () => {
   );
 });
 
+void test('a later complete chain qualifies despite earlier unreviewed Maker work', () => {
+  const fixture = makeGolden();
+  addEarlierUnreviewedMakerProof(fixture);
+  const report = evaluate(fixture);
+
+  assert.equal(assertionById(report, 'role.maker').status, 'pass');
+  assert.equal(assertionById(report, 'role.critic').status, 'pass');
+  const chain = assertionById(report, 'team.evidence_change_validation_chain');
+  assert.equal(chain.status, 'pass');
+  assert.ok(chain.evidence.artifactIds.includes('change-1'));
+  assert.ok(chain.evidence.artifactIds.includes('maker-test-result-1'));
+  assert.ok(chain.evidence.artifactIds.includes('critic-test-result-1'));
+});
+
 void test('orphaned tools, unfinished topics, unresolved handoffs, and lights are rejected', () => {
   const orphan = makeGolden();
   orphan.events = orphan.events.filter(
@@ -1456,6 +1636,16 @@ void test('missing Maker change and non-independent Critic validation fail their
     assertionById(evaluate(dependent), 'role.critic').status,
     'fail',
   );
+
+  const unreported = makeGolden();
+  unreported.events.find(
+    (event) => event.payload?.messageId === 'message-validation-result',
+  ).payload.artifactIds = ['maker-test-result-1'];
+  assert.equal(
+    assertionById(evaluate(unreported), 'role.critic').status,
+    'fail',
+    'the Critic result message must link its own independent test artifact',
+  );
 });
 
 void test('Steward coordination accepts both strict resolution orientations', () => {
@@ -1468,14 +1658,10 @@ void test('Steward coordination accepts both strict resolution orientations', ()
   assert.ok(proof.evidence.artifactIds.includes('critic-test-result-1'));
 
   const stewardResolved = makeGolden();
-  const stewardResolution = addStewardCoordinationResolution(
-    stewardResolved,
-    { resolver: 'steward' },
-  );
-  const stewardProof = assertionById(
-    evaluate(stewardResolved),
-    'role.steward',
-  );
+  const stewardResolution = addStewardCoordinationResolution(stewardResolved, {
+    resolver: 'steward',
+  });
+  const stewardProof = assertionById(evaluate(stewardResolved), 'role.steward');
   assert.equal(stewardProof.status, 'pass');
   assert.ok(
     stewardProof.evidence.messageIds.includes(
@@ -1488,8 +1674,7 @@ void test('post-terminal Steward coordination is outside the activation lifecycl
   const fixture = makeGolden();
   const coordination = addStewardCoordinationResolution(fixture);
   fixture.events = fixture.events.filter(
-    (event) =>
-      event !== coordination.update && event !== coordination.resolved,
+    (event) => event !== coordination.update && event !== coordination.resolved,
   );
   const stewardTerminalIndex = fixture.events.findIndex(
     (event) =>
@@ -1559,8 +1744,7 @@ void test('Steward coordination requires valid prior artifacts and peer resoluti
 
 void test('Steward resolution must follow the latest causal message', () => {
   const unresolvedTail = makeGolden();
-  const unresolvedTailProof =
-    addStewardCoordinationResolution(unresolvedTail);
+  const unresolvedTailProof = addStewardCoordinationResolution(unresolvedTail);
   const tailReply = {
     ...clone(unresolvedTailProof.update),
     eventId: 'evt-steward-coordination-later-reply',
@@ -1603,11 +1787,7 @@ void test('Steward resolution must follow the latest causal message', () => {
   const lateResolutionIndex = lateAuthor.events.indexOf(
     lateAuthorProof.resolved,
   );
-  lateAuthor.events.splice(
-    lateResolutionIndex + 1,
-    0,
-    lateAuthorMessage,
-  );
+  lateAuthor.events.splice(lateResolutionIndex + 1, 0, lateAuthorMessage);
   resequence(lateAuthor);
   assert.equal(
     assertionById(evaluate(lateAuthor), 'role.steward').status,

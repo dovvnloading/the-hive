@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   FACILITY_PROPS,
   FACILITY_RESOURCES,
+  activitiesForResource,
   inferToolCapability as inferFacilityToolCapability,
   worldEntityById,
   worldLocationById,
@@ -288,6 +289,8 @@ export function validateEventRecord(event) {
         issues,
         'payload',
       );
+      if (payload.activityId !== undefined && !hasText(payload, 'activityId'))
+        issues.push('payload.activityId must be a string');
       break;
     case 'tool.finished':
       requiredPayloadText(payload, ['toolCallId'], issues, 'payload');
@@ -633,8 +636,9 @@ function rosterProvenance(roster) {
         })
     : [];
   const evaluatedRoster = {
-    schemaVersion:
-      Number.isSafeInteger(roster?.schemaVersion) ? roster.schemaVersion : null,
+    schemaVersion: Number.isSafeInteger(roster?.schemaVersion)
+      ? roster.schemaVersion
+      : null,
     runId: typeof roster?.runId === 'string' ? roster.runId : null,
     residents,
   };
@@ -816,12 +820,8 @@ function causallyLinkedMessages(messages, origin) {
   for (const message of messages) {
     const parent = messageById.get(message.payload.replyToMessageId);
     if (!parent || parent.sequence >= message.sequence) continue;
-    adjacentIds
-      .get(message.payload.messageId)
-      .add(parent.payload.messageId);
-    adjacentIds
-      .get(parent.payload.messageId)
-      .add(message.payload.messageId);
+    adjacentIds.get(message.payload.messageId).add(parent.payload.messageId);
+    adjacentIds.get(parent.payload.messageId).add(message.payload.messageId);
   }
   const connectedIds = new Set([origin.payload.messageId]);
   const pendingIds = [origin.payload.messageId];
@@ -842,9 +842,7 @@ function residentActivationLifecycles(events, residents, runCompletion) {
   const assignmentIssues = [];
   const terminalIssues = [];
   const cycles = [];
-  const mappedAgentIds = new Set(
-    residents.map((resident) => resident.agentId),
-  );
+  const mappedAgentIds = new Set(residents.map((resident) => resident.agentId));
   const assignments = events.filter((event) => event.kind === 'task.assigned');
   const terminals = events.filter((event) => TERMINAL_KINDS.has(event.kind));
   const assignmentByTaskId = new Map();
@@ -871,6 +869,11 @@ function residentActivationLifecycles(events, residents, runCompletion) {
     const canonicalAssignments = ownAssignments.filter(
       (event) => event.taskId === resident.taskId,
     );
+    if (ownAssignments.length !== 1) {
+      assignmentIssues.push(
+        `${resident.agentId} must have exactly one qualification assignment`,
+      );
+    }
     if (canonicalAssignments.length !== 1) {
       assignmentIssues.push(
         `${resident.agentId} must have exactly one canonical roster assignment`,
@@ -1047,6 +1050,20 @@ function runIntegrity(events, receipts, runId) {
         issues.push(
           `${event.eventId} resource ${resource.id} does not support ${capability}`,
         );
+      if (resource && hasText(event.payload, 'activityId')) {
+        const activity = activitiesForResource(resource.id).find(
+          (candidate) => candidate.id === event.payload.activityId,
+        );
+        if (!activity) {
+          issues.push(
+            `${event.eventId} names unknown activity ${event.payload.activityId} for ${resource.id}`,
+          );
+        } else if (activity.capability !== capability) {
+          issues.push(
+            `${event.eventId} activity ${activity.id} requires ${activity.capability}, not ${capability}`,
+          );
+        }
+      }
       if (engagedResources.get(event.agentId) !== event.payload.resourceId)
         issues.push(
           `${event.eventId} lacks a prior active use of its facility resource`,
@@ -1286,10 +1303,7 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
     ),
   );
 
-  const {
-    terminals: terminalEvents,
-    terminalIssues,
-  } = activationLifecycles;
+  const { terminals: terminalEvents, terminalIssues } = activationLifecycles;
   assertions.push(
     assertion(
       'resident.terminals',
@@ -1362,7 +1376,7 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
   );
 
   const explorer = residentByProfile.get('Explorer');
-  let explorerProof;
+  const explorerProofs = [];
   if (explorer) {
     for (const pair of successfulPairs(
       indexes,
@@ -1390,11 +1404,11 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
           (final.payload.status === 'blocked' &&
             hasText(final.payload, 'summary')));
       if (sources.length > 0 && factualClose) {
-        explorerProof = { pair, topicId, sources, final };
-        break;
+        explorerProofs.push({ pair, topicId, sources, final });
       }
     }
   }
+  const explorerProof = explorerProofs[0];
   assertions.push(
     assertion(
       'role.explorer',
@@ -1416,7 +1430,7 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
   );
 
   const maker = residentByProfile.get('Maker');
-  let makerProof;
+  const makerProofs = [];
   if (maker) {
     for (const editPair of successfulPairs(
       indexes,
@@ -1454,7 +1468,7 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
         );
       });
       if (!testPair) continue;
-      makerProof = {
+      makerProofs.push({
         editPair,
         testPair,
         topicId,
@@ -1466,10 +1480,10 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
           maker.agentId,
           topicId,
         ),
-      };
-      break;
+      });
     }
   }
+  const makerProof = makerProofs[0];
   assertions.push(
     assertion(
       'role.maker',
@@ -1492,79 +1506,105 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
   );
 
   const critic = residentByProfile.get('Critic');
-  let criticProof;
-  if (critic && makerProof) {
-    const makerHandoffs = selectedEvents.filter(
-      (event) =>
-        event.kind === 'board.message' &&
-        event.agentId === maker?.agentId &&
-        event.payload.messageType === 'handoff' &&
-        (event.payload.audience === 'broadcast' ||
-          event.payload.recipientAgentIds.includes(critic.agentId)) &&
-        event.payload.topicId === makerProof.topicId &&
-        makerProof.changes.some((change) =>
-          event.payload.artifactIds?.includes(change.payload.artifactId),
-        ),
+  const criticProofs = [];
+  if (critic && maker) {
+    const criticPairs = successfulPairs(
+      indexes,
+      critic.agentId,
+      new Set(['test', 'review']),
     );
-    for (const handoff of makerHandoffs) {
-      if (
-        handoff.sequence <= makerProof.editPair.finish.sequence ||
-        handoff.sequence <= makerProof.testPair.finish.sequence
-      )
-        continue;
-      const pair = successfulPairs(
-        indexes,
-        critic.agentId,
-        new Set(['test', 'review']),
-      ).find(
-        (candidate) =>
-          candidate.start.sequence > handoff.sequence &&
-          candidate.start.payload.topicId === makerProof.topicId &&
-          linkedArtifacts(
-            candidate,
+    for (const candidateMakerProof of makerProofs) {
+      const makerHandoffs = selectedEvents.filter(
+        (event) =>
+          event.kind === 'board.message' &&
+          event.agentId === maker.agentId &&
+          event.payload.messageType === 'handoff' &&
+          (event.payload.audience === 'broadcast' ||
+            event.payload.recipientAgentIds.includes(critic.agentId)) &&
+          event.payload.topicId === candidateMakerProof.topicId &&
+          candidateMakerProof.changes.some((change) =>
+            event.payload.artifactIds?.includes(change.payload.artifactId),
+          ) &&
+          candidateMakerProof.tests.some((testResult) =>
+            event.payload.artifactIds?.includes(testResult.payload.artifactId),
+          ),
+      );
+      for (const handoff of makerHandoffs) {
+        if (
+          handoff.sequence <= candidateMakerProof.editPair.finish.sequence ||
+          handoff.sequence <= candidateMakerProof.testPair.finish.sequence
+        )
+          continue;
+        for (const pair of criticPairs) {
+          if (
+            pair.start.sequence <= handoff.sequence ||
+            pair.start.payload.topicId !== candidateMakerProof.topicId
+          )
+            continue;
+          const tests = linkedArtifacts(
+            pair,
             indexes,
             'test-result',
             critic.agentId,
-            makerProof.topicId,
-          ).length > 0,
-      );
-      if (!pair) continue;
-      const acknowledgement = acknowledgementBefore(
-        indexes,
-        handoff.payload.messageId,
-        critic.agentId,
-        handoff.sequence,
-        pair.start.sequence,
-      );
-      if (
-        !acknowledgement ||
-        !new Set(['acknowledged', 'resolved']).has(
-          acknowledgement.payload.state,
-        )
-      )
-        continue;
-      criticProof = {
-        pair,
-        handoff,
-        acknowledgement,
-        tests: linkedArtifacts(
-          pair,
-          indexes,
-          'test-result',
-          critic.agentId,
-          makerProof.topicId,
-        ),
-      };
-      break;
+            candidateMakerProof.topicId,
+          );
+          if (tests.length === 0) continue;
+          const acknowledgement = acknowledgementBefore(
+            indexes,
+            handoff.payload.messageId,
+            critic.agentId,
+            handoff.sequence,
+            pair.start.sequence,
+          );
+          if (
+            !acknowledgement ||
+            !new Set(['acknowledged', 'resolved']).has(
+              acknowledgement.payload.state,
+            )
+          )
+            continue;
+          const resultMessage = selectedEvents.find(
+            (event) =>
+              event.kind === 'board.message' &&
+              event.agentId === critic.agentId &&
+              event.sequence > pair.finish.sequence &&
+              new Set(['decision', 'update']).has(event.payload.messageType) &&
+              event.payload.topicId === candidateMakerProof.topicId &&
+              (event.payload.audience === 'broadcast' ||
+                event.payload.recipientAgentIds.includes(maker.agentId)) &&
+              tests.some((testResult) =>
+                event.payload.artifactIds?.includes(
+                  testResult.payload.artifactId,
+                ),
+              ),
+          );
+          if (!resultMessage) continue;
+          criticProofs.push({
+            pair,
+            handoff,
+            acknowledgement,
+            resultMessage,
+            tests,
+            makerProof: candidateMakerProof,
+          });
+          break;
+        }
+      }
     }
   }
+  criticProofs.sort(
+    (left, right) =>
+      left.resultMessage.sequence - right.resultMessage.sequence ||
+      left.pair.start.sequence - right.pair.start.sequence,
+  );
+  const criticProof = criticProofs[0];
   assertions.push(
     assertion(
       'role.critic',
       criticProof ? 'pass' : 'fail',
       criticProof
-        ? 'Critic acknowledged the Maker handoff and independently linked validation.'
-        : 'Critic lacks acknowledged, independent validation against the Maker topic.',
+        ? 'Critic acknowledged the Maker handoff, independently validated it, and reported the linked result.'
+        : 'Critic lacks an acknowledged Maker handoff, independent linked validation, or artifact-backed result report.',
       criticProof
         ? evidence({
             events: [
@@ -1573,7 +1613,7 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
               criticProof.acknowledgement,
             ],
             artifacts: criticProof.tests,
-            messages: [criticProof.handoff],
+            messages: [criticProof.handoff, criticProof.resultMessage],
           })
         : evidence({}),
     ),
@@ -1656,7 +1696,9 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
             topicMessages,
             stewardMessage,
           );
-          if (new Set(causalMessages.map((message) => message.agentId)).size < 2)
+          if (
+            new Set(causalMessages.map((message) => message.agentId)).size < 2
+          )
             continue;
           const tail = causalMessages.at(-1);
           const acknowledgements = [
@@ -1717,50 +1759,58 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
     ),
   );
 
-  let chainProof;
-  if (
-    explorerProof &&
-    makerProof &&
-    criticProof &&
-    explorer &&
-    maker &&
-    critic
-  ) {
-    const evidenceHandoffs = selectedEvents.filter(
-      (event) =>
-        event.kind === 'board.message' &&
-        event.agentId === explorer.agentId &&
-        event.payload.messageType === 'handoff' &&
-        (event.payload.audience === 'broadcast' ||
-          event.payload.recipientAgentIds.includes(maker.agentId)) &&
-        event.payload.topicId === explorerProof.topicId &&
-        explorerProof.sources.some((source) =>
-          event.payload.artifactIds?.includes(source.payload.artifactId),
-        ) &&
-        event.sequence > explorerProof.pair.finish.sequence &&
-        event.sequence < makerProof.editPair.start.sequence,
-    );
-    for (const handoff of evidenceHandoffs) {
-      const makerAck = acknowledgementBefore(
-        indexes,
-        handoff.payload.messageId,
-        maker.agentId,
-        handoff.sequence,
-        makerProof.editPair.start.sequence,
-      );
-      if (
-        !makerAck ||
-        !new Set(['acknowledged', 'resolved']).has(makerAck.payload.state) ||
-        handoff.sequence <= explorerProof.pair.finish.sequence
-      )
-        continue;
-      if (makerProof.topicId !== explorerProof.topicId) continue;
-      if (criticProof.handoff.sequence <= makerProof.editPair.finish.sequence)
-        continue;
-      chainProof = { handoff, makerAck };
-      break;
+  const chainCandidates = [];
+  if (explorer && maker && critic) {
+    for (const candidateCriticProof of criticProofs) {
+      const candidateMakerProof = candidateCriticProof.makerProof;
+      for (const candidateExplorerProof of explorerProofs) {
+        if (candidateMakerProof.topicId !== candidateExplorerProof.topicId)
+          continue;
+        const evidenceHandoffs = selectedEvents.filter(
+          (event) =>
+            event.kind === 'board.message' &&
+            event.agentId === explorer.agentId &&
+            event.payload.messageType === 'handoff' &&
+            (event.payload.audience === 'broadcast' ||
+              event.payload.recipientAgentIds.includes(maker.agentId)) &&
+            event.payload.topicId === candidateExplorerProof.topicId &&
+            candidateExplorerProof.sources.some((source) =>
+              event.payload.artifactIds?.includes(source.payload.artifactId),
+            ) &&
+            event.sequence > candidateExplorerProof.pair.finish.sequence &&
+            event.sequence < candidateMakerProof.editPair.start.sequence,
+        );
+        for (const handoff of evidenceHandoffs) {
+          const makerAck = acknowledgementBefore(
+            indexes,
+            handoff.payload.messageId,
+            maker.agentId,
+            handoff.sequence,
+            candidateMakerProof.editPair.start.sequence,
+          );
+          if (
+            !makerAck ||
+            !new Set(['acknowledged', 'resolved']).has(makerAck.payload.state)
+          )
+            continue;
+          chainCandidates.push({
+            explorerProof: candidateExplorerProof,
+            makerProof: candidateMakerProof,
+            criticProof: candidateCriticProof,
+            handoff,
+            makerAck,
+          });
+        }
+      }
     }
   }
+  chainCandidates.sort(
+    (left, right) =>
+      left.criticProof.resultMessage.sequence -
+        right.criticProof.resultMessage.sequence ||
+      left.handoff.sequence - right.handoff.sequence,
+  );
+  const chainProof = chainCandidates[0];
   assertions.push(
     assertion(
       'team.evidence_change_validation_chain',
@@ -1770,13 +1820,21 @@ export function evaluateArenaRun({ runId, events, receipts = [], roster }) {
         : 'No complete causal handoff chain connects evidence, change, and independent validation.',
       chainProof
         ? evidence({
-            events: [chainProof.makerAck, criticProof.acknowledgement],
-            artifacts: [
-              ...explorerProof.sources,
-              ...makerProof.changes,
-              ...criticProof.tests,
+            events: [
+              chainProof.makerAck,
+              chainProof.criticProof.acknowledgement,
             ],
-            messages: [chainProof.handoff, criticProof.handoff],
+            artifacts: [
+              ...chainProof.explorerProof.sources,
+              ...chainProof.makerProof.changes,
+              ...chainProof.makerProof.tests,
+              ...chainProof.criticProof.tests,
+            ],
+            messages: [
+              chainProof.handoff,
+              chainProof.criticProof.handoff,
+              chainProof.criticProof.resultMessage,
+            ],
           })
         : evidence({}),
     ),

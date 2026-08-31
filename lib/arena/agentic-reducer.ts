@@ -8,6 +8,7 @@ import {
   slotForAgent,
   stationById,
 } from './agentic-catalog';
+import { selectFacilityActivity } from './facility-protocol.mjs';
 import {
   ARENA_WORLD_HEIGHT,
   ARENA_WORLD_WIDTH,
@@ -517,6 +518,7 @@ function applyRuntimeEvent(
       status: 'working',
       activeTool: undefined,
       activeCapability: undefined,
+      activeActivityId: undefined,
       currentResourceId: undefined,
       engagedResourceId: undefined,
       resourceQueued: undefined,
@@ -660,11 +662,16 @@ function applyRuntimeEvent(
   if (event.kind === 'tool.started') {
     const capability = (event.payload.capability ??
       inferToolCapability(event.payload.tool)) as ToolCapability;
+    const activity = selectFacilityActivity(event.payload.resourceId, {
+      activityId: event.payload.activityId,
+      capability,
+    });
     next = updateAgent(next, event.agentId, (agent) => ({
       ...agent,
       status: 'working',
       activeTool: event.payload.tool,
       activeCapability: capability,
+      activeActivityId: activity?.id,
       currentResourceId: event.payload.resourceId,
       engagedResourceId: event.payload.resourceId,
       resourceQueued: false,
@@ -678,6 +685,7 @@ function applyRuntimeEvent(
       ...agent,
       activeTool: undefined,
       activeCapability: undefined,
+      activeActivityId: undefined,
       currentResourceId: undefined,
       engagedResourceId: undefined,
       resourceQueued: undefined,
@@ -773,6 +781,7 @@ function applyRuntimeEvent(
       completedSummary: event.payload.summary,
       activeTool: undefined,
       activeCapability: undefined,
+      activeActivityId: undefined,
       currentResourceId: undefined,
       engagedResourceId: undefined,
       resourceQueued: undefined,
@@ -789,6 +798,7 @@ function applyRuntimeEvent(
       summary: event.payload.error,
       activeTool: undefined,
       activeCapability: undefined,
+      activeActivityId: undefined,
       currentResourceId: undefined,
       engagedResourceId: undefined,
       resourceQueued: undefined,
@@ -804,6 +814,7 @@ function applyRuntimeEvent(
       summary: event.payload.reason,
       activeTool: undefined,
       activeCapability: undefined,
+      activeActivityId: undefined,
       currentResourceId: undefined,
       engagedResourceId: undefined,
       resourceQueued: undefined,

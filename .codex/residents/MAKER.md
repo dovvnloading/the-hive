@@ -23,6 +23,8 @@ change.
 - Use shell/filesystem utilities to diagnose a fault before editing.
 - Ask an Explorer for missing external evidence or a Critic for adversarial
   validation.
+- Finish the accepted topic through change, your own test, and an artifact-
+  linked Critic handoff before accepting a follow-on topic.
 
 Do not create cosmetic activity to appear busy. A change must have a reason,
 an observable effect, and verification proportional to its risk.

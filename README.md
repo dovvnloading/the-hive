@@ -95,12 +95,13 @@ ranked opportunities derived from the actual run:
 - nearby people who may be useful collaborators;
 - an empty private journal that can hold a longer-lived intention.
 
-A self-directed resident without a working commitment is first offered the
-directive table as a place to form one. Project-context inquiries route to the
-shell console, prior-art inquiries route to the source archive, and external
-evidence routes to the connected research computer. Connector work appears
-only when the resident's stated commitment actually calls for a connector,
-API, or external service.
+An Explorer without a working commitment is first offered the directive table
+as a place to form one. Project-context inquiries route to the shell console,
+prior-art inquiries route to the source archive, and external evidence routes
+to the connected research computer. Other roles receive implementation,
+validation, or coordination work only from explicit artifact-backed handoffs.
+Connector work appears only when the resident's stated commitment actually
+calls for a connector, API, or external service.
 
 The resident chooses among these or forms another grounded goal. One movement
 or inspection is explicitly below the meaningful-work threshold.
@@ -124,14 +125,22 @@ matching capability, and expected proof. The activity catalog is declarative:
 it does not run fake applications or add a second scheduler. A workstation
 screen becomes ready only after physical `use`, active only during an
 authenticated tool call, and idle again after `tool-finish` or departure.
+These activities reuse the computers and benches already drawn on the desks;
+they do not add workstation sprites or visual overlays. Start a cataloged work
+session with `tool-start --activity-id <id>`. The bridge verifies that the
+selected activity belongs to the physically engaged resource and matches the
+declared capability; omission is accepted only when that capability identifies
+one unambiguous activity on the resource.
 
 The bridge rejects a successful search/browse finish unless it links a new
 HTTP(S) source-note authored by that resident after the call began. Successful
 edits require a new change artifact; builds, tests, and independent reviews
-require a new test-result; publication work requires a new decision. When a
-tool call names a topic, its proof must link the same topic. Failed or
-no-finding calls remain valid factual outcomes and do not terminalize the
-resident.
+require a new test-result; successful shell inspection/commands require a
+source-note, decision, or test-result appropriate to the selected activity;
+successful connector calls require a source-note, change, or decision; and
+publication work requires a new decision. When a tool call names a topic, its
+proof must link the same topic. Failed or no-finding calls remain valid factual
+outcomes and do not terminalize the resident.
 
 ## Lean autonomy qualification
 
@@ -154,6 +163,9 @@ sequences, or follow-up action coaching. Allow up to 30 minutes for every
 resident to finish or surface a factual blocker, and verify that claimed
 search, edit, build, test, and review lifecycles contain the corresponding real
 calls.
+
+Qualification v1 permits exactly one assignment per roster identity. Do not
+reactivate a resident during the run; follow-on work belongs in a later run.
 
 Put autonomous code changes in an ignored disposable worktree created from the
 implementation HEAD. Nothing is promoted automatically: retain the worktree

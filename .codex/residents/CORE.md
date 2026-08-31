@@ -22,6 +22,11 @@ This file is the durable operating charter for every resident. It supplements
 6. **Reassess.** Observe again. Continue, change course, collaborate, rest, or
    stop based on the new state—not because one command happened to succeed.
 
+Before completing, return to the comms board and resolve every direct receipt
+addressed to you only after its factual outcome is recorded. Do not send new
+direct work to a resident who has completed; broadcast durable information or
+address an active resident instead.
+
 ## Embodied light and thresholds
 
 `VISION` changes what exists in usable perception. A dark room does not expose

@@ -22,6 +22,11 @@ import {
   stationById,
 } from '../lib/arena/agentic-catalog.ts';
 import {
+  activityById,
+  activityForResource,
+  selectFacilityActivity,
+} from '../lib/arena/facility-protocol.mjs';
+import {
   capsuleIsWorldLegal,
   capsulesOverlap,
   resolveAvatarCollisions,
@@ -61,7 +66,6 @@ void test('facility activities are unique, capability-backed, and physically dis
   const activityIds = new Set();
   for (const resource of FACILITY_RESOURCES) {
     const activities = activitiesForResource(resource.id);
-    const capabilities = new Set();
     for (const activity of activities) {
       assert.equal(activityIds.has(activity.id), false, activity.id);
       assert.equal(
@@ -69,14 +73,21 @@ void test('facility activities are unique, capability-backed, and physically dis
         true,
         `${activity.id} is not backed by ${resource.id}`,
       );
-      assert.equal(
-        capabilities.has(activity.capability),
-        false,
-        `${resource.id} has ambiguous ${activity.capability} activities`,
+      const capabilityMatches = activities.filter(
+        (candidate) => candidate.capability === activity.capability,
       );
       assert.equal(
         activityForCapability(resource.id, activity.capability)?.id,
-        activity.id,
+        capabilityMatches.length === 1 ? activity.id : undefined,
+      );
+      assert.equal(activityById(activity.id), activity);
+      assert.equal(activityForResource(resource.id, activity.id), activity);
+      assert.equal(
+        selectFacilityActivity(resource.id, {
+          activityId: activity.id,
+          capability: activity.capability,
+        }),
+        activity,
       );
       assert.equal(typeof activity.description, 'string');
       assert.ok(activity.description.length > 20);
@@ -88,9 +99,21 @@ void test('facility activities are unique, capability-backed, and physically dis
         true,
       );
       activityIds.add(activity.id);
-      capabilities.add(activity.capability);
     }
   }
+
+  assert.equal(activityById('activity-that-does-not-exist'), undefined);
+  assert.equal(
+    activityForResource('shell-console-a', 'research.search-primary-sources'),
+    undefined,
+  );
+  assert.equal(
+    selectFacilityActivity('research-computer-b', {
+      activityId: 'research.search-primary-sources',
+      capability: 'filesystem',
+    }),
+    undefined,
+  );
 
   assert.deepEqual(
     [...activityIds].sort((left, right) => left.localeCompare(right)),
@@ -119,7 +142,10 @@ void test('facility activities are unique, capability-backed, and physically dis
   for (const propId of ['utility-tools-board', 'build-verification-chart']) {
     const prop = FACILITY_PROPS.find((candidate) => candidate.id === propId);
     assert.ok(prop, `${propId} is not in the authoritative facility catalog`);
-    assert.equal(prop.interactions.some(({ verb }) => verb === 'inspect'), true);
+    assert.equal(
+      prop.interactions.some(({ verb }) => verb === 'inspect'),
+      true,
+    );
     assert.equal(capsuleIsWorldLegal(prop.slots[0]), true);
     assert.equal(
       WORLD_EDGES.some(
@@ -877,7 +903,7 @@ void test('contributed tool work preserves topic ownership and a failure does no
         {
           topicId: 'topic-contributed',
           title: 'Shared change',
-          question: 'Does another resident\'s change hold?',
+          question: "Does another resident's change hold?",
         },
         { agentId: 'maker' },
       ),
@@ -891,6 +917,7 @@ void test('contributed tool work preserves topic ownership and a failure does no
           toolCallId: 'tool-edit-1',
           tool: 'filesystem.edit',
           capability: 'edit',
+          activityId: 'build.implement-linked-change',
           resourceId: 'build-bench-a',
           topicId: 'topic-contributed',
           summary: 'Applying a focused change',
@@ -902,6 +929,7 @@ void test('contributed tool work preserves topic ownership and a failure does no
     assert.equal(resident.currentTopicId, 'topic-owned');
     assert.equal(resident.activeTool, 'filesystem.edit');
     assert.equal(resident.activeCapability, 'edit');
+    assert.equal(resident.activeActivityId, 'build.implement-linked-change');
     state = agentArenaReducer(state, {
       type: 'runtime.event',
       event: event(
@@ -921,16 +949,14 @@ void test('contributed tool work preserves topic ownership and a failure does no
     assert.equal(resident.currentTopicId, 'topic-owned');
     assert.equal(resident.activeTool, undefined);
     assert.equal(resident.activeCapability, undefined);
+    assert.equal(resident.activeActivityId, undefined);
     assert.equal(resident.currentResourceId, undefined);
     assert.equal(resident.engagedResourceId, undefined);
     assert.equal(
       resident.lastToolResult,
       'The edit failed and needs another attempt',
     );
-    assert.equal(
-      resident.summary,
-      'The edit failed and needs another attempt',
-    );
+    assert.equal(resident.summary, 'The edit failed and needs another attempt');
   } finally {
     await vite.close();
   }
