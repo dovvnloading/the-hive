@@ -73,3 +73,11 @@ When participating in a facility run:
 - `accepted` operator receipts mean queued, not executed. Do not claim execution until the target produces a correlated event.
 - Do not add a mock runtime, scripted demo sequence, click-to-play control, hosted authentication, or fabricated browser activity.
 - Preserve the loopback-only bridge, per-identity authentication, monotonic event sequence, append-only journals, and the separation between authoritative world state and browser rendering.
+
+## Live-test record
+
+- Every runtime or live facility test must leave a short tracked report in `docs/live-tests/`, including failed, canceled, exploratory, and smoke runs.
+- Use `docs/live-tests/README.md` as the minimum format. Record the code revision, run ID, objective, real participants, exercised behavior, authoritative evidence, visual observations, outcome, and any follow-up.
+- Write only facts observed in the run. Distinguish journal or evaluator evidence from browser-visible observations; never infer one from the other.
+- Do not include credentials, authentication tokens, private-journal text, hidden prompts, or reasoning traces. Event, artifact, topic, message, receipt, and test IDs are safe evidence references.
+- Complete or cancel the run first, then finalize its report before presenting the live test as done. One report may cover multiple attempts when their individual run IDs and outcomes remain explicit.
