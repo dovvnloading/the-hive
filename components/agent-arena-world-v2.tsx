@@ -715,8 +715,10 @@ function drawRoom(
   } else {
     context.fillRect(room.x, room.y + room.h - 8, room.w, 8);
   }
-  context.fillStyle = 'rgba(255,238,200,.42)';
-  context.fillRect(room.x + 8, room.y + 8, room.w - 16, 1);
+  if (roomLightIsOn(state, room.id, now)) {
+    context.fillStyle = 'rgba(255,238,200,.42)';
+    context.fillRect(room.x + 8, room.y + 8, room.w - 16, 1);
+  }
   context.fillStyle = 'rgba(45,25,18,.55)';
   context.fillRect(room.x + 8, room.y + BACK_WALL_HEIGHT - 1, room.w - 16, 1);
   context.strokeStyle = '#3c251c';
@@ -1062,7 +1064,7 @@ function drawEnvironmentalLighting(
     if (!powered) {
       // Dark assets carry the room's material lighting. This light veil only
       // shades residents and the remaining procedural architecture pixels.
-      context.fillStyle = 'rgba(6,9,16,.3)';
+      context.fillStyle = 'rgba(5,8,15,.48)';
       context.fillRect(room.x, room.y, room.w, room.h);
     } else {
       const glow = context.createRadialGradient(

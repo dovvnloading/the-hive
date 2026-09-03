@@ -1,7 +1,7 @@
 # Commons expansion and lights-off QA
 
-- Date/time: 2026-09-03 20:45–22:07 EDT
-- Revision: `ee42952` on `codex/hive-environment-v2`, plus the renderer and test-harness corrections recorded by this report
+- Date/time: 2026-09-03 20:45–22:30 EDT
+- Revision: `b33a012` on `codex/hive-environment-v2`, plus the follow-up lighting correction recorded by this report
 - Environment: `http://localhost:3000/?assetrev=20260903-2&render=2x`
 - Objective: Exercise the widened Commons with four real residents, verify room-scoped lit and lights-off assets, and finish with every resident terminal and every room light off.
 - Participants: `/root` -> `night-steward-0903` -> Steward; `/root/night_explorer_live` -> `night-explorer-0903` -> Explorer; `/root/night_maker_live` -> `night-maker-0903` -> Maker; `/root/night_critic_live` -> `night-critic-0903` -> Critic.
@@ -29,7 +29,7 @@
 - Authoritative: final Commons off `evt_3f519e9d-60d2-4d85-b86a-f45a4bf418f2`; final Command off `evt_3ee02e7a-fdc6-4234-94cd-1a1cf5f89f9b`; consolidated result `night-steward-commons-lights-off-qa-20260903`; run completion `evt_c5ec1109-f6b7-4a6a-bc8e-b0f148d0b4ce`.
 - Visual: no overlap, pushing, wall-riding, stalled walk cycle, teleport, light-state flash, geometry drift, wall overlap, detached asset, seating mismatch, or hotspot mismatch was observed.
 - Visual correction: the Research task-lamp glow initially crossed the Research/Command partition. Its radial pass is now clipped to Research and was rechecked in task-only and room-lit states.
-- Visual correction: the 18% dark-room veil was too light and its 3px inset exposed bright top/side seams. The veil is now 30% navy-black and clipped to exact room bounds; the final all-off 2x frame showed continuous dark coverage with crisp partitions.
+- Visual correction: the 18% dark-room veil was too light and its 3px inset exposed bright top/side seams. A first 30% correction remained too light in follow-up review because `drawRoom` also painted a one-pixel wall highlight while rooms were off. The final veil is 48% navy-black, uses exact room bounds, and the wall highlight is emitted only for a powered room. The final all-off 2x frame showed continuous dark coverage with crisp partitions and no illuminated cap line.
 - Automated: the first full bridge run exposed a test-only stale-observation race while an arrival projection settled. The helper now follows the production protocol once with a fresh observation; a persistent or non-stale rejection still fails the test.
 - Automated final: spatial tests 34/34, spatial audit zero issues, bridge tests 26/26, lint clean, and production build successful.
 
