@@ -2907,16 +2907,38 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
     const body = await json(response);
     return { response, body };
   };
-  const settle = async (navigation) => {
-    await new Promise((resolveWait) =>
-      setTimeout(
-        resolveWait,
-        Math.max(0, Date.parse(navigation.arrivesAt) - Date.now() + 5),
-      ),
+  const settle = async (agentId, navigation) => {
+    const resident = residents.get(agentId);
+    const deadline = Math.max(
+      Date.now() + 3_000,
+      Date.parse(navigation.arrivesAt) + 2_000,
     );
+    let observation;
+    do {
+      observation = await observe(origin, resident.token);
+      if (
+        observation.you.locationId === navigation.toLocationId &&
+        !observation.you.navigation
+      ) {
+        return observation;
+      }
+      await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+    } while (Date.now() < deadline);
+    assert.equal(observation?.you.locationId, navigation.toLocationId);
+    assert.equal(observation?.you.navigation, undefined);
+    return observation;
   };
   const acceptedMove = async (agentId, targetId, actionId) => {
-    const result = await moveResident(agentId, targetId, actionId);
+    let result = await moveResident(agentId, targetId, actionId);
+    if (
+      result.response.status === 409 &&
+      /local scene changed; observe again/iu.test(result.body.error ?? '')
+    ) {
+      // Arrival projection can become stationary between this helper's GET
+      // and POST under a loaded test runner. Follow the resident protocol once
+      // with a fresh observation; persistent rejection still fails below.
+      result = await moveResident(agentId, targetId, `${actionId}-fresh`);
+    }
     assert.equal(result.response.status, 201, result.body.error);
     assertNavigationPathIsSweptLegal(result.body.event.payload);
     return result.body.event.payload;
@@ -2931,7 +2953,7 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
     Math.round((explorerToWestLanding.toPosition.x / 100) * ARENA_WORLD_WIDTH),
     352,
   );
-  await settle(explorerToWestLanding);
+  await settle('explorer-live', explorerToWestLanding);
 
   const stewardToEastLanding = await acceptedMove(
     'steward-live',
@@ -2945,7 +2967,7 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
   assertNavigationPathClearsPositions(stewardToEastLanding, [
     explorerToWestLanding.toPosition,
   ]);
-  await settle(stewardToEastLanding);
+  await settle('steward-live', stewardToEastLanding);
 
   const explorerToDoor = await acceptedMove(
     'explorer-live',
@@ -2962,45 +2984,45 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
     stewardDoorConflict.body.error,
     /(route conflicts|yield|reserved|standing slot|occupied)/iu,
   );
-  await settle(explorerToDoor);
+  await settle('explorer-live', explorerToDoor);
   const explorerToHall = await acceptedMove(
     'explorer-live',
     'hall-center',
     'explorer-clears-single-door',
   );
-  await settle(explorerToHall);
+  await settle('explorer-live', explorerToHall);
   const explorerClearsDoorMouth = await acceptedMove(
     'explorer-live',
     'hall-west',
     'explorer-clears-context-door-mouth',
   );
-  await settle(explorerClearsDoorMouth);
+  await settle('explorer-live', explorerClearsDoorMouth);
 
   const stewardToDoor = await acceptedMove(
     'steward-live',
     'door-context',
     'steward-enters-serialized-door',
   );
-  await settle(stewardToDoor);
+  await settle('steward-live', stewardToDoor);
   const stewardToHall = await acceptedMove(
     'steward-live',
     'hall-center',
     'steward-clears-serialized-door',
   );
-  await settle(stewardToHall);
+  await settle('steward-live', stewardToHall);
   const stewardClearsDoorMouth = await acceptedMove(
     'steward-live',
     'hall-east',
     'steward-clears-context-door-mouth',
   );
-  await settle(stewardClearsDoorMouth);
+  await settle('steward-live', stewardClearsDoorMouth);
 
   const makerToEastLanding = await acceptedMove(
     'maker-live',
     'context-hub',
     'maker-drains-east-overflow',
   );
-  await settle(makerToEastLanding);
+  await settle('maker-live', makerToEastLanding);
   const criticToWestLanding = await acceptedMove(
     'critic-live',
     'context-hub',
@@ -3009,7 +3031,7 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
   assertNavigationPathClearsPositions(criticToWestLanding, [
     makerToEastLanding.toPosition,
   ]);
-  await settle(criticToWestLanding);
+  await settle('critic-live', criticToWestLanding);
 
   const makerToDoor = await acceptedMove(
     'maker-live',
@@ -3022,26 +3044,26 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
     'critic-yields-single-door',
   );
   assert.equal(criticDoorConflict.response.status, 409);
-  await settle(makerToDoor);
+  await settle('maker-live', makerToDoor);
   const makerToHall = await acceptedMove(
     'maker-live',
     'hall-center',
     'maker-clears-single-door',
   );
-  await settle(makerToHall);
+  await settle('maker-live', makerToHall);
   const makerClearsDoorMouth = await acceptedMove(
     'maker-live',
     'hall-east',
     'maker-clears-context-door-mouth',
   );
-  await settle(makerClearsDoorMouth);
+  await settle('maker-live', makerClearsDoorMouth);
 
   const criticToLight = await acceptedMove(
     'critic-live',
     'room-light-context',
     'critic-visits-commons-switch',
   );
-  await settle(criticToLight);
+  await settle('critic-live', criticToLight);
   const criticLightScene = await observe(
     origin,
     residents.get('critic-live').token,
@@ -3059,20 +3081,20 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
     'context-hub',
     'critic-returns-from-commons-switch',
   );
-  await settle(criticReturnsToLanding);
+  await settle('critic-live', criticReturnsToLanding);
 
   const criticToDoor = await acceptedMove(
     'critic-live',
     'door-context',
     'critic-enters-serialized-door',
   );
-  await settle(criticToDoor);
+  await settle('critic-live', criticToDoor);
   const criticToHall = await acceptedMove(
     'critic-live',
     'hall-center',
     'critic-clears-serialized-door',
   );
-  await settle(criticToHall);
+  await settle('critic-live', criticToHall);
 
   assert.equal(
     (await observe(origin, residents.get('explorer-live').token)).you

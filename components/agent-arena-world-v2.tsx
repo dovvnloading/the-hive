@@ -1055,12 +1055,14 @@ function drawEnvironmentalLighting(
     const powered = roomLightIsOn(state, room.id, now);
     context.save();
     context.beginPath();
-    context.rect(room.x + 3, room.y + 3, room.w - 6, room.h - 6);
+    // Cover the full room bounds. Insets leave a bright seam at the top and
+    // sides when a room is dark, especially at the 2x presentation scale.
+    context.rect(room.x, room.y, room.w, room.h);
     context.clip();
     if (!powered) {
       // Dark assets carry the room's material lighting. This light veil only
       // shades residents and the remaining procedural architecture pixels.
-      context.fillStyle = 'rgba(8,11,17,.18)';
+      context.fillStyle = 'rgba(6,9,16,.3)';
       context.fillRect(room.x, room.y, room.w, room.h);
     } else {
       const glow = context.createRadialGradient(
@@ -1083,7 +1085,17 @@ function drawEnvironmentalLighting(
   });
 
   const archiveLamp = effectiveEntityState(state, 'archive-lamp', now);
-  if (archiveLamp.power === 'on') {
+  const researchRoom = ROOMS.find((room) => room.id === 'research');
+  if (archiveLamp.power === 'on' && researchRoom) {
+    context.save();
+    context.beginPath();
+    context.rect(
+      researchRoom.x + 3,
+      researchRoom.y + 3,
+      researchRoom.w - 6,
+      researchRoom.h - 6,
+    );
+    context.clip();
     const taskGlow = context.createRadialGradient(234, 109, 3, 234, 109, 62);
     taskGlow.addColorStop(0, 'rgba(255,211,121,.34)');
     taskGlow.addColorStop(0.55, 'rgba(239,172,82,.13)');
@@ -1091,6 +1103,7 @@ function drawEnvironmentalLighting(
     context.globalCompositeOperation = 'screen';
     context.fillStyle = taskGlow;
     context.fillRect(178, 64, 96, 104);
+    context.restore();
   }
   context.restore();
 }
