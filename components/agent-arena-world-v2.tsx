@@ -73,7 +73,10 @@ type WorldProps = {
   state: AgentArenaState;
   onSelectAgent: (agentId?: string) => void;
   onOpenJournal: (eventId?: string) => void;
+  onOpenMailbox?: () => void;
   journalOpen: boolean;
+  mailboxOpen?: boolean;
+  mailboxHasUnread?: boolean;
 };
 type CanvasPointEvent = {
   clientX: number;
@@ -105,6 +108,9 @@ const FACILITY_ASSETS = {
   wallLightDualOff: 'generated/wall-light-dual-off-v1.png',
   wallLightSingle: 'generated/wall-light-single-v1.png',
   wallLightSingleOff: 'generated/wall-light-single-off-v1.png',
+  operatorMailbox: 'generated/operator-mailbox-v1.png?rev=20260903-2',
+  operatorMailboxEmpty:
+    'generated/operator-mailbox-empty-v1.png?rev=20260903-1',
   researchDesk: furnitureAsset('research-desk.png'),
   utilityWorkstation: furnitureAsset('utility-workstation.png'),
   buildWorkbench: furnitureAsset('build-workbench.png'),
@@ -197,6 +203,21 @@ const CONTEXT_KIOSK_ACTION_STYLE = {
   top: `${(CONTEXT_KIOSK_PROP.y / WORLD_HEIGHT) * 100}%`,
   width: `${(50 / WORLD_WIDTH) * 100}%`,
   height: `${(38 / WORLD_HEIGHT) * 100}%`,
+} satisfies CSSProperties;
+
+const OPERATOR_MAILBOX_PROP = {
+  asset: 'operatorMailbox',
+  x: 372,
+  y: 300,
+  baseline: 320,
+  entityId: 'operator-mailbox',
+} satisfies SceneProp;
+
+const OPERATOR_MAILBOX_ACTION_STYLE = {
+  left: `${(OPERATOR_MAILBOX_PROP.x / WORLD_WIDTH) * 100}%`,
+  top: `${((OPERATOR_MAILBOX_PROP.y ?? 0) / WORLD_HEIGHT) * 100}%`,
+  width: `${(24 / WORLD_WIDTH) * 100}%`,
+  height: `${(20 / WORLD_HEIGHT) * 100}%`,
 } satisfies CSSProperties;
 
 const WALL_COLORS: Record<RoomId, { paper: string; panel: string }> = {
@@ -370,6 +391,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
 
   // Commons — a clear route from the north doorway to the anchored lift.
+  OPERATOR_MAILBOX_PROP,
   CONTEXT_KIOSK_PROP,
   {
     asset: 'plantSmall',
@@ -740,8 +762,7 @@ function activityScreenColor(work: ResourceWorkState) {
   if (new Set(['shell', 'filesystem']).has(work.capability ?? ''))
     return '#4f7d57';
   if (work.capability === 'connector') return '#526f9b';
-  if (new Set(['test', 'review']).has(work.capability ?? ''))
-    return '#756692';
+  if (new Set(['test', 'review']).has(work.capability ?? '')) return '#756692';
   return '#9a6f48';
 }
 
@@ -1043,8 +1064,13 @@ function drawSceneProp(
   bank: ImageBank,
   state: AgentArenaState,
   prop: SceneProp,
+  mailboxHasUnread: boolean,
 ) {
-  const image = bank[facilityKey(prop.asset)];
+  const asset =
+    prop.entityId === 'operator-mailbox' && !mailboxHasUnread
+      ? 'operatorMailboxEmpty'
+      : prop.asset;
+  const image = bank[facilityKey(asset)];
   if (!imageReady(image)) return;
   const width = image.naturalWidth;
   const height = image.naturalHeight;
@@ -1065,15 +1091,13 @@ function drawSceneProp(
   const work = resourceWorkState(state, prop.resourceId);
   if (work.mode !== 'idle') {
     context.fillStyle =
-      work.mode === 'active'
-        ? 'rgba(224,181,104,.24)'
-        : 'rgba(224,181,104,.1)';
+      work.mode === 'active' ? 'rgba(224,181,104,.24)' : 'rgba(224,181,104,.1)';
     context.fillRect(prop.x - 3, y - 3, width + 6, height + 6);
     context.fillStyle =
       work.mode === 'active' ? activityScreenColor(work) : '#a88c56';
     context.fillRect(prop.x, y + height + 1, width, 2);
   }
-  drawFacilitySprite(context, bank, prop.asset, prop.x, y);
+  drawFacilitySprite(context, bank, asset, prop.x, y);
   drawSurfaceDetail(context, state, prop, width, y);
 }
 
@@ -1404,6 +1428,7 @@ function drawDepthSortedScene(
   state: AgentArenaState,
   agentsById: Map<string, RuntimeAgent>,
   now: number,
+  mailboxHasUnread: boolean,
 ) {
   const occupiedSeats = new Map<
     string,
@@ -1440,7 +1465,7 @@ function drawDepthSortedScene(
         ? Math.min(prop.baseline, occupiedSeat.baseline - 0.5)
         : prop.baseline,
       stableOrder: index,
-      draw: () => drawSceneProp(context, bank, state, prop),
+      draw: () => drawSceneProp(context, bank, state, prop, mailboxHasUnread),
     };
   });
 
@@ -1607,7 +1632,10 @@ export function AgentArenaWorldV2({
   state,
   onSelectAgent,
   onOpenJournal,
+  onOpenMailbox = () => undefined,
   journalOpen,
+  mailboxOpen = false,
+  mailboxHasUnread = false,
 }: WorldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -1704,7 +1732,14 @@ export function AgentArenaWorldV2({
     const environmentNow = bubbleNow || Date.now();
     drawArchitecture(context, bank);
     drawRoomLightFixtures(context, bank, state, environmentNow);
-    drawDepthSortedScene(context, bank, state, agentsById, performance.now());
+    drawDepthSortedScene(
+      context,
+      bank,
+      state,
+      agentsById,
+      performance.now(),
+      mailboxHasUnread,
+    );
     drawDoorwayForegrounds(context);
     drawEnvironmentalLighting(context, state, environmentNow);
 
@@ -1725,6 +1760,7 @@ export function AgentArenaWorldV2({
     assetsReady,
     bubbleNow,
     hoveredAgentId,
+    mailboxHasUnread,
     state,
   ]);
 
@@ -1844,6 +1880,15 @@ export function AgentArenaWorldV2({
           aria-expanded={journalOpen}
           aria-haspopup="dialog"
           onClick={() => onOpenJournal()}
+        />
+        <button
+          type="button"
+          className="operator-mailbox-hotspot"
+          style={OPERATOR_MAILBOX_ACTION_STYLE}
+          aria-label="Open operator dispatch box"
+          aria-expanded={mailboxOpen}
+          aria-haspopup="dialog"
+          onClick={onOpenMailbox}
         />
       </div>
     </div>

@@ -72,7 +72,32 @@ the unlit state is authored artwork rather than opacity-faded lit artwork.
 - This replaces the former code-drawn plain line chart on the Build/Verify
   east wall.
 
+## Operator dispatch box
+
+- Sources: `sources/operator-mailbox-source-v1.png` and
+  `sources/operator-mailbox-empty-source-v1.png`
+- Runtime assets: `operator-mailbox-v1.png` and
+  `operator-mailbox-empty-v1.png` (both 24 x 20)
+- Generated: 2026-09-03 with the built-in image-generation workflow.
+- Full prompt: a compact wall-mounted walnut dispatch mailbox with aged-brass
+  trim, a visible parchment envelope slot, and a raised brass flag; crisp warm
+  16-bit three-quarter RPG pixel art; isolated transparent object; no text,
+  wall, floor, room scene, logo, watermark, glow, or cast shadow.
+- Empty edit prompt: use the full mailbox as the sole edit target; remove only
+  the protruding parchment and reconstruct the recessed dark slot and wooden
+  panel beneath it; preserve the mailbox, brass trim, flag, perspective,
+  pixel-block texture, palette, silhouette, scale, and true transparency.
+- Placement: wall-mounted in Commons, clear of the doorway, light switch,
+  ceiling fixture, journal desk, and resident route.
+- Purpose: a visible, clickable operator input surface. The letter-visible
+  asset appears while the bridge reports unread deliveries; the empty asset
+  appears at zero. Delivery and read state remain bridge-authored.
+- Processing: connected near-transparent backdrop pixels are removed and the
+  final 24 x 20 alpha channel is hardened to transparent/opaque values so the
+  tiny wall sprite keeps a clean pixel silhouette.
+
 Run `node scripts/process-wall-fixtures.mjs` after replacing a source.
+
 The processor removes connected neutral backdrops from generated sources that
 need extraction, crops to visible alpha, resamples with Lanczos, sharpens
 lightly, and writes a compact 96-colour transparent PNG.

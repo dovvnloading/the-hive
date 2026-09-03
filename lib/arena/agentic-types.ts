@@ -256,9 +256,24 @@ export type OperatorIntent =
   | { type: 'ReplyToPrompt'; promptId: string; content: string }
   | { type: 'ApprovePrompt'; promptId: string; approved: boolean }
   | { type: 'SendFollowUp'; agentId: string; content: string }
+  | {
+      type: 'SendMailboxMessage';
+      recipientAgentIds: string[];
+      content: string;
+    }
   | { type: 'InterruptAgent'; agentId: string }
   | { type: 'CancelRun'; reason?: string }
   | { type: 'RetryRun' };
+
+export type OperatorMailboxDraft = {
+  content: string;
+  updatedAt?: string;
+};
+
+export type OperatorMailboxStatus = {
+  runId: string;
+  unreadDeliveryCount: number;
+};
 
 export type CommandReceipt = {
   intentId: string;
@@ -269,10 +284,18 @@ export type CommandReceipt = {
 
 export interface ArenaRuntime {
   start(objective: string): void;
-  command(intent: OperatorIntent): Promise<CommandReceipt>;
+  command(
+    intent: OperatorIntent,
+    idempotencyKey?: string,
+  ): Promise<CommandReceipt>;
+  readMailboxDraft(): Promise<OperatorMailboxDraft>;
+  writeMailboxDraft(content: string): Promise<OperatorMailboxDraft>;
   subscribe(listener: (event: RuntimeEvent) => void): () => void;
   subscribeConnection(
     listener: (status: RuntimeConnectionStatus) => void,
+  ): () => void;
+  subscribeMailboxStatus(
+    listener: (status: OperatorMailboxStatus) => void,
   ): () => void;
   destroy(): void;
 }

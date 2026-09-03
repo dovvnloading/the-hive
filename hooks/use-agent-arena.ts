@@ -31,6 +31,8 @@ export function useAgentArena() {
   const [runtime] = useState<ArenaRuntime>(() => new CodexAgentRuntime());
   const [connectionStatus, setConnectionStatus] =
     useState<RuntimeConnectionStatus>('connecting');
+  const [mailboxUnreadDeliveryCount, setMailboxUnreadDeliveryCount] =
+    useState(0);
 
   useEffect(() => {
     const unsubscribe = runtime.subscribe((event) => {
@@ -38,6 +40,9 @@ export function useAgentArena() {
     });
     const unsubscribeConnection =
       runtime.subscribeConnection(setConnectionStatus);
+    const unsubscribeMailboxStatus = runtime.subscribeMailboxStatus((status) =>
+      setMailboxUnreadDeliveryCount(status.unreadDeliveryCount),
+    );
 
     runtime.start(DEFAULT_AGENT_OBJECTIVE);
 
@@ -57,13 +62,16 @@ export function useAgentArena() {
       window.cancelAnimationFrame(frameId);
       unsubscribe();
       unsubscribeConnection();
+      unsubscribeMailboxStatus();
       runtime.destroy();
     };
   }, [runtime]);
 
   const command = useCallback(
-    (intent: OperatorIntent): Promise<CommandReceipt> =>
-      runtime.command(intent),
+    (
+      intent: OperatorIntent,
+      idempotencyKey?: string,
+    ): Promise<CommandReceipt> => runtime.command(intent, idempotencyKey),
     [runtime],
   );
 
@@ -88,6 +96,22 @@ export function useAgentArena() {
     (agentId: string, content: string) =>
       command({ type: 'SendFollowUp', agentId, content }),
     [command],
+  );
+
+  const sendMailboxMessage = useCallback(
+    (recipientAgentIds: string[], content: string) =>
+      command({ type: 'SendMailboxMessage', recipientAgentIds, content }),
+    [command],
+  );
+
+  const readMailboxDraft = useCallback(
+    () => runtime.readMailboxDraft(),
+    [runtime],
+  );
+
+  const writeMailboxDraft = useCallback(
+    (content: string) => runtime.writeMailboxDraft(content),
+    [runtime],
   );
 
   const interruptAgent = useCallback(
@@ -130,6 +154,7 @@ export function useAgentArena() {
   return {
     state,
     connectionStatus,
+    mailboxUnreadDeliveryCount,
     selectedAgent,
     followedAgent,
     activePrompt,
@@ -139,6 +164,9 @@ export function useAgentArena() {
     replyToPrompt,
     approvePrompt,
     sendFollowUp,
+    sendMailboxMessage,
+    readMailboxDraft,
+    writeMailboxDraft,
     interruptAgent,
     cancelRun,
     retryRun,

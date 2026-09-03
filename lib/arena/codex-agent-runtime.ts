@@ -2,6 +2,8 @@ import type {
   AgentPhase,
   ArenaRuntime,
   CommandReceipt,
+  OperatorMailboxDraft,
+  OperatorMailboxStatus,
   OperatorIntent,
   RuntimeConnectionStatus,
   RuntimeEvent,
@@ -35,6 +37,34 @@ function hasOptionalString(record: JsonRecord, key: string) {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
+}
+
+function mailboxDraftFromResponse(
+  value: unknown,
+): OperatorMailboxDraft | undefined {
+  if (!isRecord(value) || !isString(value.content)) return undefined;
+  if (!hasOptionalString(value, 'updatedAt')) return undefined;
+  return {
+    content: value.content,
+    ...(isString(value.updatedAt) ? { updatedAt: value.updatedAt } : {}),
+  };
+}
+
+function mailboxStatusFromResponse(
+  value: unknown,
+): OperatorMailboxStatus | undefined {
+  if (
+    !isRecord(value) ||
+    !isString(value.runId) ||
+    !Number.isSafeInteger(value.mailboxUnreadDeliveryCount) ||
+    (value.mailboxUnreadDeliveryCount as number) < 0
+  ) {
+    return undefined;
+  }
+  return {
+    runId: value.runId,
+    unreadDeliveryCount: value.mailboxUnreadDeliveryCount as number,
+  };
 }
 
 function isVec2(value: unknown): value is Vec2 {
@@ -424,15 +454,23 @@ export class CodexAgentRuntime implements ArenaRuntime {
   private readonly connectionListeners = new Set<
     (status: RuntimeConnectionStatus) => void
   >();
+  private readonly mailboxStatusListeners = new Set<
+    (status: OperatorMailboxStatus) => void
+  >();
   private readonly commandControllers = new Set<AbortController>();
   private readonly seenEventIds = new Set<string>();
   private readonly seenEventOrder: string[] = [];
+  private readonly pendingMailboxIntentIds = new Map<string, string>();
   private pollController?: AbortController;
   private pollTimer?: ReturnType<typeof setTimeout>;
   private running = false;
   private lastSequence = 0;
   private failedPolls = 0;
   private connectionStatus: RuntimeConnectionStatus = 'disconnected';
+  private mailboxStatus: OperatorMailboxStatus = {
+    runId: '',
+    unreadDeliveryCount: 0,
+  };
 
   constructor(private readonly bridgeOrigin = DEFAULT_BRIDGE_ORIGIN) {}
 
@@ -447,6 +485,12 @@ export class CodexAgentRuntime implements ArenaRuntime {
     return () => this.connectionListeners.delete(listener);
   }
 
+  subscribeMailboxStatus(listener: (status: OperatorMailboxStatus) => void) {
+    this.mailboxStatusListeners.add(listener);
+    listener(this.mailboxStatus);
+    return () => this.mailboxStatusListeners.delete(listener);
+  }
+
   /** Starts observation only. Objectives are sent solely by explicit commands. */
   start(_objective: string) {
     if (this.running) return;
@@ -455,8 +499,33 @@ export class CodexAgentRuntime implements ArenaRuntime {
     this.schedulePoll(0);
   }
 
-  async command(intent: OperatorIntent): Promise<CommandReceipt> {
-    const id = intentId();
+  async command(
+    intent: OperatorIntent,
+    idempotencyKey?: string,
+  ): Promise<CommandReceipt> {
+    const normalizedIntent =
+      intent.type === 'SendMailboxMessage'
+        ? {
+            ...intent,
+            recipientAgentIds: [...intent.recipientAgentIds].sort(
+              (left, right) => left.localeCompare(right),
+            ),
+          }
+        : intent;
+    const mailboxFingerprint =
+      normalizedIntent.type === 'SendMailboxMessage'
+        ? JSON.stringify([
+            normalizedIntent.recipientAgentIds,
+            normalizedIntent.content,
+          ])
+        : undefined;
+    const retainedId = mailboxFingerprint
+      ? this.pendingMailboxIntentIds.get(mailboxFingerprint)
+      : undefined;
+    const id = retainedId || idempotencyKey?.trim() || intentId();
+    if (mailboxFingerprint && !retainedId) {
+      this.pendingMailboxIntentIds.set(mailboxFingerprint, id);
+    }
     const sentAt = new Date().toISOString();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -466,14 +535,23 @@ export class CodexAgentRuntime implements ArenaRuntime {
       const response = await fetch(`${this.bridgeOrigin}/intent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ intentId: id, intent, sentAt }),
+        body: JSON.stringify({
+          intentId: id,
+          intent: normalizedIntent,
+          sentAt,
+        }),
         cache: 'no-store',
         signal: controller.signal,
       });
       const body: unknown = await response.json().catch(() => undefined);
       this.setConnectionStatus('connected');
       const receipt = receiptFromResponse(body, id);
-      if (receipt) return receipt;
+      if (receipt) {
+        if (mailboxFingerprint) {
+          this.pendingMailboxIntentIds.delete(mailboxFingerprint);
+        }
+        return receipt;
+      }
       if (!response.ok) {
         return rejectedReceipt(
           id,
@@ -497,6 +575,37 @@ export class CodexAgentRuntime implements ArenaRuntime {
     }
   }
 
+  async readMailboxDraft(): Promise<OperatorMailboxDraft> {
+    const response = await fetch(`${this.bridgeOrigin}/mailbox/draft`, {
+      cache: 'no-store',
+    });
+    const body: unknown = await response.json().catch(() => undefined);
+    const draft = mailboxDraftFromResponse(body);
+    if (!response.ok || !draft) {
+      throw new Error('The operator mailbox draft is unavailable');
+    }
+    return draft;
+  }
+
+  async writeMailboxDraft(content: string): Promise<OperatorMailboxDraft> {
+    const response = await fetch(`${this.bridgeOrigin}/mailbox/draft`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content }),
+      cache: 'no-store',
+    });
+    const body: unknown = await response.json().catch(() => undefined);
+    const draft = mailboxDraftFromResponse(body);
+    if (!response.ok || !draft) {
+      const reason =
+        isRecord(body) && isString(body.error)
+          ? body.error
+          : 'The operator mailbox draft could not be saved';
+      throw new Error(reason);
+    }
+    return draft;
+  }
+
   destroy() {
     this.running = false;
     if (this.pollTimer) clearTimeout(this.pollTimer);
@@ -505,9 +614,11 @@ export class CodexAgentRuntime implements ArenaRuntime {
     this.pollController = undefined;
     this.commandControllers.forEach((controller) => controller.abort());
     this.commandControllers.clear();
+    this.pendingMailboxIntentIds.clear();
     this.setConnectionStatus('disconnected');
     this.listeners.clear();
     this.connectionListeners.clear();
+    this.mailboxStatusListeners.clear();
   }
 
   private schedulePoll(delayMs: number) {
@@ -535,6 +646,9 @@ export class CodexAgentRuntime implements ArenaRuntime {
       const events = eventsFromResponse(body);
       if (!events) throw new Error('Bridge returned an invalid event envelope');
       if (!this.running) return;
+
+      const mailboxStatus = mailboxStatusFromResponse(body);
+      if (mailboxStatus) this.setMailboxStatus(mailboxStatus);
 
       this.failedPolls = 0;
       this.setConnectionStatus('connected');
@@ -576,6 +690,23 @@ export class CodexAgentRuntime implements ArenaRuntime {
     });
   }
 
+  private setMailboxStatus(status: OperatorMailboxStatus) {
+    if (
+      status.runId === this.mailboxStatus.runId &&
+      status.unreadDeliveryCount === this.mailboxStatus.unreadDeliveryCount
+    ) {
+      return;
+    }
+    this.mailboxStatus = status;
+    this.mailboxStatusListeners.forEach((listener) => {
+      try {
+        listener(status);
+      } catch {
+        // Mailbox telemetry must not interrupt authoritative event delivery.
+      }
+    });
+  }
+
   private acceptEvent(event: RuntimeEvent) {
     if (
       event.sequence <= this.lastSequence ||
@@ -583,6 +714,7 @@ export class CodexAgentRuntime implements ArenaRuntime {
     )
       return;
     this.lastSequence = event.sequence;
+    if (event.kind === 'run.started') this.pendingMailboxIntentIds.clear();
     this.rememberEvent(event.eventId);
     this.listeners.forEach((listener) => {
       try {

@@ -11,6 +11,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
@@ -164,6 +165,9 @@ const SOCIAL_RANGE_PX = Math.max(
 const MAX_CHAT_PROMPT_LENGTH = 500_000;
 const MAX_CHAT_SUMMARY_LENGTH = 800;
 const MAX_CHAT_TARGETS = 8;
+const MAX_MAILBOX_TEXT_LENGTH = 2_000;
+const MAX_MAILBOX_RECIPIENTS = 8;
+const OPERATOR_MAILBOX_ENTITY_ID = 'operator-mailbox';
 
 const AGENT_PHASES = new Set([
   'spawning',
@@ -191,6 +195,7 @@ const OPERATOR_INTENTS = new Set([
   'ReplyToPrompt',
   'ApprovePrompt',
   'SendFollowUp',
+  'SendMailboxMessage',
   'InterruptAgent',
   'CancelRun',
   'RetryRun',
@@ -317,10 +322,7 @@ function assertPayload(kind, payload) {
     case 'task.assigned':
       if (!hasText(payload, 'objective'))
         return 'payload.objective is required';
-      if (
-        payload.mode !== undefined &&
-        !ASSIGNMENT_MODES.has(payload.mode)
-      ) {
+      if (payload.mode !== undefined && !ASSIGNMENT_MODES.has(payload.mode)) {
         return 'payload.mode must be directed or self-directed';
       }
       return payload.position === undefined
@@ -622,6 +624,36 @@ function validateIntent(intent) {
       return hasText(intent, 'agentId') && hasText(intent, 'content')
         ? undefined
         : 'intent.agentId and intent.content are required';
+    case 'SendMailboxMessage': {
+      if (
+        !Array.isArray(intent.recipientAgentIds) ||
+        intent.recipientAgentIds.length === 0 ||
+        intent.recipientAgentIds.length > MAX_MAILBOX_RECIPIENTS ||
+        !intent.recipientAgentIds.every(
+          (value) => typeof value === 'string' && value.trim().length > 0,
+        )
+      ) {
+        return `intent.recipientAgentIds must contain 1-${MAX_MAILBOX_RECIPIENTS} resident IDs`;
+      }
+      const normalizedRecipientIds = intent.recipientAgentIds.map((value) =>
+        value.trim(),
+      );
+      if (
+        new Set(normalizedRecipientIds).size !== normalizedRecipientIds.length
+      ) {
+        return 'intent.recipientAgentIds must be unique';
+      }
+      try {
+        assertSafeBoardText(
+          intent.content,
+          'intent.content',
+          MAX_MAILBOX_TEXT_LENGTH,
+        );
+        return undefined;
+      } catch (error) {
+        return error.message;
+      }
+    }
     case 'InterruptAgent':
       return hasText(intent, 'agentId')
         ? undefined
@@ -702,8 +734,9 @@ function hasDisallowedBrowserOrigin(request) {
 function writeJson(request, response, status, body, extraHeaders = {}) {
   const serialized = JSON.stringify(body);
   response.writeHead(status, {
-    'Access-Control-Allow-Headers': 'Content-Type, X-Arena-Agent-Token',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers':
+      'Content-Type, X-Arena-Agent-Token, X-Arena-Emitter-Token',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
     'Cache-Control': 'no-store',
     'Content-Length': Buffer.byteLength(serialized),
     'Content-Type': 'application/json; charset=utf-8',
@@ -781,6 +814,7 @@ mkdirSync(options.dataDir, { recursive: true });
 const statePath = resolve(options.dataDir, 'state.json');
 const eventsPath = resolve(options.dataDir, 'events.jsonl');
 const intentsPath = resolve(options.dataDir, 'intents.jsonl');
+const mailboxDraftPath = resolve(options.dataDir, 'operator-mailbox.md');
 const chatIngressPath = resolve(options.dataDir, 'chat-ingress.jsonl');
 const emitterTokenPath = resolve(options.dataDir, 'emitter-token');
 const chatTokenPath = resolve(options.dataDir, 'chat-token');
@@ -790,6 +824,10 @@ const actionRejectionsPath = resolve(
   options.dataDir,
   'action-rejections.jsonl',
 );
+
+if (!existsSync(mailboxDraftPath)) {
+  writeFileSync(mailboxDraftPath, '', { encoding: 'utf8', mode: 0o600 });
+}
 
 function loadLocalToken(path, configuredValue) {
   const configured = configuredValue?.trim();
@@ -924,6 +962,100 @@ function currentRunIntents() {
   return state.runId
     ? intents.filter((intent) => intent.runId === state.runId)
     : [];
+}
+
+function mailboxReadIntentIds(agentId) {
+  return new Set(
+    currentRunEvents()
+      .filter(
+        (event) =>
+          event.kind === 'world.interaction' &&
+          event.agentId === agentId &&
+          event.payload.entityId === OPERATOR_MAILBOX_ENTITY_ID &&
+          event.payload.verb === 'read' &&
+          typeof event.payload.state?._mailboxIntentId === 'string',
+      )
+      .map((event) => event.payload.state._mailboxIntentId),
+  );
+}
+
+function mailboxMessagesForAgent(agentId) {
+  const readIntentIds = mailboxReadIntentIds(agentId);
+  return currentRunIntents().filter(
+    (envelope) =>
+      envelope.intent?.type === 'SendMailboxMessage' &&
+      envelope.intent.recipientAgentIds.includes(agentId) &&
+      !readIntentIds.has(envelope.intentId),
+  );
+}
+
+function mailboxEnvelopeForAgent(agentId, intentId) {
+  return currentRunIntents().find(
+    (envelope) =>
+      envelope.intentId === intentId &&
+      envelope.intent?.type === 'SendMailboxMessage' &&
+      envelope.intent.recipientAgentIds.includes(agentId),
+  );
+}
+
+function unreadMailboxDeliveries() {
+  return currentRunIntents().flatMap((envelope) => {
+    if (envelope.intent?.type !== 'SendMailboxMessage') return [];
+    return envelope.intent.recipientAgentIds
+      .filter(
+        (agentId) => !mailboxReadIntentIds(agentId).has(envelope.intentId),
+      )
+      .map((agentId) => ({ agentId, intentId: envelope.intentId }));
+  });
+}
+
+function privateMailboxPayload(envelope) {
+  return {
+    intentId: envelope.intentId,
+    occurredAt: envelope.occurredAt,
+    content: envelope.intent.content,
+  };
+}
+
+function readMailboxDraft() {
+  const content = existsSync(mailboxDraftPath)
+    ? readFileSync(mailboxDraftPath, 'utf8')
+    : '';
+  let updatedAt;
+  try {
+    updatedAt = statSync(mailboxDraftPath).mtime.toISOString();
+  } catch {
+    updatedAt = undefined;
+  }
+  return { content, ...(updatedAt ? { updatedAt } : {}) };
+}
+
+function validateMailboxDraft(content) {
+  if (typeof content !== 'string') {
+    throw httpError(400, 'content must be a string');
+  }
+  if (content.length > MAX_MAILBOX_TEXT_LENGTH) {
+    throw httpError(
+      400,
+      `content cannot exceed ${MAX_MAILBOX_TEXT_LENGTH} characters`,
+    );
+  }
+  if (/\p{Cc}/u.test(content.replace(/[\t\n\r]/g, ''))) {
+    throw httpError(400, 'content contains unsupported control characters');
+  }
+  if (/[\u202a-\u202e\u2066-\u2069]/iu.test(content)) {
+    throw httpError(400, 'content contains unsupported direction controls');
+  }
+  return content;
+}
+
+function writeMailboxDraft(content) {
+  const safeContent = validateMailboxDraft(content);
+  writeFileSync(mailboxDraftPath, safeContent, {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+  return readMailboxDraft();
 }
 
 function safeActionReceiptIdentifier(value) {
@@ -2250,7 +2382,14 @@ const PURPOSE_PRIORITY = Object.freeze({
 
 function purposeForResident(
   self,
-  { localNeeds, visibleUnread, entities, people, privateNoteCount },
+  {
+    localNeeds,
+    visibleUnread,
+    unreadMailbox,
+    entities,
+    people,
+    privateNoteCount,
+  },
 ) {
   const profile = residentPurposeProfile(self.role);
   const topicStates = currentResearchEvents()
@@ -2334,6 +2473,20 @@ function purposeForResident(
       resourceId: 'comms-board',
       locationId: 'comms-board',
       capability: 'communicate',
+    });
+  }
+
+  if (unreadMailbox.length > 0) {
+    opportunities.push({
+      id: 'coordination:operator-mail',
+      kind: 'coordination',
+      priority: 'urgent',
+      title: `Read ${unreadMailbox.length} operator dispatch${unreadMailbox.length === 1 ? '' : 'es'}`,
+      reason:
+        'The Commons dispatch box is signaling sealed mail addressed to you.',
+      suggestedAction:
+        'Visit operator-mailbox and use read to open one addressed dispatch at a time.',
+      locationId: OPERATOR_MAILBOX_ENTITY_ID,
     });
   }
 
@@ -2915,9 +3068,7 @@ function rotatedSlots(slots, start) {
 
 function isWorldPosition(value) {
   return (
-    isRecord(value) &&
-    Number.isFinite(value.x) &&
-    Number.isFinite(value.y)
+    isRecord(value) && Number.isFinite(value.x) && Number.isFinite(value.y)
   );
 }
 
@@ -3053,7 +3204,12 @@ function selectImmutableSpawnPosition(agentId) {
   return position ? cloneWorldPosition(position) : undefined;
 }
 
-function selectReactivationPosition(agentId, resident, agents, now = Date.now()) {
+function selectReactivationPosition(
+  agentId,
+  resident,
+  agents,
+  now = Date.now(),
+) {
   const locationId = effectiveLocation(resident, now);
   const active = activeResidents(agents).filter(
     (candidate) => candidate.id !== agentId,
@@ -3076,9 +3232,7 @@ function selectReactivationPosition(agentId, resident, agents, now = Date.now())
   const authoredPosition = candidates.find(
     (candidate) =>
       facilityPositionIsWorldLegal(candidate) &&
-      occupied.every(
-        (other) => !residentCapsulesOverlap(candidate, other),
-      ) &&
+      occupied.every((other) => !residentCapsulesOverlap(candidate, other)) &&
       !residentWhoseActivePlanCrossesPosition(candidate, active, now),
   );
   const position =
@@ -3104,7 +3258,10 @@ function fallbackPositionForLocation(locationId, agentId, spawnPositions) {
   return location ? cloneWorldPosition(location.position) : undefined;
 }
 
-function navigationPlanFor(resident, spawnPositions = immutableSpawnPositions()) {
+function navigationPlanFor(
+  resident,
+  spawnPositions = immutableSpawnPositions(),
+) {
   const navigation = resident?.navigation;
   if (!navigation) return undefined;
   const fromPosition = isWorldPosition(navigation.fromPosition)
@@ -3128,8 +3285,7 @@ function navigationPlanFor(resident, spawnPositions = immutableSpawnPositions())
     : [];
   const suppliedEndpoint = suppliedPath.at(-1);
   const path =
-    suppliedPath.length > 0 &&
-    sameWorldPosition(suppliedEndpoint, toPosition)
+    suppliedPath.length > 0 && sameWorldPosition(suppliedEndpoint, toPosition)
       ? suppliedPath
       : buildArenaPath(
           fromPosition,
@@ -3313,9 +3469,7 @@ function availableAuthoredTargetSlots(
     }
   }
   return preferredAuthoredSlots(targetId, agentId).filter((candidate) =>
-    claimed.every(
-      (occupied) => !residentCapsulesOverlap(candidate, occupied),
-    ),
+    claimed.every((occupied) => !residentCapsulesOverlap(candidate, occupied)),
   );
 }
 
@@ -3339,12 +3493,7 @@ function plannedNavigationPosition(plan, at) {
   );
 }
 
-function conflictingResidentForPlan(
-  plan,
-  agents,
-  agentId,
-  reserveFromMs,
-) {
+function conflictingResidentForPlan(plan, agents, agentId, reserveFromMs) {
   const residents = activeResidents(agents).filter(
     (resident) => resident.id !== agentId,
   );
@@ -3435,10 +3584,7 @@ function proposedMovementPlan(
   const target = worldLocationById(toLocationId);
   if (!target) return undefined;
   const residents = activeResidents(agents);
-  const residentPositions = projectedResidentPositions(
-    residents,
-    acceptedAtMs,
-  );
+  const residentPositions = projectedResidentPositions(residents, acceptedAtMs);
   const fromPosition = residentPositions.get(agentId);
   const toPositions = availableAuthoredTargetSlots(
     agents,
@@ -4259,6 +4405,7 @@ function compileObservation(agentId, after = 0) {
       messageAddressedTo(message, agentId) &&
       !latestAcknowledgement(message.payload.messageId, agentId),
   );
+  const unreadMailbox = mailboxMessagesForAgent(agentId);
   const localNeeds = entities.flatMap((entity) => {
     if (entity.kind === 'plant') {
       const condition = entity.state?.condition;
@@ -4275,6 +4422,7 @@ function compileObservation(agentId, after = 0) {
   const purpose = purposeForResident(self, {
     localNeeds,
     visibleUnread,
+    unreadMailbox,
     entities,
     people,
     privateNoteCount: privateJournalEntriesForSelf.length,
@@ -4364,6 +4512,9 @@ function compileObservation(agentId, after = 0) {
     unreadBoardMessageIds: visibleUnread
       .map((message) => message.payload.messageId)
       .sort((left, right) => left.localeCompare(right)),
+    unreadMailboxIntentIds: unreadMailbox
+      .map((envelope) => envelope.intentId)
+      .sort((left, right) => left.localeCompare(right)),
     visibleSpeech: socialEvents.slice(-24).map((event) => ({
       sequence: event.sequence,
       speechId: event.payload.speechId,
@@ -4451,6 +4602,7 @@ function compileObservation(agentId, after = 0) {
     }`,
     `CHANGED ${worldChanges.length > 0 ? worldChanges.join(' ; ') : 'nothing locally since cursor'}`,
     `BOARD ${locationId === 'comms-board' ? `unread:${visibleUnread.length} accessible here` : visibleUnread.length > 0 ? `chime:${visibleUnread.length} unread; contents are at comms-board` : 'quiet'}`,
+    `MAILBOX ${locationId === OPERATOR_MAILBOX_ENTITY_ID ? `unread:${unreadMailbox.length} accessible here; use read to open one addressed dispatch` : unreadMailbox.length > 0 ? `flag:${unreadMailbox.length} unread; contents are at operator-mailbox in Commons` : 'quiet'}`,
     `JOURNAL private-to-you | notes:${privateJournalEntriesForSelf.length} | ${privateJournalAccessible ? 'open at this writing desk' : 'bound volume at context-kiosk; use the desk to open it'}`,
     `MEM ${
       self.inspectedEntityIds.has('facility-plan')
@@ -4521,6 +4673,10 @@ function compileObservation(agentId, after = 0) {
     board: {
       unreadCount: visibleUnread.length,
       accessible: locationId === 'comms-board',
+    },
+    mailbox: {
+      unreadCount: unreadMailbox.length,
+      accessible: locationId === OPERATOR_MAILBOX_ENTITY_ID,
     },
     journal: {
       privacy: 'owner-only',
@@ -4603,7 +4759,7 @@ function agentContext(agentId, after = 0) {
       self.assignmentMode === 'self-directed'
         ? SELF_DIRECTED_DIRECTIVE
         : AUTONOMY_DIRECTIVE,
-    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | VISION ${observation.place.perception.vision}/${observation.place.light} | WITH ${withLabel} | SPACE present:${observation.space.residentsPresent},talk:${observation.space.conversationalAgentIds.join(',') || 'none'},incoming:${observation.space.incoming.length},leaving:${observation.space.leaving.length} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | SEQ ${state.sequence}`,
+    brief: `MODE ${self.assignmentMode === 'self-directed' ? 'SELF-DIRECTED' : 'DIRECTED'} | AREA ${room.id} / ${room.name} | VISION ${observation.place.perception.vision}/${observation.place.light} | WITH ${withLabel} | SPACE present:${observation.space.residentsPresent},talk:${observation.space.conversationalAgentIds.join(',') || 'none'},incoming:${observation.space.incoming.length},leaving:${observation.space.leaving.length} | ELSEWHERE ${elsewhere || 'none'} | BOARD unread:${visibleUnread.length} | MAILBOX unread:${observation.mailbox.unreadCount} | SEQ ${state.sequence}`,
     observation,
     self: {
       id: self.id,
@@ -4736,10 +4892,23 @@ function performWorldAction(agentId, body) {
     if (!worldActionMatches(prior, body)) {
       throw httpError(409, 'actionId was already used for a different action');
     }
+    const mailboxIntentId =
+      prior.kind === 'world.interaction' &&
+      prior.payload.entityId === OPERATOR_MAILBOX_ENTITY_ID &&
+      prior.payload.verb === 'read' &&
+      typeof prior.payload.state?._mailboxIntentId === 'string'
+        ? prior.payload.state._mailboxIntentId
+        : undefined;
+    const mailboxEnvelope = mailboxIntentId
+      ? mailboxEnvelopeForAgent(agentId, mailboxIntentId)
+      : undefined;
     return {
       event: prior,
       created: false,
       observation: compileObservation(agentId, prior.sequence - 1),
+      ...(mailboxEnvelope
+        ? { mail: privateMailboxPayload(mailboxEnvelope) }
+        : {}),
     };
   }
   if (!hasText(body, 'observationId')) {
@@ -4957,8 +5126,21 @@ function performWorldAction(agentId, body) {
     let nextState = currentState;
     let stateVersion = worldState?.stateVersion ?? 0;
     let result;
+    let mail;
 
-    if (resource) {
+    if (entity.id === OPERATOR_MAILBOX_ENTITY_ID && verb === 'read') {
+      const envelope = mailboxMessagesForAgent(agentId)[0];
+      if (!envelope) {
+        throw httpError(409, 'No unread operator mail is addressed to you');
+      }
+      nextState = {
+        ...currentState,
+        _mailboxIntentId: envelope.intentId,
+      };
+      stateVersion += 1;
+      result = 'One sealed operator dispatch was opened by its addressee.';
+      mail = privateMailboxPayload(envelope);
+    } else if (resource) {
       if (!new Set(['inspect', 'use']).has(verb)) {
         throw httpError(409, `${verb} is not a grounded interaction here`);
       }
@@ -5076,6 +5258,7 @@ function performWorldAction(agentId, body) {
       event,
       created: true,
       observation: compileObservation(agentId, event.sequence - 1),
+      ...(mail ? { mail } : {}),
     };
   }
 
@@ -5266,6 +5449,27 @@ function appendEvent(body, source = 'codex') {
           .join(', ')}`,
       );
     }
+    const unreadMailbox = mailboxMessagesForAgent(body.agentId.trim());
+    if (unreadMailbox.length > 0) {
+      throw httpError(
+        409,
+        `Read operator mailbox dispatches before completing: ${unreadMailbox
+          .map((envelope) => envelope.intentId)
+          .join(', ')}`,
+      );
+    }
+  }
+
+  if (kind === 'run.completed') {
+    const unreadMailbox = unreadMailboxDeliveries();
+    if (unreadMailbox.length > 0) {
+      throw httpError(
+        409,
+        `Collect operator mailbox dispatches before completing the run: ${[
+          ...new Set(unreadMailbox.map(({ intentId }) => intentId)),
+        ].join(', ')}`,
+      );
+    }
   }
 
   if (kind === 'research.topic.selected') {
@@ -5393,18 +5597,102 @@ function appendEvent(body, source = 'codex') {
 }
 
 function appendIntent(body) {
-  const intent = isRecord(body.intent) ? body.intent : body;
+  const submittedIntent = isRecord(body.intent) ? body.intent : body;
   const intentId = hasText(body, 'intentId')
-    ? body.intentId.trim()
+    ? assertChatIdentifier(body.intentId, 'intentId')
     : `intent_${randomUUID()}`;
   const receivedAt = new Date().toISOString();
-  const error = validateIntent(intent);
+  const error = validateIntent(submittedIntent);
 
   if (error) {
     return {
       receipt: { intentId, accepted: false, receivedAt, reason: error },
       envelope: undefined,
     };
+  }
+
+  const intent =
+    submittedIntent.type === 'SendMailboxMessage'
+      ? {
+          ...submittedIntent,
+          recipientAgentIds: submittedIntent.recipientAgentIds.map((value) =>
+            value.trim(),
+          ),
+          content: assertSafeBoardText(
+            submittedIntent.content,
+            'intent.content',
+            MAX_MAILBOX_TEXT_LENGTH,
+          ),
+        }
+      : submittedIntent;
+
+  const existing = currentRunIntents().find(
+    (candidate) => candidate.intentId === intentId,
+  );
+  if (existing) {
+    if (JSON.stringify(existing.intent) !== JSON.stringify(intent)) {
+      return {
+        receipt: {
+          intentId,
+          accepted: false,
+          receivedAt,
+          reason: 'intentId is already bound to different content',
+        },
+        envelope: undefined,
+      };
+    }
+    return {
+      receipt: {
+        intentId,
+        accepted: true,
+        receivedAt: existing.occurredAt,
+      },
+      envelope: existing,
+    };
+  }
+
+  if (intents.some((candidate) => candidate.intentId === intentId)) {
+    return {
+      receipt: {
+        intentId,
+        accepted: false,
+        receivedAt,
+        reason: 'intentId belongs to an earlier facility run',
+      },
+      envelope: undefined,
+    };
+  }
+
+  if (intent.type === 'SendMailboxMessage') {
+    if (!state.runId || currentRunIsClosed()) {
+      return {
+        receipt: {
+          intentId,
+          accepted: false,
+          receivedAt,
+          reason: 'Mailbox dispatch requires an open facility run',
+        },
+        envelope: undefined,
+      };
+    }
+    const agents = projectAgentStates();
+    const inactiveRecipient = intent.recipientAgentIds.find((agentId) => {
+      const agent = agents.get(agentId);
+      return (
+        !agent || new Set(['completed', 'failed', 'canceled']).has(agent.status)
+      );
+    });
+    if (inactiveRecipient) {
+      return {
+        receipt: {
+          intentId,
+          accepted: false,
+          receivedAt,
+          reason: 'Mailbox recipients must be active residents',
+        },
+        envelope: undefined,
+      };
+    }
   }
 
   const nextIntentSequence = state.intentSequence + 1;
@@ -5461,6 +5749,7 @@ const server = createServer(async (request, response) => {
         latestIntentSequence: state.intentSequence,
         eventCount: runEvents.length,
         intentCount: currentRunIntents().length,
+        mailboxUnreadDeliveryCount: unreadMailboxDeliveries().length,
         journalEventCount: events.length,
         journalIntentCount: intents.length,
         boardMessageCount: runEvents.filter(
@@ -5483,6 +5772,7 @@ const server = createServer(async (request, response) => {
         events: currentRunEvents().filter((event) => event.sequence > after),
         latestSequence: state.sequence,
         runId: state.runId,
+        mailboxUnreadDeliveryCount: unreadMailboxDeliveries().length,
       });
       return;
     }
@@ -5539,6 +5829,12 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && url.pathname === '/intents') {
+      if (!hasEmitterAuthority(request)) {
+        writeJson(request, response, 401, {
+          error: 'Emitter authentication required',
+        });
+        return;
+      }
       const after = parseAfter(url);
       if (after === undefined) {
         writeJson(request, response, 400, {
@@ -5553,6 +5849,17 @@ const server = createServer(async (request, response) => {
         latestSequence: state.intentSequence,
         runId: state.runId,
       });
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/mailbox/draft') {
+      writeJson(request, response, 200, readMailboxDraft());
+      return;
+    }
+
+    if (request.method === 'PUT' && url.pathname === '/mailbox/draft') {
+      const body = await readJsonBody(request);
+      writeJson(request, response, 200, writeMailboxDraft(body.content));
       return;
     }
 

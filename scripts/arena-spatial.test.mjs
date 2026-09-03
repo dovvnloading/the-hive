@@ -144,7 +144,11 @@ void test('facility activities are unique, capability-backed, and physically dis
   assert.equal(inferToolCapability('view file'), 'read');
   assert.equal(inferToolCapability('audit'), 'test');
 
-  for (const propId of ['utility-tools-board', 'build-verification-chart']) {
+  for (const propId of [
+    'utility-tools-board',
+    'build-verification-chart',
+    'operator-mailbox',
+  ]) {
     const prop = FACILITY_PROPS.find((candidate) => candidate.id === propId);
     assert.ok(prop, `${propId} is not in the authoritative facility catalog`);
     assert.equal(
@@ -161,6 +165,42 @@ void test('facility activities are unique, capability-backed, and physically dis
       true,
     );
   }
+});
+
+void test('operator mailbox is a reachable wall fixture outside collision geometry', () => {
+  const mailbox = FACILITY_PROPS.find(
+    (candidate) => candidate.id === 'operator-mailbox',
+  );
+  assert.ok(mailbox);
+  assert.equal(mailbox.roomId, 'context');
+  assert.deepEqual(mailbox.position, { x: 50, y: 74.554 });
+  assert.equal(
+    mailbox.interactions.some(({ verb }) => verb === 'read'),
+    true,
+  );
+  assert.equal(capsuleIsWorldLegal(mailbox.slots[0]), true);
+  assert.equal(
+    FACILITY_COLLISION_GEOMETRY.solids.some(
+      (solid) => solid.id === 'operator-mailbox-body',
+    ),
+    false,
+  );
+
+  const hub = stationById('context-hub').slots[0];
+  const approach = buildArenaPath(
+    hub,
+    mailbox.slots[0],
+    'context-hub',
+    'operator-mailbox',
+  );
+  const returnPath = buildArenaPath(
+    mailbox.slots[0],
+    hub,
+    'operator-mailbox',
+    'context-hub',
+  );
+  assert.equal(facilityPathIsSweptLegal(hub, approach), true);
+  assert.equal(facilityPathIsSweptLegal(mailbox.slots[0], returnPath), true);
 });
 
 void test('four simultaneous arrivals receive capsule-safe Commons positions', () => {
@@ -299,8 +339,7 @@ void test('every occupied portal has collision-free room egress past coexisting 
     const corridor = neighbors
       .map((stationId) => stationById(stationId))
       .find(
-        (station) =>
-          station.roomId === 'corridor' && station.kind !== 'portal',
+        (station) => station.roomId === 'corridor' && station.kind !== 'portal',
       );
     assert.ok(hub, `${door.id} needs a room-side neighbor`);
     assert.ok(corridor, `${door.id} needs a corridor-side neighbor`);

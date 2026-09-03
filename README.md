@@ -346,11 +346,39 @@ operator journal may show current-run events, but authenticated reads still
 filter direct threads to their members. Opening the visual journal never marks
 a message read.
 
+### Operator dispatch box
+
+The wall-mounted dispatch box in Commons is the human input surface. Click it
+in the facility to open a compact composer, choose one active resident or the
+current active roster, and write a plain-text dispatch. The draft is saved to
+the ignored local file `.arena/operator-mailbox.md`; it can also be edited
+directly before opening the composer again. Draft and queued message text are
+local cleartext, so do not place credentials or private-journal material in it.
+
+Sending appends one `SendMailboxMessage` intent with a snapshot of the selected
+active resident IDs. A successful browser receipt means **queued**, not read or
+completed. The root wakes the named real processes without copying the message
+body into their prompt. Each resident sees only an unread count, walks to
+`operator-mailbox`, and uses the authenticated `read` interaction to collect
+one addressed dispatch. The private action response contains the text; the
+shared world journal records only that a sealed dispatch and intent ID were
+collected. Replies and durable handoffs continue through the existing comms
+board.
+
+The room sprite uses the empty mailbox when no unread deliveries remain and
+the letter-visible mailbox while at least one addressed delivery is waiting.
+This is a read-only projection of bridge state; clicking the box or opening the
+composer does not fabricate mail.
+
 Operator commands are read with:
 
 ```powershell
 node scripts/arena-driver.mjs intents --after 0 --pretty
 ```
+
+The driver authenticates this root-only read with the bridge's ignored local
+emitter token; the browser and unauthenticated local callers cannot enumerate
+sealed message bodies.
 
 The active Codex orchestrator translates those intents into collaboration operations and correlates the resulting agent events. Browser-originated intents and native Codex chat ingresses share the same append-only event and correlation contract.
 

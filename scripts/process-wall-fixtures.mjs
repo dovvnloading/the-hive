@@ -61,6 +61,20 @@ const fixtures = [
     size: [68, 34],
     removeNeutralBackground: false,
   },
+  {
+    source: 'sources/operator-mailbox-source-v1.png',
+    output: 'operator-mailbox-v1.png',
+    size: [24, 20],
+    removeNeutralBackground: true,
+    hardAlpha: true,
+  },
+  {
+    source: 'sources/operator-mailbox-empty-source-v1.png',
+    output: 'operator-mailbox-empty-v1.png',
+    size: [24, 20],
+    removeNeutralBackground: true,
+    hardAlpha: true,
+  },
 ];
 
 function neutralBackdropPixel(data, index) {
@@ -153,7 +167,7 @@ for (const fixture of fixtures) {
 
   const bounds = alphaBounds(data, info.width, info.height);
   const [width, height] = fixture.size;
-  const processed = await sharp(data, {
+  const pipeline = sharp(data, {
     raw: {
       width: info.width,
       height: info.height,
@@ -167,9 +181,30 @@ for (const fixture of fixtures) {
       kernel: sharp.kernel.lanczos3,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     })
-    .sharpen({ sigma: 0.55, m1: 0.7, m2: 1.25 })
-    .png({ palette: true, colours: 96, dither: 0, effort: 10 })
-    .toBuffer();
+    .sharpen({ sigma: 0.55, m1: 0.7, m2: 1.25 });
+
+  let processed;
+  if (fixture.hardAlpha) {
+    const resized = await pipeline.raw().toBuffer({ resolveWithObject: true });
+    for (let offset = 0; offset < resized.data.length; offset += 4) {
+      const visible = resized.data[offset + 3] >= 96;
+      resized.data[offset + 3] = visible ? 255 : 0;
+      if (!visible) {
+        resized.data[offset] = 0;
+        resized.data[offset + 1] = 0;
+        resized.data[offset + 2] = 0;
+      }
+    }
+    processed = await sharp(resized.data, {
+      raw: resized.info,
+    })
+      .png({ palette: true, colours: 96, dither: 0, effort: 10 })
+      .toBuffer();
+  } else {
+    processed = await pipeline
+      .png({ palette: true, colours: 96, dither: 0, effort: 10 })
+      .toBuffer();
+  }
 
   await fs.writeFile(path.join(generatedRoot, fixture.output), processed);
 }

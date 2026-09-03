@@ -451,11 +451,19 @@ function emitBody(kind, payload, flags, extra = {}) {
 
 async function execute(command, args, flags, baseUrl) {
   if (command === 'health') return request(baseUrl, '/health');
-  if (command === 'events' || command === 'intents') {
+  if (command === 'events') {
     const after = flags.after ?? '0';
     if (!/^\d+$/.test(after))
       throw new Error('--after must be a non-negative integer');
-    return request(baseUrl, `/${command}?after=${after}`);
+    return request(baseUrl, `/events?after=${after}`);
+  }
+  if (command === 'intents') {
+    const after = flags.after ?? '0';
+    if (!/^\d+$/.test(after))
+      throw new Error('--after must be a non-negative integer');
+    return request(baseUrl, `/intents?after=${after}`, {
+      headers: { 'X-Arena-Emitter-Token': await emitterToken() },
+    });
   }
   if (command === 'intent') {
     const intent = await jsonFlag(flags.payload);

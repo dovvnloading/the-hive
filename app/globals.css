@@ -160,7 +160,8 @@ button {
 }
 
 .comms-board-hotspot,
-.field-journal-hotspot {
+.field-journal-hotspot,
+.operator-mailbox-hotspot {
   position: absolute;
   z-index: 2;
   padding: 0;
@@ -178,11 +179,219 @@ button {
 
 .comms-board-hotspot:hover,
 .field-journal-hotspot:hover,
+.operator-mailbox-hotspot:hover,
 .comms-board-hotspot:focus-visible,
-.field-journal-hotspot:focus-visible {
+.field-journal-hotspot:focus-visible,
+.operator-mailbox-hotspot:focus-visible {
   background: rgba(214, 185, 140, 0.06);
   border-color: rgba(214, 185, 140, 0.78);
   outline: none;
+}
+
+.operator-mailbox {
+  width: min(440px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: #3b281b;
+  color-scheme: light;
+  background: #d9c49c;
+  border: 3px solid #5e3a24;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 3px #b68445,
+    0 0 0 6px #17100b,
+    0 22px 60px rgba(0, 0, 0, 0.68);
+}
+
+.operator-mailbox::backdrop {
+  background: rgba(14, 10, 7, 0.66);
+  backdrop-filter: blur(1px);
+}
+
+.operator-mailbox > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 17px 13px;
+  color: #f3dfb4;
+  background: #4b2e1e;
+  border-bottom: 3px double #b68445;
+}
+
+.operator-mailbox > header p,
+.operator-mailbox > header h2 {
+  margin: 0;
+}
+
+.operator-mailbox > header p {
+  color: #cfae75;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.operator-mailbox > header h2 {
+  margin-top: 3px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.operator-mailbox-close {
+  display: grid;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  color: #f3dfb4;
+  font-size: 1.45rem;
+  line-height: 1;
+  place-items: center;
+  background: #372116;
+  border: 1px solid #a87842;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+.operator-mailbox form {
+  display: grid;
+  gap: 9px;
+  padding: 17px;
+  background:
+    linear-gradient(rgba(92, 59, 35, 0.08) 1px, transparent 1px) 0 9px / 100%
+      24px,
+    #dfcba3;
+}
+
+.operator-mailbox label,
+.operator-mailbox-message-label span,
+.operator-mailbox-meta,
+.operator-mailbox footer small {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+.operator-mailbox label {
+  font-weight: 700;
+}
+
+.operator-mailbox select,
+.operator-mailbox textarea {
+  width: 100%;
+  color: #332116;
+  font: inherit;
+  font-size: 1rem;
+  background: rgba(255, 246, 217, 0.92);
+  border: 1px solid #7b5739;
+  border-radius: 1px;
+  box-shadow: inset 0 1px 2px rgba(67, 38, 20, 0.2);
+}
+
+.operator-mailbox select {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.operator-mailbox textarea {
+  min-height: 150px;
+  max-height: min(38dvh, 280px);
+  padding: 11px 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.operator-mailbox select:focus-visible,
+.operator-mailbox textarea:focus-visible,
+.operator-mailbox button:focus-visible {
+  outline: 2px solid #395f5b;
+  outline-offset: 2px;
+}
+
+.operator-mailbox-message-label,
+.operator-mailbox-meta,
+.operator-mailbox footer,
+.operator-mailbox footer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.operator-mailbox-message-label span,
+.operator-mailbox-meta,
+.operator-mailbox footer small {
+  color: #6c523c;
+}
+
+.operator-mailbox-message-label .over-limit {
+  color: #934c3f;
+  font-weight: 700;
+}
+
+.operator-mailbox-meta {
+  min-height: 34px;
+  align-items: flex-start;
+  line-height: 1.35;
+}
+
+.operator-mailbox-meta span:last-child {
+  color: #395f5b;
+  text-align: right;
+}
+
+.operator-mailbox footer {
+  align-items: flex-end;
+  padding-top: 5px;
+  border-top: 1px solid rgba(92, 59, 35, 0.28);
+}
+
+.operator-mailbox footer small {
+  max-width: 180px;
+  line-height: 1.35;
+}
+
+.operator-mailbox footer button {
+  min-height: 40px;
+  padding: 8px 12px;
+  color: #f3dfb4;
+  font:
+    700 0.875rem ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  background: #5e3a24;
+  border: 1px solid #382217;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+.operator-mailbox footer button[type='submit'] {
+  background: #395f5b;
+}
+
+.operator-mailbox footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+@media (max-width: 520px) {
+  .operator-mailbox footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .operator-mailbox footer small {
+    max-width: none;
+  }
+
+  .operator-mailbox footer > div {
+    justify-content: flex-end;
+  }
 }
 
 .field-journal {

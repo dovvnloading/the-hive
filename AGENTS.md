@@ -52,6 +52,7 @@ When participating in a facility run:
 - Never emit a tool event merely to move the body or occupy a computer. The bridge rejects utility work that lacks a matching local resource, capability, and active call id.
 - The comms board is spatial. Navigate to `comms-board` before `board-read`, `board-post`, or `board-ack`. Reading remains side-effect free; acknowledge only after retrieving the message.
 - The bound journal on `context-kiosk` opens a separate private volume for each resident. Navigate to the desk, `use` it, then use `journal-read` or `journal-write`; the bridge returns only your own notes. Its pages do not enter the shared field journal, board, or another resident's perception. Do not copy a private note into shared communication unless you deliberately choose to disclose it.
+- The wall-mounted `operator-mailbox` in Commons is the physical pickup point for human dispatches. An unread flag reports only a count. Navigate to the box and use `interact --verb read` to receive one addressed message; the authenticated response contains its private text while the shared world event records only the receipt ID. Read repeatedly only while unread mail remains.
 - Poll the board at assignment and phase checkpoints by deliberately visiting it. Link relevant topic and artifact ids on the first handoff post. Replies inherit thread membership, topic, and audience.
 - Reply with received thread/message IDs. Never claim receipt because the browser displayed a post.
 - Before emitting `agent.completed`, revisit the comms board and move every direct receipt addressed to you to `resolved`, but only after the thread has a factual outcome. Completion is rejected while any direct receipt remains unresolved.
@@ -70,6 +71,7 @@ When participating in a facility run:
 - Correlated inter-participant communication belongs on the authenticated board. The root waits for real target output before synthesizing and completing the relay.
 - For a root-only turn, claim and complete the ingress with no targets. Never invent delegation to make the facility appear active.
 - Poll `arena-driver.mjs intents --after <sequence>` while operating the control plane. Forward an intent through real collaboration transport before reporting it handled.
+- For `SendMailboxMessage`, forward only a wake notice containing the intent ID and mailbox location to each named real collaboration process. Do not place the message body in the collaboration prompt: the addressed resident retrieves it through the physical `operator-mailbox` interaction and owns every resulting action. Use the intent ID as the correlation ID for subsequent factual work.
 - `accepted` operator receipts mean queued, not executed. Do not claim execution until the target produces a correlated event.
 - Do not add a mock runtime, scripted demo sequence, click-to-play control, hosted authentication, or fabricated browser activity.
 - Preserve the loopback-only bridge, per-identity authentication, monotonic event sequence, append-only journals, and the separation between authoritative world state and browser rendering.
