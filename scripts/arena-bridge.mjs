@@ -22,6 +22,7 @@ import {
   AUTONOMY_DIRECTIVE,
   SELF_DIRECTED_DIRECTIVE,
   FACILITY_PROPS,
+  FACILITY_REPLAY_OVERFLOW_SLOTS,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
   FACILITY_SPAWN_QUEUE_SLOTS,
@@ -3059,7 +3060,10 @@ function residentCapsulesOverlap(left, right) {
   const dx = ((right.x - left.x) / 100) * 768;
   const rawDy = Math.abs(((right.y - left.y) / 100) * 448);
   const dy = Math.max(0, rawDy - 14);
-  return Math.hypot(dx, dy) < RESIDENT_BODY_CLEARANCE_PX;
+  // Authored lanes may sit at exactly the required clearance. Absorb only
+  // floating-point roundoff so 32px remains clear while every real overlap
+  // still reserves the path.
+  return Math.hypot(dx, dy) + 1e-6 < RESIDENT_BODY_CLEARANCE_PX;
 }
 
 function rotatedSlots(slots, start) {
@@ -3102,18 +3106,6 @@ function observationSlotsFor(locationId, agentId) {
   ];
 }
 
-const LEGACY_OVERFLOW_SLOTS = Object.freeze({
-  'context-hub': Object.freeze([{ x: 44.661, y: 89.286 }]),
-  'context-kiosk': Object.freeze([
-    { x: 47.135, y: 85.714 },
-    { x: 51.302, y: 85.714 },
-  ]),
-  commons: Object.freeze([
-    { x: 43.75, y: 89.286 },
-    { x: 47.917, y: 89.286 },
-  ]),
-});
-
 function legacyOverflowPosition(
   locationId,
   agentId,
@@ -3128,7 +3120,7 @@ function legacyOverflowPosition(
       (occupied) => !residentCapsulesOverlap(candidate, occupied),
     ) &&
     additionallyAvailable(candidate);
-  for (const candidate of LEGACY_OVERFLOW_SLOTS[locationId] ?? []) {
+  for (const candidate of FACILITY_REPLAY_OVERFLOW_SLOTS[locationId] ?? []) {
     if (available(candidate)) return cloneWorldPosition(candidate);
   }
   const anchors = [...(location.slots ?? []), location.position];
@@ -3592,6 +3584,19 @@ function proposedMovementPlan(
     toLocationId,
     acceptedAtMs,
   );
+  if (
+    fromLocationId === 'spawn-lift' &&
+    toLocationId === 'context-hub' &&
+    fromPosition
+  ) {
+    // Preserve the resident's side of the widened Commons. Hash order is a
+    // deterministic identity preference, not a reason to cross an open lane.
+    toPositions.sort(
+      (left, right) =>
+        Math.abs(left.x - fromPosition.x) -
+          Math.abs(right.x - fromPosition.x) || left.x - right.x,
+    );
+  }
   const toPosition = toPositions[0];
   if (!fromPosition || !toPosition) {
     return {

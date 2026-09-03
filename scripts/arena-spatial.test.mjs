@@ -5,9 +5,12 @@ import { createServer as createViteServer } from 'vite';
 
 import {
   FACILITY_COLLISION_GEOMETRY,
+  FACILITY_COMMONS_LAYOUT,
   FACILITY_LIGHT_LAYOUT,
   FACILITY_PROPS,
   FACILITY_RESOURCES,
+  FACILITY_ROOMS,
+  FACILITY_WAYPOINTS,
   LIGHT_SWITCH_REACH_PX,
   STATIONS,
   WORLD_EDGES,
@@ -173,7 +176,11 @@ void test('operator mailbox is a reachable wall fixture outside collision geomet
   );
   assert.ok(mailbox);
   assert.equal(mailbox.roomId, 'context');
-  assert.deepEqual(mailbox.position, { x: 50, y: 74.554 });
+  assertVecAlmostEqual(
+    mailbox.position,
+    { x: (320 / 768) * 100, y: (334 / 448) * 100 },
+    'mailbox standing point',
+  );
   assert.equal(
     mailbox.interactions.some(({ verb }) => verb === 'read'),
     true,
@@ -221,6 +228,18 @@ void test('every authored Commons arrival lane preserves body clearance and a sw
   const liftSlots = stationById('spawn-lift').slots;
   const allSpawnPositions = [...liftSlots, ...FACILITY_SPAWN_QUEUE_SLOTS];
   assert.equal(allSpawnPositions.length, 4);
+  assert.deepEqual(
+    allSpawnPositions.map((slot) => [
+      Math.round((slot.x / 100) * ARENA_WORLD_WIDTH),
+      Math.round((slot.y / 100) * ARENA_WORLD_HEIGHT),
+    ]),
+    [
+      [352, 378],
+      [416, 378],
+      [320, 404],
+      [448, 404],
+    ],
+  );
   for (let left = 0; left < allSpawnPositions.length; left += 1) {
     for (let right = left + 1; right < allSpawnPositions.length; right += 1) {
       assert.ok(
@@ -235,58 +254,104 @@ void test('every authored Commons arrival lane preserves body clearance and a sw
     }
   }
 
-  const contextHub = stationById('context-hub').slots[0];
-  const plantTarget = stationById('plant-context').slots[0];
-  const westSlot = FACILITY_SPAWN_QUEUE_SLOTS.find(
-    (slot) => slot.x <= 47 && slot.y < 80,
+  const landingSlots = stationById('context-hub').slots;
+  assert.deepEqual(
+    landingSlots.map((slot) => [
+      Math.round((slot.x / 100) * ARENA_WORLD_WIDTH),
+      Math.round((slot.y / 100) * ARENA_WORLD_HEIGHT),
+    ]),
+    [
+      [352, 332],
+      [416, 332],
+    ],
   );
-  const lowSlot = FACILITY_SPAWN_QUEUE_SLOTS.find((slot) => slot.y > 80);
-  assert.ok(westSlot);
-  assert.ok(lowSlot);
-  assert.ok(
-    pixelDistance(lowSlot, plantTarget) >= RESIDENT_BODY_CLEARANCE_PX,
-    'the low spawn queue bay must not block the Commons plant target',
-  );
-  assert.equal(capsulesOverlap(lowSlot, plantTarget), false);
+  assert.equal(capsulesOverlap(landingSlots[0], landingSlots[1]), false);
 
-  const westExit = buildArenaPath(
-    westSlot,
-    contextHub,
-    'spawn-lift',
-    'context-hub',
-  );
-  assert.deepEqual(westExit, [contextHub], 'the west bay has direct egress');
+  for (const spawn of allSpawnPositions) {
+    const nearestLanding =
+      spawn.x < FACILITY_COMMONS_LAYOUT.transferJunction.x
+        ? landingSlots[0]
+        : landingSlots[1];
+    const exit = buildArenaPath(
+      spawn,
+      nearestLanding,
+      'spawn-lift',
+      'context-hub',
+    );
+    assert.equal(facilityPathIsSweptLegal(spawn, exit), true);
+    assert.equal(
+      exit.some(
+        (point) =>
+          point.x === FACILITY_COMMONS_LAYOUT.transferJunction.x &&
+          point.y === FACILITY_COMMONS_LAYOUT.transferJunction.y,
+      ),
+      true,
+      'every arrival route must use the shared transfer junction',
+    );
+    assert.deepEqual(exit.at(-1), nearestLanding);
+  }
+});
 
-  const lowExit = buildArenaPath(
-    lowSlot,
-    contextHub,
-    'spawn-lift',
-    'context-hub',
+void test('lower-room bounds, partitions, doorway, and Commons service points share one expanded contract', () => {
+  const lowerRooms = Object.fromEntries(
+    ['synthesis', 'context', 'build'].map((roomId) => {
+      const room = FACILITY_ROOMS.find((candidate) => candidate.id === roomId);
+      return [roomId, room?.rect];
+    }),
   );
-  const lowReturn = buildArenaPath(
-    contextHub,
-    lowSlot,
-    'context-hub',
-    'spawn-lift',
+  assert.deepEqual(lowerRooms, {
+    synthesis: { x: 32, y: 256, w: 256, h: 160 },
+    context: { x: 288, y: 256, w: 192, h: 160 },
+    build: { x: 480, y: 256, w: 256, h: 160 },
+  });
+  assert.deepEqual(FACILITY_COLLISION_GEOMETRY.exteriorLanding, {
+    x: 288,
+    y: 366,
+    w: 192,
+    h: 50,
+  });
+  assert.equal(FACILITY_COLLISION_GEOMETRY.liftOpening.centerX, 384);
+  assert.equal(
+    FACILITY_COLLISION_GEOMETRY.southDoors.find(
+      (door) => door.locationId === 'door-context',
+    )?.centerX,
+    384,
   );
-  assert.deepEqual(lowExit.slice(0, 2), [
-    { x: 44.661, y: 89.286 },
-    { x: 44.661, y: 74.107 },
+  assert.deepEqual(
+    FACILITY_COLLISION_GEOMETRY.solids
+      .filter((solid) => solid.id.startsWith('partition-') && solid.y === 256)
+      .map((solid) => solid.x),
+    [284, 476],
+  );
+  const contextWalls = FACILITY_COLLISION_GEOMETRY.solids.filter((solid) =>
+    solid.id.startsWith('back-wall-context-'),
+  );
+  assert.deepEqual(
+    contextWalls.map(({ x, w }) => [x, x + w]),
+    [
+      [288, 366],
+      [402, 480],
+    ],
+  );
+
+  const commonsSlots = stationById('commons').slots.map((slot) => [
+    Math.round((slot.x / 100) * ARENA_WORLD_WIDTH),
+    Math.round((slot.y / 100) * ARENA_WORLD_HEIGHT),
   ]);
-  assert.equal(facilityPathIsSweptLegal(lowSlot, lowExit), true);
-  assert.equal(facilityPathIsSweptLegal(contextHub, lowReturn), true);
-
-  const mainLiftExit = buildArenaPath(
-    liftSlots[0],
-    contextHub,
-    'spawn-lift',
-    'context-hub',
-  );
-  assert.deepEqual(mainLiftExit.slice(0, 2), [
-    { x: 52.083, y: 74.5 },
-    { x: 47, y: 74.5 },
+  assert.deepEqual(commonsSlots, [
+    [352, 404],
+    [416, 404],
   ]);
-  assert.equal(facilityPathIsSweptLegal(liftSlots[0], mainLiftExit), true);
+  assert.equal(
+    FACILITY_WAYPOINTS.find((waypoint) => waypoint.id === 'context-hub')
+      ?.capacity,
+    2,
+  );
+  assert.equal(
+    FACILITY_WAYPOINTS.find((waypoint) => waypoint.id === 'door-context')
+      ?.capacity,
+    1,
+  );
 });
 
 void test('build plant remains outside the doorway opening and approach lane', () => {
@@ -460,7 +525,7 @@ function pathClearsStationaryBodies(fromPosition, path, stationaryPositions) {
 
 void test('door-context egress retains a later hash-ordered hall slot when the first route crosses a parked resident', () => {
   const fromPosition = { ...stationById('door-context').slots[0] };
-  const parkedPosition = { x: 52.25, y: 50 };
+  const parkedPosition = { x: 56.75, y: 50 };
   const reserved = [];
   const hashOrderedSlots = stationById('hall-center').slots.map(() => {
     const slot = slotForAgent('hall-center', 'mover-smoke', reserved);
@@ -474,7 +539,7 @@ void test('door-context egress retains a later hash-ordered hall slot when the f
     { x: 47.75, y: 50 },
     { x: 52.25, y: 50 },
   ]);
-  assert.equal(capsulesOverlap(hashOrderedSlots[0], parkedPosition), false);
+  assert.equal(capsulesOverlap(hashOrderedSlots[0], parkedPosition), true);
   const firstPath = buildArenaPath(
     fromPosition,
     hashOrderedSlots[0],
@@ -695,7 +760,7 @@ void test('all station slots and semantic edge routes clear static world geometr
   for (const slot of arrival.slots) {
     const pixelY = (slot.y / 100) * 448;
     assert.equal(capsuleIsWorldLegal(slot), true);
-    assert.ok(pixelY >= 339 && pixelY <= 341);
+    assert.equal(Math.round(pixelY), 378);
   }
 });
 
@@ -754,7 +819,15 @@ void test('non-portal edges provide occupant-aware egress without trapping full 
       if (from.slots.length > 1) exercisedMultiSlotStations.add(fromId);
 
       if (
-        ['spawn-lift', 'hall-west', 'hall-center', 'hall-east'].includes(fromId)
+        [
+          'spawn-lift',
+          'context-hub',
+          'context-kiosk',
+          'commons',
+          'hall-west',
+          'hall-center',
+          'hall-east',
+        ].includes(fromId)
       ) {
         const sourceSlotsForDrain = occupancySlotsFor(fromId);
         assert.equal(
@@ -1049,7 +1122,11 @@ void test('every authored chair selects the matching directional seated sheet', 
   const publish = FACILITY_RESOURCES.find(
     (resource) => resource.id === 'publish-console',
   );
-  assert.deepEqual(publish?.seatedPositions, [{ x: 32.161, y: 81.027 }]);
+  assertVecAlmostEqual(
+    publish?.seatedPositions[0],
+    { x: (231 / 768) * 100, y: (363 / 448) * 100 },
+    'shifted publish seat',
+  );
 
   const lounge = FACILITY_RESOURCES.find(
     (resource) => resource.id === 'synthesis-lounge',
@@ -1060,7 +1137,7 @@ void test('every authored chair selects the matching directional seated sheet', 
     ['research-computer-b', 214, 130],
     ['shell-console-a', 470, 130],
     ['connector-console-b', 686, 130],
-    ['build-bench-a', 473, 367],
+    ['build-bench-a', 505, 367],
     ['verify-rig-b', 678, 367],
   ];
   for (const [resourceId, chairX, chairY] of clonedNorthWorkstations) {
@@ -1133,16 +1210,22 @@ void test('v3 back walls remain solid while the Commons arrival area stays open'
       `${sample.id} was incorrectly classified as floor`,
     );
   }
-  assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 52 }), true);
-  assert.equal(capsuleIsWorldLegal({ x: 44.792, y: 75.893 }), true);
-  assert.equal(capsuleIsWorldLegal({ x: 53.125, y: 75.893 }), true);
+  assert.equal(capsuleIsWorldLegal({ x: 50, y: 52 }), true);
+  assert.equal(
+    capsuleIsWorldLegal({ x: (352 / 768) * 100, y: (378 / 448) * 100 }),
+    true,
+  );
+  assert.equal(
+    capsuleIsWorldLegal({ x: (416 / 768) * 100, y: (378 / 448) * 100 }),
+    true,
+  );
 });
 
 void test('world collision resolution rejects motion from a portal endpoint into its wall', () => {
-  const previous = avatar('vesper', { x: 44.792, y: 52 });
+  const previous = avatar('vesper', { x: 50, y: 52 });
   const proposed = {
     ...previous,
-    position: { x: 49, y: 60 },
+    position: { x: 54, y: 60 },
     isMoving: true,
   };
   assert.ok(
@@ -1534,10 +1617,10 @@ void test('the canceled four-resident Commons sequence preserves bodies across a
     ...extra,
   });
   const spawnPositions = new Map([
-    ['steward-live', { x: 56.25, y: 75.893 }],
-    ['explorer-live', { x: 52.083, y: 75.893 }],
-    ['maker-live', { x: 45, y: 75 }],
-    ['critic-live', { x: 48, y: 86.2 }],
+    ['steward-live', { x: (416 / 768) * 100, y: (378 / 448) * 100 }],
+    ['explorer-live', { x: (320 / 768) * 100, y: (404 / 448) * 100 }],
+    ['maker-live', { x: (352 / 768) * 100, y: (378 / 448) * 100 }],
+    ['critic-live', { x: (448 / 768) * 100, y: (404 / 448) * 100 }],
   ]);
   const identities = [
     ['steward-live', 'Mara', 'Steward'],
@@ -1706,11 +1789,11 @@ void test('the canceled four-resident Commons sequence preserves bodies across a
 
     const contextHub = { ...stationById('context-hub').slots[0] };
     const contextDoor = { ...stationById('door-context').slots[0] };
-    const contextPlant = { ...stationById('plant-context').slots[0] };
+    const contextMailbox = { ...stationById('operator-mailbox').slots[0] };
 
     // In the corrected recovery order Forge clears the shared landing first;
-    // Lumen then traverses the exact two routes that previously pushed Forge
-    // and wall-rode against the Commons plant.
+    // Lumen then traverses the same expanded transfer without pushing Forge
+    // and clears the west landing into its independently reachable fixture.
     runMove(
       'maker-live',
       'spawn-lift',
@@ -1735,9 +1818,9 @@ void test('the canceled four-resident Commons sequence preserves bodies across a
     runMove(
       'explorer-live',
       'context-hub',
-      'plant-context',
-      contextPlant,
-      'explorer-approaches-plant',
+      'operator-mailbox',
+      contextMailbox,
+      'explorer-approaches-mailbox',
       ({ arrivesAt, stationary }) => {
         const beforeUnrelatedPosition = positionFor(state, 'explorer-live');
         const beforeUnrelatedNavigation = state.avatars.find(
@@ -1751,7 +1834,7 @@ void test('the canceled four-resident Commons sequence preserves bodies across a
               phase: 'planning',
               status: 'working',
               summary:
-                'An unrelated event cannot settle the plant approach early.',
+                'An unrelated event cannot settle the mailbox approach early.',
             },
             { agentId: 'critic-live' },
             arrivesAt + 5_000,
@@ -1771,7 +1854,7 @@ void test('the canceled four-resident Commons sequence preserves bodies across a
         assertStationarySnapshot(
           state,
           stationary,
-          'the unrelated event during the plant approach',
+          'the unrelated event during the mailbox approach',
         );
       },
     );
@@ -2152,7 +2235,7 @@ void test('malformed motor payloads cannot project, move, or snap a resident', a
     });
     assertMotorStateUnchanged();
 
-    const illegalEndpoint = { x: 49, y: 60 };
+    const illegalEndpoint = { x: 54, y: 60 };
     assert.ok(worldCollisionIds(illegalEndpoint).length > 0);
     const illegalPath = [illegalEndpoint];
     const illegalDurationMs = Math.ceil(

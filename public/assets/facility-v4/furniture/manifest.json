@@ -1,5 +1,6 @@
 {
   "sheet": "furniture-sheet-v2-transparent.png",
+  "lightsOffSheet": "furniture-sheet-v2-lights-off-source.png",
   "grid": {
     "columns": 4,
     "rows": 4
@@ -9,7 +10,14 @@
     "resampling": "lanczos3",
     "paletteColours": 64,
     "dither": 0,
-    "bottomAligned": true
+    "bottomAligned": true,
+    "lightsOff": {
+      "outputDirectory": "lights-off",
+      "geometryReference": "furniture-sheet-v2-transparent.png",
+      "maximumNormalizedCenterDrift": 0.05,
+      "maximumNormalizedSizeDrift": 0.08,
+      "alphaReference": "illuminated-runtime-sprite"
+    }
   },
   "sprites": [
     {

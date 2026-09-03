@@ -10,6 +10,7 @@
     "dev:web": "vinext dev",
     "arena:bridge": "node scripts/arena-bridge.mjs",
     "arena:driver": "node scripts/arena-driver.mjs",
+    "assets:lights-off": "node scripts/process-furniture-sheet.mjs --lights-off && node scripts/process-wall-fixtures.mjs --lights-off",
     "eval:arena": "node scripts/arena-eval.mjs",
     "audit:spatial": "node --experimental-strip-types scripts/arena-spatial-audit.mjs",
     "test:bridge": "node --test scripts/arena-bridge.test.mjs",

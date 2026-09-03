@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import {
+  FACILITY_COLLISION_GEOMETRY,
   FACILITY_LIGHT_LAYOUT,
   FACILITY_PROPS,
   FACILITY_ROOMS,
@@ -121,6 +122,8 @@ const FACILITY_ASSETS = {
   bookshelfB: furnitureAsset('bookshelf-empty.png'),
   bookshelfC: furnitureAsset('bookshelf-empty.png'),
   bookshelfFilled: furnitureAsset('bookshelf-filled.png'),
+  sideboard: furnitureAsset('sideboard.png'),
+  wallShelf: furnitureAsset('wall-shelf.png'),
   cabinetA: 'cozy-cabin/sprites/cabinet-a.png',
   cabinetFilled: 'cozy-cabin/sprites/cabinet-filled.png',
   sideboardA: 'cozy-cabin/sprites/sideboard-a.png',
@@ -147,6 +150,25 @@ const FACILITY_ASSETS = {
 } as const;
 
 type FacilityAssetKey = keyof typeof FACILITY_ASSETS;
+type FacilityLighting = 'lit' | 'lightsOff';
+
+const LIGHTS_OFF_GENERATED_ASSETS = new Set<FacilityAssetKey>([
+  'architectureFloor',
+  'architectureWall',
+  'doorwayFront',
+  'buildVerificationChart',
+  'commandRoutingBoard',
+  'utilityToolsBoard',
+  'operatorMailbox',
+  'operatorMailboxEmpty',
+  'wallLightDualOff',
+  'wallLightSingleOff',
+  'floorLamp',
+  'plantSmall',
+  'plantTall',
+  'flowerPot',
+  'plantPair',
+]);
 
 const SELF_AUTHORED_FURNITURE = new Set<FacilityAssetKey>([
   'researchDesk',
@@ -159,6 +181,7 @@ const SELF_AUTHORED_FURNITURE = new Set<FacilityAssetKey>([
 
 type SceneProp = {
   asset: FacilityAssetKey;
+  roomId: RoomId;
   x: number;
   y?: number;
   baseline: number;
@@ -172,6 +195,7 @@ type SceneProp = {
 };
 
 function northWorkstationChair(
+  roomId: RoomId,
   resourceId: string,
   x: number,
   y: number,
@@ -179,6 +203,7 @@ function northWorkstationChair(
 ): SceneProp {
   return {
     asset: 'chairNorth',
+    roomId,
     x,
     y,
     baseline,
@@ -189,7 +214,8 @@ function northWorkstationChair(
 
 const CONTEXT_KIOSK_PROP = {
   asset: 'writingDesk',
-  x: 354,
+  roomId: 'context',
+  x: 304,
   y: 350,
   baseline: 382,
   resourceId: 'context-kiosk',
@@ -207,7 +233,8 @@ const CONTEXT_KIOSK_ACTION_STYLE = {
 
 const OPERATOR_MAILBOX_PROP = {
   asset: 'operatorMailbox',
-  x: 372,
+  roomId: 'context',
+  x: 308,
   y: 300,
   baseline: 320,
   entityId: 'operator-mailbox',
@@ -233,6 +260,7 @@ const SCENE_PROPS: SceneProp[] = [
   // Research / Sources — full authored sprites, never arbitrary atlas cells.
   {
     asset: 'bookshelfFilled',
+    roomId: 'research',
     x: 47,
     baseline: 100,
     backWallRoomId: 'research',
@@ -240,6 +268,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'bookshelfB',
+    roomId: 'research',
     x: 96,
     baseline: 100,
     backWallRoomId: 'research',
@@ -247,6 +276,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'bookshelfC',
+    roomId: 'research',
     x: 145,
     baseline: 100,
     backWallRoomId: 'research',
@@ -254,6 +284,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'floorLamp',
+    roomId: 'research',
     x: 226,
     y: 88,
     baseline: 118,
@@ -261,6 +292,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'armchairGreen',
+    roomId: 'research',
     x: 61,
     y: 126,
     baseline: 156,
@@ -268,14 +300,16 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'utilityWorkstation',
+    roomId: 'research',
     x: 190,
     y: 108,
     baseline: 142,
     resourceId: 'research-computer-b',
   },
-  northWorkstationChair('research-computer-b', 214, 130, 152),
+  northWorkstationChair('research', 'research-computer-b', 214, 130, 152),
   {
     asset: 'plantSmall',
+    roomId: 'research',
     x: 42,
     y: 158,
     baseline: 180,
@@ -285,6 +319,7 @@ const SCENE_PROPS: SceneProp[] = [
   // Command / Routing — a planning table beneath the mounted route board.
   {
     asset: 'planningTable',
+    roomId: 'command',
     x: 326,
     y: 124,
     baseline: 158,
@@ -292,6 +327,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'chairEast',
+    roomId: 'command',
     x: 307,
     y: 129,
     baseline: 156,
@@ -301,6 +337,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'chairWest',
+    roomId: 'command',
     // Mirror the west chair's 307..329 footprint around the table center at
     // x=351. The previous x=382 position put this chair nine pixels too far
     // east even though its resident anchor was already symmetric.
@@ -313,6 +350,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'plantSmall',
+    roomId: 'command',
     x: 420,
     y: 78,
     baseline: 100,
@@ -322,6 +360,7 @@ const SCENE_PROPS: SceneProp[] = [
   // Utility / Tools — one shell station and one connector station.
   {
     asset: 'utilityWorkstation',
+    roomId: 'tools',
     x: 456,
     y: 108,
     baseline: 142,
@@ -329,15 +368,17 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'utilityWorkstation',
+    roomId: 'tools',
     x: 666,
     y: 108,
     baseline: 142,
     resourceId: 'connector-console-b',
   },
-  northWorkstationChair('shell-console-a', 470, 130, 152),
-  northWorkstationChair('connector-console-b', 686, 130, 152),
+  northWorkstationChair('tools', 'shell-console-a', 470, 130, 152),
+  northWorkstationChair('tools', 'connector-console-b', 686, 130, 152),
   {
     asset: 'plantSmall',
+    roomId: 'tools',
     x: 584,
     y: 78,
     baseline: 100,
@@ -347,6 +388,7 @@ const SCENE_PROPS: SceneProp[] = [
   // Synthesis / Decisions — a small library salon and decision console.
   {
     asset: 'bookshelfA',
+    roomId: 'synthesis',
     x: 48,
     baseline: 324,
     backWallRoomId: 'synthesis',
@@ -354,6 +396,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'bookshelfFilled',
+    roomId: 'synthesis',
     x: 97,
     baseline: 324,
     backWallRoomId: 'synthesis',
@@ -361,6 +404,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'sofaGreen',
+    roomId: 'synthesis',
     x: 48,
     y: 338,
     baseline: 368,
@@ -369,14 +413,16 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'verificationDesk',
-    x: 217,
+    roomId: 'synthesis',
+    x: 201,
     y: 318,
     baseline: 352,
     resourceId: 'publish-console',
   },
   {
     asset: 'chairNorth',
-    x: 237,
+    roomId: 'synthesis',
+    x: 221,
     y: 349,
     baseline: 371,
     seatForResourceId: 'publish-console',
@@ -384,6 +430,7 @@ const SCENE_PROPS: SceneProp[] = [
   },
   {
     asset: 'plantSmall',
+    roomId: 'synthesis',
     x: 42,
     y: 386,
     baseline: 408,
@@ -395,31 +442,35 @@ const SCENE_PROPS: SceneProp[] = [
   CONTEXT_KIOSK_PROP,
   {
     asset: 'plantSmall',
-    x: 421,
-    y: 386,
-    baseline: 408,
+    roomId: 'context',
+    x: 456,
+    y: 342,
+    baseline: 364,
     entityId: 'plant-context',
   },
 
   // Build / Verify — one workshop bench and one diagnostic rig.
   {
     asset: 'buildWorkbench',
-    x: 456,
+    roomId: 'build',
+    x: 488,
     y: 336,
     baseline: 370,
     resourceId: 'build-bench-a',
   },
   {
     asset: 'verificationDesk',
+    roomId: 'build',
     x: 656,
     y: 336,
     baseline: 370,
     resourceId: 'verify-rig-b',
   },
-  northWorkstationChair('build-bench-a', 473, 367, 389),
-  northWorkstationChair('verify-rig-b', 678, 367, 389),
+  northWorkstationChair('build', 'build-bench-a', 505, 367, 389),
+  northWorkstationChair('build', 'verify-rig-b', 678, 367, 389),
   {
     asset: 'plantSmall',
+    roomId: 'build',
     x: 554,
     y: 306,
     baseline: 328,
@@ -427,18 +478,75 @@ const SCENE_PROPS: SceneProp[] = [
   },
 ];
 
-const NORTH_DOOR_CENTERS: Partial<Record<RoomId, number>> = {
-  research: 144,
-  command: 352,
-  tools: 592,
+type DoorGeometry = {
+  locationId: string;
+  centerX: number;
 };
+
+const NORTH_DOORS = FACILITY_COLLISION_GEOMETRY.northDoors as readonly DoorGeometry[];
+const SOUTH_DOORS = FACILITY_COLLISION_GEOMETRY.southDoors as readonly DoorGeometry[];
+const roomIdForDoor = (door: DoorGeometry) =>
+  door.locationId.replace(/^door-/, '') as RoomId;
+const NORTH_DOOR_CENTERS = Object.fromEntries(
+  NORTH_DOORS.map((door) => [roomIdForDoor(door), door.centerX]),
+) as Partial<Record<RoomId, number>>;
+const LOWER_PARTITION_X = ROOMS.filter((room) => room.y >= 200)
+  .sort((left, right) => left.x - right.x)
+  .slice(0, -1)
+  .map((room) => room.x + room.w - 4);
 
 function imageReady(image: HTMLImageElement | undefined) {
   return Boolean(image?.complete && image.naturalWidth > 0);
 }
 
-function facilityKey(key: FacilityAssetKey) {
-  return `facility:${key}`;
+function facilityKey(key: FacilityAssetKey, lighting: FacilityLighting = 'lit') {
+  return `facility:${lighting}:${key}`;
+}
+
+function assetPathname(filename: string) {
+  return filename.split('?', 1)[0];
+}
+
+function facilityAssetSource(
+  key: FacilityAssetKey,
+  lighting: FacilityLighting,
+) {
+  const filename = FACILITY_ASSETS[key];
+  if (lighting === 'lightsOff') {
+    const pathname = assetPathname(filename);
+    const basename = pathname.slice(pathname.lastIndexOf('/') + 1);
+    if (pathname.startsWith(`${FURNITURE_ASSET_ROOT}/`)) {
+      return `${FURNITURE_ASSET_ROOT}/lights-off/${basename}`;
+    }
+    if (LIGHTS_OFF_GENERATED_ASSETS.has(key)) {
+      return `${FACILITY_ASSET_ROOT}/generated/lights-off/${basename}`;
+    }
+  }
+  return filename.startsWith('/')
+    ? filename
+    : `${FACILITY_ASSET_ROOT}/${filename}`;
+}
+
+function resolveFacilityImage(
+  bank: ImageBank,
+  key: FacilityAssetKey,
+  options: {
+    state?: AgentArenaState;
+    roomId?: RoomId;
+    now?: number;
+    lighting?: FacilityLighting;
+  } = {},
+) {
+  const lighting =
+    options.lighting ??
+    (options.state && options.roomId
+      ? roomLightIsOn(options.state, options.roomId, options.now ?? Date.now())
+        ? 'lit'
+        : 'lightsOff'
+      : 'lit');
+  const selected = bank[facilityKey(key, lighting)];
+  if (imageReady(selected)) return selected;
+  return bank[facilityKey(key, 'lit')];
 }
 
 function drawFacilitySprite(
@@ -447,8 +555,14 @@ function drawFacilitySprite(
   key: FacilityAssetKey,
   x: number,
   y: number,
+  options: {
+    state?: AgentArenaState;
+    roomId?: RoomId;
+    now?: number;
+    lighting?: FacilityLighting;
+  } = {},
 ) {
-  const image = bank[facilityKey(key)];
+  const image = resolveFacilityImage(bank, key, options);
   if (!imageReady(image)) return;
   context.drawImage(image, Math.round(x), Math.round(y));
 }
@@ -515,8 +629,10 @@ function drawTiledTexture(
 function drawRoom(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
+  state: AgentArenaState,
   room: Room,
   index: number,
+  now: number,
 ) {
   context.save();
   context.beginPath();
@@ -525,7 +641,11 @@ function drawRoom(
   const north = room.y < 200;
   const floorY = room.y + BACK_WALL_HEIGHT;
   const floorHeight = room.h - BACK_WALL_HEIGHT - (north ? 0 : 8);
-  const floorTexture = bank[facilityKey('architectureFloor')];
+  const floorTexture = resolveFacilityImage(bank, 'architectureFloor', {
+    state,
+    roomId: room.id,
+    now,
+  });
   if (imageReady(floorTexture)) {
     drawTiledTexture(
       context,
@@ -545,7 +665,11 @@ function drawRoom(
   // A real back-wall assembly: dark cap, plaster face, and a wood baseboard.
   // Floor-standing sprites overlap the baseboard by their own authored depth;
   // wall-mounted pieces stay entirely inside this forty-pixel plane.
-  const wallTexture = bank[facilityKey('architectureWall')];
+  const wallTexture = resolveFacilityImage(bank, 'architectureWall', {
+    state,
+    roomId: room.id,
+    now,
+  });
   if (imageReady(wallTexture)) {
     drawTiledTexture(
       context,
@@ -606,7 +730,7 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
   const y = 192;
   const width = 704;
   const height = 64;
-  const corridorTexture = bank[facilityKey('architectureCorridor')];
+  const corridorTexture = resolveFacilityImage(bank, 'architectureCorridor');
   if (imageReady(corridorTexture)) {
     drawTiledTexture(context, corridorTexture, x, y, width, height, 96, 96);
   } else {
@@ -634,7 +758,10 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
 function drawUpwardDoor(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
+  state: AgentArenaState,
+  roomId: RoomId,
   centerX: number,
+  now: number,
 ) {
   const openingLeft = centerX - 18;
   // Keep a real shadowed opening behind the transparent generated frame. The
@@ -645,7 +772,11 @@ function drawUpwardDoor(
   context.fillRect(openingLeft + 3, 260, 30, BACK_WALL_HEIGHT - 4);
   context.fillStyle = 'rgba(0,0,0,.3)';
   context.fillRect(openingLeft + 3, 260, 30, 5);
-  drawFacilitySprite(context, bank, 'doorwayFront', centerX - 22, 256);
+  drawFacilitySprite(context, bank, 'doorwayFront', centerX - 22, 256, {
+    state,
+    roomId,
+    now,
+  });
 }
 
 function drawDownwardDoor(context: CanvasRenderingContext2D, centerX: number) {
@@ -675,17 +806,22 @@ function drawDoorwayForegrounds(context: CanvasRenderingContext2D) {
   // in front of a crossing body. Lower generated frames already surround a
   // 36px aperture around a 24px resident; repainting those sprites here cuts
   // moving residents apart at the jamb and must not happen.
-  [144, 352, 592].forEach((centerX) => {
-    drawDownwardDoorFrame(context, centerX);
+  NORTH_DOORS.forEach((door) => {
+    drawDownwardDoorFrame(context, door.centerX);
   });
 }
 
-function drawDoorways(context: CanvasRenderingContext2D, bank: ImageBank) {
-  [144, 352, 592].forEach((centerX) => {
-    drawDownwardDoor(context, centerX);
+function drawDoorways(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  state: AgentArenaState,
+  now: number,
+) {
+  NORTH_DOORS.forEach((door) => {
+    drawDownwardDoor(context, door.centerX);
   });
-  [176, 344, 592].forEach((centerX) => {
-    drawUpwardDoor(context, bank, centerX);
+  SOUTH_DOORS.forEach((door) => {
+    drawUpwardDoor(context, bank, state, roomIdForDoor(door), door.centerX, now);
   });
 }
 
@@ -707,26 +843,50 @@ function drawShell(context: CanvasRenderingContext2D) {
 function drawPartitions(context: CanvasRenderingContext2D) {
   context.fillStyle = '#3e271c';
   [252, 444].forEach((x) => context.fillRect(x, 32, 8, 160));
-  [316, 444].forEach((x) => context.fillRect(x, 256, 8, 160));
+  LOWER_PARTITION_X.forEach((x) => context.fillRect(x, 256, 8, 160));
   context.fillStyle = '#a7784e';
   [255, 447].forEach((x) => context.fillRect(x, 35, 2, 154));
-  [319, 447].forEach((x) => context.fillRect(x, 259, 2, 154));
+  LOWER_PARTITION_X.forEach((x) => context.fillRect(x + 3, 259, 2, 154));
 }
 
-function drawWallDetails(context: CanvasRenderingContext2D, bank: ImageBank) {
+function drawWallDetails(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  state: AgentArenaState,
+  now: number,
+) {
   // Every wall mark describes an in-world resource; none are dashboard chrome.
-  drawFacilitySprite(context, bank, 'commandRoutingBoard', 284, 38);
-  drawFacilitySprite(context, bank, 'utilityToolsBoard', 528, 38);
-  drawFacilitySprite(context, bank, 'buildVerificationChart', 650, 262);
+  drawFacilitySprite(context, bank, 'commandRoutingBoard', 284, 38, {
+    state,
+    roomId: 'command',
+    now,
+  });
+  drawFacilitySprite(context, bank, 'utilityToolsBoard', 528, 38, {
+    state,
+    roomId: 'tools',
+    now,
+  });
+  drawFacilitySprite(context, bank, 'buildVerificationChart', 650, 262, {
+    state,
+    roomId: 'build',
+    now,
+  });
 }
 
-function drawArchitecture(context: CanvasRenderingContext2D, bank: ImageBank) {
+function drawArchitecture(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  state: AgentArenaState,
+  now: number,
+) {
   drawShell(context);
-  ROOMS.forEach((room, index) => drawRoom(context, bank, room, index));
+  ROOMS.forEach((room, index) =>
+    drawRoom(context, bank, state, room, index, now),
+  );
   drawCorridor(context, bank);
   drawPartitions(context);
-  drawDoorways(context, bank);
-  drawWallDetails(context, bank);
+  drawDoorways(context, bank, state, now);
+  drawWallDetails(context, bank, state, now);
 }
 
 type ResourceWorkState = {
@@ -898,7 +1058,9 @@ function drawEnvironmentalLighting(
     context.rect(room.x + 3, room.y + 3, room.w - 6, room.h - 6);
     context.clip();
     if (!powered) {
-      context.fillStyle = 'rgba(8,11,17,.5)';
+      // Dark assets carry the room's material lighting. This light veil only
+      // shades residents and the remaining procedural architecture pixels.
+      context.fillStyle = 'rgba(8,11,17,.18)';
       context.fillRect(room.x, room.y, room.w, room.h);
     } else {
       const glow = context.createRadialGradient(
@@ -1065,12 +1227,23 @@ function drawSceneProp(
   state: AgentArenaState,
   prop: SceneProp,
   mailboxHasUnread: boolean,
+  now: number,
 ) {
+  // Resolve the mailbox's physical state before selecting the room-lighting
+  // variant so full and empty boxes both have faithful illuminated/dark art.
   const asset =
     prop.entityId === 'operator-mailbox' && !mailboxHasUnread
       ? 'operatorMailboxEmpty'
       : prop.asset;
-  const image = bank[facilityKey(asset)];
+  const archiveTaskLampIsOn =
+    prop.resourceId === 'archive-lamp' &&
+    effectiveEntityState(state, 'archive-lamp', now).power === 'on';
+  const image = resolveFacilityImage(bank, asset, {
+    state,
+    roomId: prop.roomId,
+    now,
+    lighting: archiveTaskLampIsOn ? 'lit' : undefined,
+  });
   if (!imageReady(image)) return;
   const width = image.naturalWidth;
   const height = image.naturalHeight;
@@ -1082,7 +1255,7 @@ function drawSceneProp(
     : (prop.y ?? 0);
   if (prop.entityId?.startsWith('plant-')) {
     const condition = String(
-      effectiveEntityState(state, prop.entityId, Date.now()).condition ??
+      effectiveEntityState(state, prop.entityId, now).condition ??
         'healthy',
     );
     drawLivingPlant(context, image, prop.x, y, condition);
@@ -1097,14 +1270,16 @@ function drawSceneProp(
       work.mode === 'active' ? activityScreenColor(work) : '#a88c56';
     context.fillRect(prop.x, y + height + 1, width, 2);
   }
-  drawFacilitySprite(context, bank, asset, prop.x, y);
+  context.drawImage(image, Math.round(prop.x), Math.round(y));
   drawSurfaceDetail(context, state, prop, width, y);
 }
 
 function drawOccupiedSeatForeground(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
+  state: AgentArenaState,
   prop: SceneProp,
+  now: number,
 ) {
   if (
     prop.seatForegroundHeight === undefined &&
@@ -1112,7 +1287,11 @@ function drawOccupiedSeatForeground(
   ) {
     return;
   }
-  const image = bank[facilityKey(prop.asset)];
+  const image = resolveFacilityImage(bank, prop.asset, {
+    state,
+    roomId: prop.roomId,
+    now,
+  });
   if (!imageReady(image)) return;
   const requestedCrop = prop.seatForegroundCrop ?? {
     x: 0,
@@ -1213,7 +1392,7 @@ function drawPlaque(
   context.textAlign = 'left';
   context.textBaseline = 'alphabetic';
 
-  const connectorX = room.id === 'context' ? 344 : room.x + room.w / 2;
+  const connectorX = room.x + room.w / 2;
   context.strokeStyle = '#76583f';
   context.beginPath();
   context.moveTo(connectorX + 0.5, north ? 26 : 416);
@@ -1465,7 +1644,8 @@ function drawDepthSortedScene(
         ? Math.min(prop.baseline, occupiedSeat.baseline - 0.5)
         : prop.baseline,
       stableOrder: index,
-      draw: () => drawSceneProp(context, bank, state, prop, mailboxHasUnread),
+      draw: () =>
+        drawSceneProp(context, bank, state, prop, mailboxHasUnread, now),
     };
   });
 
@@ -1504,7 +1684,7 @@ function drawDepthSortedScene(
     entries.push({
       baseline: occupiedSeat.baseline + 0.5,
       stableOrder: 2000 + index,
-      draw: () => drawOccupiedSeatForeground(context, bank, prop),
+      draw: () => drawOccupiedSeatForeground(context, bank, state, prop, now),
     });
   });
 
@@ -1666,16 +1846,14 @@ export function AgentArenaWorldV2({
 
   useEffect(() => {
     let canceled = false;
-    const sources: Array<[string, string]> = Object.entries(
-      FACILITY_ASSETS,
-    ).map(([key, filename]) => [
-      facilityKey(key as FacilityAssetKey),
-      encodeURI(
-        filename.startsWith('/')
-          ? filename
-          : `${FACILITY_ASSET_ROOT}/${filename}`,
-      ),
-    ]);
+    const sources: Array<[string, string]> = (
+      Object.keys(FACILITY_ASSETS) as FacilityAssetKey[]
+    ).flatMap((key) =>
+      (['lit', 'lightsOff'] as const).map((lighting) => [
+        facilityKey(key, lighting),
+        encodeURI(facilityAssetSource(key, lighting)),
+      ]),
+    );
     state.agents.forEach((agent) => {
       const folder = presentationForAgent(agent).sprite;
       ASSET_MOTIONS.forEach((motion) => {
@@ -1686,7 +1864,7 @@ export function AgentArenaWorldV2({
     const missing = sources.filter(([key]) => !bankRef.current[key]);
     if (missing.length === 0) {
       setAssetsReady(
-        imageReady(bankRef.current[facilityKey('bookshelfFilled')]),
+        imageReady(bankRef.current[facilityKey('bookshelfFilled', 'lit')]),
       );
       return () => {
         canceled = true;
@@ -1707,7 +1885,7 @@ export function AgentArenaWorldV2({
     ).then(() => {
       if (canceled) return;
       setAssetsReady(
-        imageReady(bankRef.current[facilityKey('bookshelfFilled')]),
+        imageReady(bankRef.current[facilityKey('bookshelfFilled', 'lit')]),
       );
       setAssetRevision((revision) => revision + 1);
     });
@@ -1730,14 +1908,14 @@ export function AgentArenaWorldV2({
     context.imageSmoothingEnabled = false;
     const bank = bankRef.current;
     const environmentNow = bubbleNow || Date.now();
-    drawArchitecture(context, bank);
+    drawArchitecture(context, bank, state, environmentNow);
     drawRoomLightFixtures(context, bank, state, environmentNow);
     drawDepthSortedScene(
       context,
       bank,
       state,
       agentsById,
-      performance.now(),
+      environmentNow,
       mailboxHasUnread,
     );
     drawDoorwayForegrounds(context);

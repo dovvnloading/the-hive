@@ -2090,7 +2090,7 @@ void test('proximity speech is voluntary, audible, replay-safe, and cannot fabri
   assert.equal(firstScene.space.bodyClearancePx, 32);
   assert.equal(firstScene.space.conversationRangePx, 70);
   assert.equal(firstScene.people[0].proximity, 'shared-place');
-  assert.equal(firstScene.people[0].distancePx, 32);
+  assert.equal(firstScene.people[0].distancePx, 64);
   assert.deepEqual(
     firstScene.talk.map((person) => person.id),
     ['sage'],
@@ -2354,51 +2354,31 @@ void test('shared social space stays approachable while in-use paths require yie
   }
 
   const atlasAtLift = await observe(origin, tokens.atlas);
-  const atlasBlockedByWestLane = await boardRequest(
-    origin,
-    '/world/action',
-    tokens.atlas,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'atlas-yields-west-lift-lane',
-        observationId: atlasAtLift.observationId,
-        action: 'move',
-        targetId: 'context-hub',
-      }),
-    },
-  );
-  assert.equal(atlasBlockedByWestLane.status, 409);
-  assert.match(
-    (await json(atlasBlockedByWestLane)).error,
-    /(route conflicts with Sage|yield)/u,
-  );
-
-  const sageAtLift = await observe(origin, tokens.sage);
-  const sageMove = await boardRequest(origin, '/world/action', tokens.sage, {
+  const atlasMove = await boardRequest(origin, '/world/action', tokens.atlas, {
     method: 'POST',
     body: JSON.stringify({
-      actionId: 'sage-takes-clear-west-lift-lane',
-      observationId: sageAtLift.observationId,
+      actionId: 'atlas-takes-east-lift-lane',
+      observationId: atlasAtLift.observationId,
       action: 'move',
       targetId: 'context-hub',
-      reason: 'Clear the west lift lane before Atlas follows.',
+      reason: 'Use the nearest same-side landing.',
     }),
   });
-  assert.equal(sageMove.status, 201);
+  const atlasMoveBody = await json(atlasMove);
+  assert.equal(atlasMove.status, 201, atlasMoveBody.error);
 
-  const atlasWhileSageMoves = await observe(origin, tokens.atlas);
-  const sagePerceived = atlasWhileSageMoves.people.find(
-    (person) => person.id === 'sage',
+  const sageWhileAtlasMoves = await observe(origin, tokens.sage);
+  const atlasPerceived = sageWhileAtlasMoves.people.find(
+    (person) => person.id === 'atlas',
   );
-  assert.equal(sagePerceived.movement, 'moving-within-room');
-  assert.equal(sagePerceived.destinationId, 'context-hub');
-  const reservedExit = atlasWhileSageMoves.exits.find(
+  assert.equal(atlasPerceived.movement, 'moving-within-room');
+  assert.equal(atlasPerceived.destinationId, 'context-hub');
+  const reservedExit = sageWhileAtlasMoves.exits.find(
     (exit) => exit.to === 'context-hub',
   );
   assert.ok(
     ['reserved', 'yield'].includes(reservedExit.status),
-    `expected Sage's exact trajectory to reserve or yield the exit, received ${reservedExit.status}`,
+    `expected Atlas's exact trajectory to reserve or yield the shared junction, received ${reservedExit.status}`,
   );
   assert.equal(reservedExit.available, false);
   const blockingPeople =
@@ -2407,22 +2387,22 @@ void test('shared social space stays approachable while in-use paths require yie
       : reservedExit.trafficBy;
   assert.deepEqual(
     blockingPeople.map((person) => person.id),
-    ['sage'],
+    ['atlas'],
   );
   assert.match(
-    atlasWhileSageMoves.text,
-    /EXITS context-hub@[^\n]+\/(?:reserved|yield):Sage/u,
+    sageWhileAtlasMoves.text,
+    /EXITS context-hub@[^\n]+\/(?:reserved|yield):Atlas/u,
   );
 
   const conflictingMove = await boardRequest(
     origin,
     '/world/action',
-    tokens.atlas,
+    tokens.sage,
     {
       method: 'POST',
       body: JSON.stringify({
-        actionId: 'atlas-does-not-run-into-sage',
-        observationId: atlasWhileSageMoves.observationId,
+        actionId: 'sage-yields-shared-lift-junction',
+        observationId: sageWhileAtlasMoves.observationId,
         action: 'move',
         targetId: 'context-hub',
       }),
@@ -2431,62 +2411,28 @@ void test('shared social space stays approachable while in-use paths require yie
   assert.equal(conflictingMove.status, 409);
   assert.match(
     (await json(conflictingMove)).error,
-    /(path is in use by Sage|occupied or reserved by Sage)/u,
+    /(path is in use by Atlas|route conflicts with Atlas|occupied or reserved by Atlas)/u,
   );
 
-  const sageAtHub = await waitForStationaryLocation(tokens.sage, 'context-hub');
-  const sageClearsLiftLane = await boardRequest(
-    origin,
-    '/world/action',
-    tokens.sage,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'sage-clears-lift-lane-at-door',
-        observationId: sageAtHub.observationId,
-        action: 'move',
-        targetId: 'door-context',
-        reason: 'Clear the landing so Atlas can leave the lift.',
-      }),
-    },
-  );
-  assert.equal(sageClearsLiftLane.status, 201);
-  await waitForStationaryLocation(tokens.sage, 'door-context');
-  let atlasScene = await waitForStationaryLocation(tokens.atlas, 'spawn-lift');
-
-  const atlasToHub = await boardRequest(origin, '/world/action', tokens.atlas, {
+  let atlasScene = await waitForStationaryLocation(tokens.atlas, 'context-hub');
+  const sageAtLift = await waitForStationaryLocation(tokens.sage, 'spawn-lift');
+  const sageMove = await boardRequest(origin, '/world/action', tokens.sage, {
     method: 'POST',
     body: JSON.stringify({
-      actionId: 'atlas-follows-after-clearance',
-      observationId: atlasScene.observationId,
+      actionId: 'sage-uses-opposite-landing-after-junction-clears',
+      observationId: sageAtLift.observationId,
       action: 'move',
       targetId: 'context-hub',
+      reason: 'Use the open same-side landing while Atlas remains opposite.',
     }),
   });
-  assert.equal(atlasToHub.status, 201);
-  const atlasToHubBody = await json(atlasToHub);
-  await new Promise((resolveWait) =>
-    setTimeout(
-      resolveWait,
-      Math.max(
-        0,
-        Date.parse(atlasToHubBody.event.payload.arrivesAt) - Date.now() + 5,
-      ),
-    ),
-  );
-
-  const atlasArrivalDeadline =
-    Date.parse(atlasToHubBody.event.payload.arrivesAt) + 1_000;
-  do {
-    atlasScene = await observe(origin, tokens.atlas);
-    if (atlasScene.you.locationId !== 'context-hub') {
-      await new Promise((resolveWait) => setTimeout(resolveWait, 10));
-    }
-  } while (
-    atlasScene.you.locationId !== 'context-hub' &&
-    Date.now() < atlasArrivalDeadline
-  );
-  assert.equal(atlasScene.you.locationId, 'context-hub');
+  const sageMoveBody = await json(sageMove);
+  assert.equal(sageMove.status, 201, sageMoveBody.error);
+  assertNavigationPathClearsPositions(sageMoveBody.event.payload, [
+    atlasMoveBody.event.payload.toPosition,
+  ]);
+  await waitForStationaryLocation(tokens.sage, 'context-hub');
+  atlasScene = await waitForStationaryLocation(tokens.atlas, 'context-hub');
   const atlasToCommons = await boardRequest(
     origin,
     '/world/action',
@@ -2829,7 +2775,8 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
     payload: { name: 'Beta', role: 'Conflict verifier' },
   });
   assert.equal(betaSpawn.status, 201);
-  const betaToken = (await json(betaSpawn)).agentToken;
+  const betaSpawnBody = await json(betaSpawn);
+  const betaToken = betaSpawnBody.agentToken;
   const betaConflict = await boardRequest(origin, '/world/action', betaToken, {
     method: 'POST',
     body: JSON.stringify({
@@ -2842,7 +2789,7 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
   assert.equal(betaConflict.status, 409);
   assert.match(
     (await json(betaConflict)).error,
-    /(path|trajectory|standing slot).*(use|conflict|reserved|occupied)/iu,
+    /(path|trajectory|standing slot|route).*(use|conflict|reserved|occupied|yield)/iu,
   );
   const conflictReceipts = (
     await readFile(resolve(dataDir, 'action-rejections.jsonl'), 'utf8')
@@ -2855,6 +2802,48 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
       (receipt) => receipt.actionId === 'beta-conflicting-path',
     )?.reasonCode,
     'path_reserved',
+  );
+
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(0, Date.parse(alphaNavigation.arrivesAt) - Date.now() + 5),
+    ),
+  );
+  const betaRecovers = await boardRequest(origin, '/world/action', betaToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      actionId: 'beta-uses-opposite-landing',
+      observationId: (await observe(origin, betaToken)).observationId,
+      action: 'move',
+      targetId: 'context-hub',
+    }),
+  });
+  const betaRecoversBody = await json(betaRecovers);
+  assert.equal(betaRecovers.status, 201, betaRecoversBody.error);
+  const betaNavigation = betaRecoversBody.event.payload;
+  assert.ok(
+    Math.abs(
+      betaNavigation.toPosition.x - betaSpawnBody.event.payload.position.x,
+    ) < 0.001,
+    'the recovered arrival must retain its same-side landing',
+  );
+  assertNavigationPathClearsPositions(betaNavigation, [
+    alphaNavigation.toPosition,
+  ]);
+  assert.equal(
+    betaNavigation.path.some(
+      (point) =>
+        Math.round((point.x / 100) * ARENA_WORLD_WIDTH) === 384 &&
+        Math.round((point.y / 100) * ARENA_WORLD_HEIGHT) === 352,
+    ),
+    true,
+  );
+  await new Promise((resolveWait) =>
+    setTimeout(
+      resolveWait,
+      Math.max(0, Date.parse(betaNavigation.arrivesAt) - Date.now() + 5),
+    ),
   );
 
   await postEvent(origin, {
@@ -2884,165 +2873,224 @@ void test('bridge-authored paths have exact timing, reserve conflicts, and keep 
       position: body.event.payload.position,
     });
   }
-  const spawnPositionsExcept = (...movingAgentIds) =>
-    [...residents.entries()]
-      .filter(([agentId]) => !movingAgentIds.includes(agentId))
-      .map(([, resident]) => resident.position);
-  const explorer = residents.get('explorer-live');
-  const explorerFirstAttempt = await boardRequest(
-    origin,
-    '/world/action',
-    explorer.token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'recorded-pattern-to-context',
-        observationId: (await observe(origin, explorer.token)).observationId,
-        action: 'move',
-        targetId: 'context-hub',
-      }),
-    },
-  );
-  assert.equal(explorerFirstAttempt.status, 409);
-  assert.match(
-    (await json(explorerFirstAttempt)).error,
-    /(route conflicts|yield|reserved|standing slot)/iu,
-  );
-  const recordedPatternReceipt = (
-    await readFile(resolve(dataDir, 'action-rejections.jsonl'), 'utf8')
-  )
-    .trim()
-    .split(/\r?\n/u)
-    .map((line) => JSON.parse(line))
-    .find((receipt) => receipt.actionId === 'recorded-pattern-to-context');
-  assert.equal(recordedPatternReceipt?.reasonCode, 'path_reserved');
-
-  const maker = residents.get('maker-live');
-  const makerClearsSpawn = await boardRequest(
-    origin,
-    '/world/action',
-    maker.token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'maker-clears-recorded-spawn-overlap',
-        observationId: (await observe(origin, maker.token)).observationId,
-        action: 'move',
-        targetId: 'context-hub',
-      }),
-    },
-  );
-  const makerClearsSpawnBody = await json(makerClearsSpawn);
-  assert.equal(makerClearsSpawn.status, 201, makerClearsSpawnBody.error);
-  const makerToContext = makerClearsSpawnBody.event.payload;
-  assert.deepEqual(makerToContext.fromPosition, maker.position);
-  assertNavigationPathIsSweptLegal(makerToContext);
-  assertNavigationPathClearsPositions(
-    makerToContext,
-    spawnPositionsExcept('maker-live'),
-  );
-  await new Promise((resolveWait) =>
-    setTimeout(
-      resolveWait,
-      Math.max(0, Date.parse(makerToContext.arrivesAt) - Date.now() + 5),
-    ),
+  assert.deepEqual(
+    [...residents.values()]
+      .map(({ position }) => [
+        Math.round((position.x / 100) * ARENA_WORLD_WIDTH),
+        Math.round((position.y / 100) * ARENA_WORLD_HEIGHT),
+      ])
+      .sort((left, right) => left[0] - right[0] || left[1] - right[1]),
+    [
+      [320, 404],
+      [352, 378],
+      [416, 378],
+      [448, 404],
+    ],
   );
 
-  const makerAtContext = await observe(origin, maker.token);
-  assert.equal(makerAtContext.you.locationId, 'context-hub');
-  const makerClearsLanding = await boardRequest(
-    origin,
-    '/world/action',
-    maker.token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'maker-clears-context-landing',
-        observationId: makerAtContext.observationId,
-        action: 'move',
-        targetId: 'door-context',
-      }),
-    },
-  );
-  assert.equal(makerClearsLanding.status, 201);
-  const makerClearsLandingBody = await json(makerClearsLanding);
-  const makerToDoor = makerClearsLandingBody.event.payload;
-  assert.deepEqual(makerToDoor.fromPosition, makerToContext.toPosition);
-  assertNavigationPathIsSweptLegal(makerToDoor);
-  assertNavigationPathClearsPositions(
-    makerToDoor,
-    spawnPositionsExcept('maker-live'),
-  );
-  await new Promise((resolveWait) =>
-    setTimeout(
-      resolveWait,
-      Math.max(0, Date.parse(makerToDoor.arrivesAt) - Date.now() + 5),
-    ),
+  const moveResident = async (agentId, targetId, actionId) => {
+    const resident = residents.get(agentId);
+    const response = await boardRequest(
+      origin,
+      '/world/action',
+      resident.token,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          actionId,
+          observationId: (await observe(origin, resident.token)).observationId,
+          action: 'move',
+          targetId,
+        }),
+      },
+    );
+    const body = await json(response);
+    return { response, body };
+  };
+  const settle = async (navigation) => {
+    await new Promise((resolveWait) =>
+      setTimeout(
+        resolveWait,
+        Math.max(0, Date.parse(navigation.arrivesAt) - Date.now() + 5),
+      ),
+    );
+  };
+  const acceptedMove = async (agentId, targetId, actionId) => {
+    const result = await moveResident(agentId, targetId, actionId);
+    assert.equal(result.response.status, 201, result.body.error);
+    assertNavigationPathIsSweptLegal(result.body.event.payload);
+    return result.body.event.payload;
+  };
+
+  const explorerToWestLanding = await acceptedMove(
+    'explorer-live',
+    'context-hub',
+    'explorer-enters-west-landing',
   );
   assert.equal(
-    (await observe(origin, maker.token)).you.locationId,
+    Math.round((explorerToWestLanding.toPosition.x / 100) * ARENA_WORLD_WIDTH),
+    352,
+  );
+  await settle(explorerToWestLanding);
+
+  const stewardToEastLanding = await acceptedMove(
+    'steward-live',
+    'context-hub',
+    'steward-enters-east-landing',
+  );
+  assert.equal(
+    Math.round((stewardToEastLanding.toPosition.x / 100) * ARENA_WORLD_WIDTH),
+    416,
+  );
+  assertNavigationPathClearsPositions(stewardToEastLanding, [
+    explorerToWestLanding.toPosition,
+  ]);
+  await settle(stewardToEastLanding);
+
+  const explorerToDoor = await acceptedMove(
+    'explorer-live',
     'door-context',
+    'explorer-reserves-single-door',
   );
+  const stewardDoorConflict = await moveResident(
+    'steward-live',
+    'door-context',
+    'steward-yields-single-door',
+  );
+  assert.equal(stewardDoorConflict.response.status, 409);
+  assert.match(
+    stewardDoorConflict.body.error,
+    /(route conflicts|yield|reserved|standing slot|occupied)/iu,
+  );
+  await settle(explorerToDoor);
+  const explorerToHall = await acceptedMove(
+    'explorer-live',
+    'hall-center',
+    'explorer-clears-single-door',
+  );
+  await settle(explorerToHall);
+  const explorerClearsDoorMouth = await acceptedMove(
+    'explorer-live',
+    'hall-west',
+    'explorer-clears-context-door-mouth',
+  );
+  await settle(explorerClearsDoorMouth);
 
-  const explorerLeavesSpawn = await boardRequest(
-    origin,
-    '/world/action',
-    explorer.token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'recorded-pattern-recovers-to-context',
-        observationId: (await observe(origin, explorer.token)).observationId,
-        action: 'move',
-        targetId: 'context-hub',
-      }),
-    },
+  const stewardToDoor = await acceptedMove(
+    'steward-live',
+    'door-context',
+    'steward-enters-serialized-door',
   );
-  assert.equal(explorerLeavesSpawn.status, 201);
-  const explorerLeavesSpawnBody = await json(explorerLeavesSpawn);
-  const explorerToContext = explorerLeavesSpawnBody.event.payload;
-  assert.deepEqual(explorerToContext.fromPosition, explorer.position);
-  assertNavigationPathIsSweptLegal(explorerToContext);
-  assertNavigationPathClearsPositions(explorerToContext, [
-    ...spawnPositionsExcept('explorer-live', 'maker-live'),
-    makerToDoor.toPosition,
+  await settle(stewardToDoor);
+  const stewardToHall = await acceptedMove(
+    'steward-live',
+    'hall-center',
+    'steward-clears-serialized-door',
+  );
+  await settle(stewardToHall);
+  const stewardClearsDoorMouth = await acceptedMove(
+    'steward-live',
+    'hall-east',
+    'steward-clears-context-door-mouth',
+  );
+  await settle(stewardClearsDoorMouth);
+
+  const makerToEastLanding = await acceptedMove(
+    'maker-live',
+    'context-hub',
+    'maker-drains-east-overflow',
+  );
+  await settle(makerToEastLanding);
+  const criticToWestLanding = await acceptedMove(
+    'critic-live',
+    'context-hub',
+    'critic-drains-west-overflow',
+  );
+  assertNavigationPathClearsPositions(criticToWestLanding, [
+    makerToEastLanding.toPosition,
   ]);
-  await new Promise((resolveWait) =>
-    setTimeout(
-      resolveWait,
-      Math.max(0, Date.parse(explorerToContext.arrivesAt) - Date.now() + 5),
-    ),
-  );
+  await settle(criticToWestLanding);
 
-  const explorerAtContext = await observe(origin, explorer.token);
-  assert.equal(explorerAtContext.you.locationId, 'context-hub');
-  const explorerApproachesPlant = await boardRequest(
-    origin,
-    '/world/action',
-    explorer.token,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        actionId: 'recorded-pattern-to-plant',
-        observationId: explorerAtContext.observationId,
-        action: 'move',
-        targetId: 'plant-context',
-      }),
-    },
+  const makerToDoor = await acceptedMove(
+    'maker-live',
+    'door-context',
+    'maker-reserves-single-door',
   );
-  const explorerApproachesPlantBody = await json(explorerApproachesPlant);
+  const criticDoorConflict = await moveResident(
+    'critic-live',
+    'door-context',
+    'critic-yields-single-door',
+  );
+  assert.equal(criticDoorConflict.response.status, 409);
+  await settle(makerToDoor);
+  const makerToHall = await acceptedMove(
+    'maker-live',
+    'hall-center',
+    'maker-clears-single-door',
+  );
+  await settle(makerToHall);
+  const makerClearsDoorMouth = await acceptedMove(
+    'maker-live',
+    'hall-east',
+    'maker-clears-context-door-mouth',
+  );
+  await settle(makerClearsDoorMouth);
+
+  const criticToLight = await acceptedMove(
+    'critic-live',
+    'room-light-context',
+    'critic-visits-commons-switch',
+  );
+  await settle(criticToLight);
+  const criticLightScene = await observe(
+    origin,
+    residents.get('critic-live').token,
+  );
+  await interactAt(
+    origin,
+    residents.get('critic-live').token,
+    criticLightScene,
+    'room-light-context',
+    'switch_off',
+    'critic-switches-off-commons',
+  );
+  const criticReturnsToLanding = await acceptedMove(
+    'critic-live',
+    'context-hub',
+    'critic-returns-from-commons-switch',
+  );
+  await settle(criticReturnsToLanding);
+
+  const criticToDoor = await acceptedMove(
+    'critic-live',
+    'door-context',
+    'critic-enters-serialized-door',
+  );
+  await settle(criticToDoor);
+  const criticToHall = await acceptedMove(
+    'critic-live',
+    'hall-center',
+    'critic-clears-serialized-door',
+  );
+  await settle(criticToHall);
+
   assert.equal(
-    explorerApproachesPlant.status,
-    201,
-    explorerApproachesPlantBody.error,
+    (await observe(origin, residents.get('explorer-live').token)).you
+      .locationId,
+    'hall-west',
   );
-  const explorerToPlant = explorerApproachesPlantBody.event.payload;
-  assert.deepEqual(explorerToPlant.fromPosition, explorerToContext.toPosition);
-  assertNavigationPathIsSweptLegal(explorerToPlant);
-  assertNavigationPathClearsPositions(explorerToPlant, [
-    ...spawnPositionsExcept('explorer-live', 'maker-live'),
-    makerToDoor.toPosition,
-  ]);
+  assert.equal(
+    (await observe(origin, residents.get('steward-live').token)).you.locationId,
+    'hall-east',
+  );
+  assert.equal(
+    (await observe(origin, residents.get('maker-live').token)).you.locationId,
+    'hall-east',
+  );
+  assert.equal(
+    (await observe(origin, residents.get('critic-live').token)).you.locationId,
+    'hall-center',
+  );
 });
 
 void test('an occupied doorway can drain past a stationary adjacent corridor resident', async (t) => {
@@ -3209,7 +3257,7 @@ void test('an occupied doorway can drain past a stationary adjacent corridor res
   ]);
 });
 
-void test('door-context movement retries a later hall-center slot when the first endpoint-clear route crosses Aster', async (t) => {
+void test('door-context movement retries a later hall-center slot when its preferred bay is occupied', async (t) => {
   const port = await availablePort();
   const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-door-slot-retry-'));
   const origin = `http://127.0.0.1:${port}`;
@@ -3229,7 +3277,7 @@ void test('door-context movement retries a later hall-center slot when the first
       payload: { objective: 'Retry every authored target slot safely' },
     },
     ...[
-      ['steward-smoke', 'Aster', 'Steward'],
+      ['aster-safe', 'Aster', 'Steward'],
       ['mover-smoke', 'Mover', 'Movement verifier'],
     ].map(([agentId, name, role], index) => ({
       schemaVersion: 1,
@@ -3243,7 +3291,7 @@ void test('door-context movement retries a later hall-center slot when the first
       payload: { name, role },
     })),
     ...[
-      ['steward-smoke', 'spawn-lift', 'hall-center'],
+      ['aster-safe', 'spawn-lift', 'hall-center'],
       ['mover-smoke', 'spawn-lift', 'door-context'],
     ].map(([agentId, fromLocationId, toLocationId], index) => ({
       schemaVersion: 1,
@@ -3265,7 +3313,7 @@ void test('door-context movement retries a later hall-center slot when the first
     })),
   ];
   const tokens = {
-    'steward-smoke':
+    'aster-safe':
       'door-slot-retry-steward-token-0123456789abcdef0123456789abcdef',
     'mover-smoke':
       'door-slot-retry-mover-token-0123456789abcdef0123456789abcdef',
@@ -3338,7 +3386,7 @@ void test('door-context movement retries a later hall-center slot when the first
   assert.equal(hallExit.available, true);
   assert.deepEqual(
     hallExit.occupiedBy.map((resident) => resident.id),
-    ['steward-smoke'],
+    ['aster-safe'],
   );
   assert.equal(hallExit.trafficBy, undefined);
 
@@ -3359,13 +3407,13 @@ void test('door-context movement retries a later hall-center slot when the first
   const moveBody = await json(move);
   assert.equal(move.status, 201, moveBody.error);
   assert.deepEqual(moveBody.event.payload.fromPosition, {
-    x: 44.792,
+    x: 50,
     y: 50,
   });
   assert.deepEqual(moveBody.event.payload.toPosition, { x: 43.25, y: 50 });
   assertNavigationPathIsSweptLegal(moveBody.event.payload);
   assertNavigationPathClearsPositions(moveBody.event.payload, [
-    { x: 52.25, y: 50 },
+    { x: 56.75, y: 50 },
   ]);
 });
 
@@ -3493,7 +3541,7 @@ void test('authenticated semantic world-action failures write redacted recovery 
   assert.equal(contentionResponse.status, 409);
   assert.match(
     (await json(contentionResponse)).error,
-    /(path is in use|occupied or reserved)/u,
+    /(path is in use|route conflicts|occupied or reserved|yield)/u,
   );
 
   const rejectionPath = resolve(dataDir, 'action-rejections.jsonl');
@@ -4880,13 +4928,14 @@ void test('purpose exposes only explicit role-aware board work with valid artifa
     );
   }
 
+  await walkTo(origin, tokens.maker, 'comms-board');
+  await walkTo(origin, tokens.explorer, 'comms-board');
   const stewardClearsMakerLane = await walkTo(
     origin,
     tokens.steward,
     'commons',
   );
   assert.equal(stewardClearsMakerLane.you.locationId, 'commons');
-  await walkTo(origin, tokens.maker, 'comms-board');
   const gapQuestionResponse = await boardRequest(
     origin,
     '/board/message',
@@ -6278,7 +6327,7 @@ void test('trajectory admission reserves a new parked endpoint through a longer 
 
   const betaSpawn = await postEvent(origin, {
     kind: 'agent.spawned',
-    agentId: 'horizon-b',
+    agentId: 'horizon-c',
     payload: { name: 'Horizon B', role: 'Trajectory verifier' },
   });
   assert.equal(betaSpawn.status, 201);
@@ -6307,11 +6356,11 @@ void test('trajectory admission reserves a new parked endpoint through a longer 
   const betaMoveBody = await json(betaMove);
   assert.equal(betaMove.status, 201, betaMoveBody.error);
   assert.deepEqual(betaMoveBody.event.payload.fromPosition, {
-    x: 16.167,
+    x: 20.667,
     y: 50,
   });
   assert.deepEqual(betaMoveBody.event.payload.toPosition, {
-    x: 43.25,
+    x: 47.75,
     y: 50,
   });
 
@@ -6324,7 +6373,7 @@ void test('trajectory admission reserves a new parked endpoint through a longer 
   assert.equal(contextDoorExit.available, false);
   assert.deepEqual(
     contextDoorExit.trafficBy.map((person) => person.id),
-    ['horizon-b'],
+    ['horizon-c'],
   );
   const alphaMove = await boardRequest(origin, '/world/action', alphaToken, {
     method: 'POST',

@@ -1,6 +1,8 @@
 import {
   FACILITY_COLLISION_GEOMETRY,
+  FACILITY_COMMONS_LAYOUT,
   FACILITY_LIGHT_LAYOUT,
+  FACILITY_REPLAY_OVERFLOW_SLOTS,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
   FACILITY_SPAWN_QUEUE_SLOTS,
@@ -43,7 +45,9 @@ import {
 
 export {
   FACILITY_COLLISION_GEOMETRY,
+  FACILITY_COMMONS_LAYOUT,
   FACILITY_LIGHT_LAYOUT,
+  FACILITY_REPLAY_OVERFLOW_SLOTS,
   FACILITY_RESOURCES,
   FACILITY_ROOMS,
   FACILITY_SPAWN_QUEUE_SLOTS,
@@ -172,20 +176,10 @@ function positionAvailable(position: Vec2, reserved: Vec2[]) {
   );
 }
 
-const STATION_OVERFLOW_SLOTS: Record<string, Vec2[]> = {
-  // Old journals may contain arrivals accepted before a waypoint capacity was
-  // tightened. Replay queues those residents along the clear centerline rather
-  // than inventing a near-identical point that visually merges their sprites.
-  'context-hub': [{ x: 44.661, y: 89.286 }],
-  'context-kiosk': [
-    { x: 47.135, y: 85.714 },
-    { x: 51.302, y: 85.714 },
-  ],
-  commons: [
-    { x: 43.75, y: 89.286 },
-    { x: 47.917, y: 89.286 },
-  ],
-};
+const STATION_OVERFLOW_SLOTS = FACILITY_REPLAY_OVERFLOW_SLOTS as Record<
+  string,
+  readonly Vec2[]
+>;
 
 export function slotForAgent(
   stationId: string,

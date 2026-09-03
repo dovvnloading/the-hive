@@ -101,3 +101,27 @@ Run `node scripts/process-wall-fixtures.mjs` after replacing a source.
 The processor removes connected neutral backdrops from generated sources that
 need extraction, crops to visible alpha, resamples with Lanczos, sharpens
 lightly, and writes a compact 96-colour transparent PNG.
+
+## Room lights-off siblings
+
+`node scripts/process-wall-fixtures.mjs --lights-off` deterministically writes
+dark siblings to `lights-off/` for the oak floor, plaster wall, Command routing
+board, Utility tools board, Build verification chart, lower-room doorway,
+small, tall, potted, and paired plants, floor lamp, and both full and empty
+mailbox states. The plants and floor lamp are sourced from
+`../cozy-cabin/sprites/`; all other inputs are the illuminated runtime assets
+in this directory.
+
+The recorded grade multiplies brightness by 55%, retains 75% saturation around
+relative luminance, then blends each RGB channel 18% toward `#101827`. It never
+changes dimensions or alpha. The authored single and dual off-light artwork is
+copied into the same directory with alpha normalized byte-for-byte against its
+illuminated counterpart; missing off-art pixels fall back to the same grade.
+The processor decodes every result to verify dimensions and alpha and confirms
+that none of its illuminated or authored inputs changed. It also resolves every
+dark path declared by the renderer and fails if any mapped file is absent or
+empty.
+
+The complete furniture and room-asset pass is `npm run assets:lights-off`.
+Ignored illuminated, lights-off, and difference contact sheets are written to
+`outputs/asset-qa/lights-off-room-assets/` for review.
