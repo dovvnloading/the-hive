@@ -513,7 +513,7 @@
   background-position: -576px 0;
   background-repeat: no-repeat;
   background-size: 768px 64px;
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
 .hive-resident-copy {
   display: flex;

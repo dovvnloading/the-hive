@@ -76,24 +76,34 @@ export {
 
 export const AGENT_PRESENTATION: Record<string, AgentPresentation> = {
   atlas: {
-    sprite: '/assets/limezu/characters/adam',
-    accent: '#c98b52',
+    sprite: '/assets/residents-v1/maple',
+    accent: '#d29a3a',
     shortRole: 'ORCHESTRATOR',
   },
   sage: {
-    sprite: '/assets/limezu/characters/alex',
+    sprite: '/assets/residents-v1/fern',
     accent: '#7fa478',
     shortRole: 'RESEARCH',
   },
   nova: {
-    sprite: '/assets/limezu/characters/amelia',
-    accent: '#6aa6ae',
+    sprite: '/assets/residents-v1/juniper',
+    accent: '#4f7bbd',
     shortRole: 'BUILDER',
   },
   kernel: {
-    sprite: '/assets/limezu/characters/bob',
-    accent: '#ad6663',
+    sprite: '/assets/residents-v1/bram',
+    accent: '#9a5578',
     shortRole: 'VERIFY',
+  },
+  clover: {
+    sprite: '/assets/residents-v1/clover',
+    accent: '#9d8fdc',
+    shortRole: 'STEWARD',
+  },
+  ollie: {
+    sprite: '/assets/residents-v1/ollie',
+    accent: '#d9544f',
+    shortRole: 'GENERALIST',
   },
 };
 

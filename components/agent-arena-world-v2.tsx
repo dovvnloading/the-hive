@@ -1924,17 +1924,28 @@ function drawAgent(
   context.beginPath();
   context.ellipse(x, y, seated ? 13 : 8, 3, 0, 0, Math.PI * 2);
   context.fill();
+  // Sheets keep the 16 x 32 frame grid but may be authored at a higher
+  // resolution; the illustrated resident sheets are 8x and need smoothing to
+  // downsample cleanly, while 1x pixel sheets stay nearest-neighbour.
+  const sheetScale = Math.max(
+    1,
+    Math.round(sheet.naturalHeight / CHARACTER_FRAME_HEIGHT),
+  );
+  const smoothing = context.imageSmoothingEnabled;
+  context.imageSmoothingEnabled = sheetScale > 1;
+  context.imageSmoothingQuality = 'high';
   context.drawImage(
     sheet,
-    sourceFrame * frameWidth,
+    sourceFrame * frameWidth * sheetScale,
     0,
-    frameWidth,
-    frameHeight,
+    frameWidth * sheetScale,
+    frameHeight * sheetScale,
     Math.round(x - width / 2),
     y - height,
     width,
     height,
   );
+  context.imageSmoothingEnabled = smoothing;
 
   if (
     selected ||
