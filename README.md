@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/media/village-tour.gif" alt="Touring the Hive: a pixel-art village of six cottages. The camera enters the lit Study, the Workshop and the Library, then returns to the village lane." width="760">
+<img src="docs/media/village-tour.gif" alt="A day in the Hive: the village map, residents chatting in the Commons, walking out along the lane, Fern switching on the Library lights and sitting at the research computer, and Bram telling Juniper that the tests passed." width="760">
 
 # The Hive
 
@@ -40,25 +40,34 @@ What you get is an agent observatory where **the picture is the evidence**: a sp
 <tr>
 <td width="50%" valign="top">
 
-<img src="docs/media/room-closeup.gif" alt="Scrolling to zoom the Study from 100% to 300%, ending on the desk's notebook, monitor and sextant." width="100%">
+<img src="docs/media/room-closeup.gif" alt="Zooming in on Bram typing at the Workshop test desk, then Bram walking over to tell Juniper that all 12 search tests passed." width="100%">
 
-**Look closer.** Scroll to zoom from the whole room down to the notebook on the desk (100% → 300%), drag to pan, double-click to focus, or follow a resident as they move.
+**Look closer.** Scroll to zoom from the whole room down to one resident at work, drag to pan, double-click to focus, or follow a resident as they move. Here Bram runs the tests, then walks over to tell Juniper they passed.
 
 </td>
 <td width="50%" valign="top">
 
-<img src="docs/media/field-journal.gif" alt="The field journal: a stream of real resident events, then the Research tab showing a completed topic with its build hash, validator output and changed files." width="100%">
+<img src="docs/media/field-journal.gif" alt="The field journal: a stream of resident events, the Research tab with a completed topic and its evidence, and the Present tab listing all six residents." width="100%">
 
-**Read the field journal.** Every movement, tool call, finding and message from a run, with the evidence chain behind each claim: the SHA-256 of a built index, the validator's output, the files that changed.
+**Read the field journal.** Every movement, tool call, finding and conversation from a run, with the evidence behind each claim: the source note with its URL, the build and the test results that close a research topic.
 
 </td>
 </tr>
 <tr>
 <td colspan="2" valign="top">
 
-<img src="docs/media/lit-and-dark.jpg" alt="Side by side: the lit Study with warm lamps, and the Commons with its lights switched off in cool shadow." width="100%">
+<img src="docs/media/lit-and-dark.jpg" alt="Side by side: the Library lit with warm lamps, and the same Library with its lights off in cool shadow. Fern stands in both." width="100%">
 
-**Lighting is world state, not decoration.** A dark room hides its inventory from a resident's perception until someone flips the wall switch. The Study (left) is lit; the Commons (right) is switched off.
+**Lighting is world state, not decoration.** A dark room hides its inventory from a resident's perception until someone flips the wall switch. The Library (left) is lit; on the right is the same room a moment earlier, before Fern reached the switch.
+
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top">
+
+<img src="docs/media/residents.jpg" alt="The Residents panel listing Maple, Fern, Juniper, Bram, Clover and Ollie with portraits and locations, beside Maple seated at the Meeting hall planning table." width="100%">
+
+**Meet the residents.** Six original characters (Maple, Fern, Juniper, Bram, Clover and Ollie) who walk, sit, type and read their phones. The panel shows where each one is and what they last touched.
 
 </td>
 </tr>
@@ -79,7 +88,7 @@ What you get is an agent observatory where **the picture is the evidence**: a sp
 </tr>
 </table>
 
-> The captures above come from the real app running locally against a journal from a completed run. No resident was present while they were recorded, which is why the village is quiet: residents appear only when real agents join.
+> **About this footage.** It is the real app running locally, but the residents in it are staged: six scripted residents were driven through the real bridge API on a throwaway journal to show the art, movement and journal. In normal use every resident is a real agent process, and the bridge enforces the same rules either way: moves along graph edges, speaking range, and proof before a tool call can finish.
 
 ## What's inside
 
@@ -208,7 +217,7 @@ Today the Hive is one local village, inhabited by Codex residents, with one work
 ## Credits and licenses
 
 - **Code.** The source code is released under the [MIT License](LICENSE). The license does not cover the art or sound: the third-party packs below keep their own licenses, and the project's own art and sound remain all rights reserved.
-- **Art.** The room interiors and every interactable prop were remade for this project: hand-built layout mockups ([`design/hive-remake-v1/`](design/hive-remake-v1/)) were turned into illustrated art with ChatGPT image generation. The residents are original sheets drawn by [`scripts/generate-resident-sprites.mjs`](scripts/generate-resident-sprites.mjs). The village map and UI were generated earlier; prompts and processing are recorded in [`design/`](design/) and each `public/assets/*/SOURCE.md`. The repository still contains third-party art used only by the legacy renderer (`components/agent-arena-world.tsx`): [Cosy Cabin](https://marie-pepo.itch.io/cosy-cabin) by Marie Pepo (credit required, no resale), [Basic Village Tileset](https://forchild.itch.io/village-tileset) by Forchild (CC0), and the free edition of LimeZu's Modern Interiors (non-commercial use only).
+- **Art.** The room interiors and every interactable prop were remade for this project: hand-built layout mockups ([`design/hive-remake-v1/`](design/hive-remake-v1/)) were turned into illustrated art with ChatGPT image generation. The six residents were made the same way, from per-character mockups ([`design/hive-remake-v1/characters/`](design/hive-remake-v1/characters/)). The village map and UI were generated earlier; prompts and processing are recorded in [`design/`](design/) and each `public/assets/*/SOURCE.md`. The repository still contains third-party art used only by the legacy renderer (`components/agent-arena-world.tsx`): [Cosy Cabin](https://marie-pepo.itch.io/cosy-cabin) by Marie Pepo (credit required, no resale), [Basic Village Tileset](https://forchild.itch.io/village-tileset) by Forchild (CC0), and the free edition of LimeZu's Modern Interiors (non-commercial use only).
 - **Sound.** An original first-party sound set in `public/audio/`.
 
 <div align="center">

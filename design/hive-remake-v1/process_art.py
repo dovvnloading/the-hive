@@ -127,24 +127,50 @@ def process_props() -> None:
     footprints = {p["name"]: p["footprint"] for p in layout["props"]}
     variants = json.loads((HERE / "variants.json").read_text()) if (HERE / "variants.json").exists() else {}
     footprints.update({name: footprints[base] for name, base in variants.items()})
-    for src in sorted((HERE / "generated/props").glob("*.*")):
-        name = src.stem
+    sources = {src.stem: src for src in sorted((HERE / "generated/props").glob("*.*"))}
+    keyed = {}
+    boxes = {}
+    for name, src in sources.items():
         if name not in footprints:
             print(f"skip prop {name}: no footprint")
             continue
-        keyed = key_magenta(np.array(Image.open(src).convert("RGBA")))
-        ys, xs = np.where(keyed[..., 3] > 128)
-        crop = keyed[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+        keyed[name] = key_magenta(np.array(Image.open(src).convert("RGBA")))
+        ys, xs = np.where(keyed[name][..., 3] > 128)
+        boxes[name] = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
+    # State variants are edits of their base image with the same framing, so a
+    # base and its variants share one crop box: the pot, lamp or mailbox stays
+    # the same size and place when its state changes.
+    group = {name: variants.get(name, name) for name in keyed}
+    shared = {}
+    for name, base in group.items():
+        b = boxes[name]
+        u = shared.get(base, b)
+        shared[base] = (min(u[0], b[0]), min(u[1], b[1]), max(u[2], b[2]), max(u[3], b[3]))
+    for name, image in keyed.items():
+        x0, y0, x1, y1 = shared[group[name]]
+        crop = image[y0:y1, x0:x1]
         w, h = footprints[name]
-        sprite = np.array(Image.fromarray(crop).resize((w * PROP_SCALE, h * PROP_SCALE), Image.LANCZOS))
-        for target in PROP_FILES.get(name, [name]):
-            if isinstance(target, tuple):
-                save_pair(sprite[:, ::-1].copy(), target[0])
-                target = target[0]
+        # Pad rather than stretch to the footprint's aspect: centred
+        # horizontally and resting on the bottom edge (the floor contact).
+        cw, ch = crop.shape[1], crop.shape[0]
+        target = w / h
+        if cw / ch < target:
+            pw = round(ch * target)
+            pad = np.zeros((ch, pw, 4), np.uint8)
+            pad[:, (pw - cw) // 2 : (pw - cw) // 2 + cw] = crop
+        else:
+            ph = round(cw / target)
+            pad = np.zeros((ph, cw, 4), np.uint8)
+            pad[ph - ch :, :] = crop
+        sprite = np.array(Image.fromarray(pad).resize((w * PROP_SCALE, h * PROP_SCALE), Image.LANCZOS))
+        for out in PROP_FILES.get(name, [name]):
+            if isinstance(out, tuple):
+                save_pair(sprite[:, ::-1].copy(), out[0])
+                out = out[0]
             else:
-                save_pair(sprite, target)
-            record(target, (w, h), (sprite.shape[1], sprite.shape[0]), f"generated/props/{src.name}", "graded")
-        print(f"prop {name}: {crop.shape[1]}x{crop.shape[0]} -> {w * PROP_SCALE}x{h * PROP_SCALE}")
+                save_pair(sprite, out)
+            record(out, (w, h), (sprite.shape[1], sprite.shape[0]), f"generated/props/{sources[name].name}", "graded")
+        print(f"prop {name}: {cw}x{ch} -> {w * PROP_SCALE}x{h * PROP_SCALE}")
 
 
 if __name__ == "__main__":
@@ -152,9 +178,15 @@ if __name__ == "__main__":
     # Start from the previous interior set so assets not remade (corridor floor,
     # timber, rug, unused furniture) still load. UI icons stay in homestead-v1.
     (OUT / "lights-off").mkdir(exist_ok=True)
+    # A partial run (rooms or props only) keeps the other half's entries.
+    if (HERE / "manifest.json").exists():
+        for asset in json.loads((HERE / "manifest.json").read_text())["assets"]:
+            MANIFEST[asset["name"]] = asset
     old_manifest = json.loads((ROOT / "design/homestead-v1/interiors/manifest.json").read_text())
     for asset in old_manifest["assets"]:
         # Carried over unchanged: its lights-off partner is the earlier model-made one.
+        if MANIFEST.get(asset["name"], {}).get("lightingPair") == "graded":
+            continue
         record(asset["name"], (asset["logicalWidth"], asset["logicalHeight"]), (asset["width"], asset["height"]),
                "homestead-v1", "model")
     for sub in ("", "lights-off"):

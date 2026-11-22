@@ -642,6 +642,258 @@ const PROPS = {
   ],
 };
 
+// Floor-standing props, redrawn for the rooms' camera: straight-on and looking
+// down at about 45 degrees (top-down 3/4, "2.5D"). Tops, seats and soil are
+// visible surfaces; front faces sit below them. Wall-mounted props above keep
+// their front-on view because the back wall is seen straight-on.
+const TOP = '#d9a670';
+const TOP_D = '#c48f58';
+const SEAT = '#8fb987';
+const VELVET = '#6f9a68';
+const VELVET_D = '#5f8a5a';
+
+const deskBase = (w, top, depth, legsY, legsH) =>
+  rect(3, legsY, 3, legsH, WOOD_D) +
+  rect(w - 6, legsY, 3, legsH, WOOD_D) +
+  rect(1, top, w - 2, depth, TOP, 1.2) +
+  line(`M3 ${top + depth * 0.35} L${w - 3} ${top + depth * 0.35}`, TOP_D, 0.3) +
+  line(`M3 ${top + depth * 0.7} L${w - 3} ${top + depth * 0.7}`, TOP_D, 0.3) +
+  rect(1, top + depth, w - 2, 3, WOOD, 0.6);
+
+const shelfTop = (w) =>
+  rect(0, 0, w, 6, TOP, 1) + line(`M2 3 L${w - 2} 3`, TOP_D, 0.3);
+
+Object.assign(PROPS, {
+  'utility-workstation': [
+    54,
+    40,
+    () =>
+      rect(33, 26, 16, 12, WOOD) +
+      line('M33 32 L49 32', OL, 0.4) +
+      circ(41, 29, 0.7, BRASS, null) +
+      circ(41, 35, 0.7, BRASS, null) +
+      deskBase(54, 11, 15, 27, 12) +
+      rect(4, 14, 8, 6, '#fbf1dc', 0.4, OL, 0.3) +
+      line('M5.5 16 L10 16 M5.5 18 L9 18', '#a58a6a', 0.3) +
+      ell(27, 14, 4.5, 1.5, '#3a3440') +
+      rect(25.5, 10, 3, 4, '#3a3440', 0, null) +
+      rect(16, 0.5, 22, 12, '#3a3440', 1.5) +
+      rect(18, 2.5, 18, 8, '#8fd3c9', 0.8, null) +
+      line('M20 5 L30 5 M20 7.5 L33 7.5', '#3f7f78', 0.6) +
+      rect(14, 17, 22, 6, '#efe6d2', 0.8, OL, 0.35) +
+      line('M15.5 19 L34.5 19 M15.5 21 L34.5 21', '#bdb19a', 0.35) +
+      circ(42, 18, 2.4, '#e86f5a', OL, 0.35) +
+      circ(42, 18, 1.4, '#5a3a28', null),
+  ],
+  'verification-desk': [
+    62,
+    40,
+    () =>
+      rect(7, 26, 17, 12, WOOD) +
+      circ(15.5, 32, 0.8, BRASS, null) +
+      deskBase(62, 11, 15, 27, 12) +
+      rect(5, 2.5, 21, 4, '#727c88', 1) +
+      rect(5, 6, 21, 11, '#4b5562', 1) +
+      rect(7, 8, 12, 7, '#163b33', 0.5, null) +
+      line('M7.5 11.5 Q9.5 8 11.5 11.5 T15.5 11.5 T18.5 11.5', '#7dffb0', 0.6) +
+      circ(22, 9.5, 1.4, '#e2a93b') +
+      circ(22, 13.8, 1.4, '#6aa6ae') +
+      ell(42, 14, 4.5, 1.5, '#3a3440') +
+      rect(40.5, 10, 3, 4, '#3a3440', 0, null) +
+      rect(32, 0.5, 20, 12, '#3a3440', 1.5) +
+      rect(34, 2.5, 16, 8, '#9fe3c0', 0.8, null) +
+      line('M36 6 l2 2 l4 -4', '#2f8a57', 0.8) +
+      rect(52, 16, 7, 6, '#f4efe6', 0.4, OL, 0.3) +
+      line('M53 18 L57.5 18 M53 20 L56 20', '#a58a6a', 0.3),
+  ],
+  'writing-desk': [
+    50,
+    38,
+    () =>
+      rect(26, 26, 14, 8, WOOD) +
+      circ(33, 30, 0.8, BRASS, null) +
+      deskBase(50, 10, 15, 26, 11) +
+      path('M10 12 L24 13 L24 23 L10 22 Z', '#fbf1dc') +
+      path('M24 13 L38 12 L38 22 L24 23 Z', '#f4e6c6') +
+      line('M12 15 L22 15.6 M12 17.5 L22 18 M12 20 L20 20.4 M26 15.6 L36 15 M26 18 L36 17.5 M26 20.4 L33 20', '#a58a6a', 0.35) +
+      line('M24 13 L24 27', '#b84a3e', 0.7) +
+      circ(43, 15, 2.6, '#2f3b5a', OL, 0.4) +
+      circ(43, 15, 1, '#141a2b', null) +
+      path('M43 14.5 L47.5 4 Q48.5 6 46 9 Z', '#f4efe6', OL, 0.3),
+  ],
+  'build-workbench': [
+    70,
+    40,
+    () =>
+      rect(3, 23, 4, 16, WOOD_D) +
+      rect(63, 23, 4, 16, WOOD_D) +
+      rect(5, 31, 60, 4, WOOD_L, 0.5) +
+      rect(5, 35, 60, 1.8, WOOD, 0.3) +
+      rect(12, 26.5, 11, 3, '#dcbd85', 0.4) +
+      rect(12, 29.5, 11, 4, '#c9a46c', 0.4) +
+      rect(46, 26.5, 13, 3, '#9cb38c', 0.4) +
+      rect(46, 29.5, 13, 4.5, '#8aa07a', 0.4) +
+      rect(1, 8, 68, 13, TOP, 1.2) +
+      range(9, 68, 8).map((x) => line(`M${x} 8.6 L${x} 20.4`, TOP_D, 0.3)).join('') +
+      rect(1, 21, 68, 3.5, WOOD, 0.6) +
+      rect(4, 2.5, 10, 3.5, '#8d96a1', 0.6) +
+      rect(4, 6, 10, 6, '#6f7680', 0.8) +
+      path('M22 13 L37 11.5 L37.5 15 L22.5 16.5 Z', '#d9dde3') +
+      rect(37, 10, 5, 5.5, WOOD, 0.8) +
+      rect(46, 13.5, 9, 1.8, WOOD, 0.6) +
+      rect(55, 11.5, 4, 6, '#7b838d', 0.6) +
+      circ(63.5, 13, 2.8, '#e2a93b') +
+      circ(63.5, 13, 1.1, '#c18a25', null),
+  ],
+  'planning-table': [
+    54,
+    40,
+    () =>
+      rect(9, 24, 4, 15, WOOD_D) +
+      rect(41, 24, 4, 15, WOOD_D) +
+      path('M1 16 A26 11 0 0 0 53 16 L53 19.5 A26 11 0 0 1 1 19.5 Z', WOOD) +
+      ell(27, 16, 26, 11, TOP) +
+      path('M10 9.5 L44 9.5 L45 22 L9 22 Z', '#efe2bf', OL, 0.4) +
+      rect(13, 12, 8, 4.5, '#cfe3c0', 0.4, OL, 0.3) +
+      rect(23, 12, 8, 4.5, '#e8cfa4', 0.4, OL, 0.3) +
+      rect(33, 12, 8, 4.5, '#c9d9ec', 0.4, OL, 0.3) +
+      rect(15, 17.5, 8, 3.5, '#e3c9e6', 0.4, OL, 0.3) +
+      rect(31, 17.5, 8, 3.5, '#f6e3a0', 0.4, OL, 0.3) +
+      line('M21 14 L23 14 M31 14 L33 14 M19 16.5 L19 17.5 M35 16.5 L35 17.5', '#b84a3e', 0.5) +
+      circ(17, 11.5, 0.9, '#b84a3e') +
+      circ(37, 11.5, 0.9, '#4f7bbd') +
+      circ(48, 15, 2.1, '#f4efe6', OL, 0.35) +
+      circ(48, 15, 1.2, '#8a5a3a', null),
+  ],
+  'bookshelf-filled': [
+    50,
+    64,
+    () =>
+      shelfTop(50) +
+      rect(1, 6, 48, 57, WOOD, 1) +
+      rect(4, 8, 42, 52, WOOD_D, 0.5) +
+      [8, 21, 34, 47]
+        .map((y, i) => books(5, y, 40, 11, i * 3) + rect(4, y + 11, 42, 2, WOOD_L, 0, OL, 0.35))
+        .join(''),
+  ],
+  'bookshelf-sparse': [
+    50,
+    64,
+    () =>
+      shelfTop(50) +
+      rect(1, 6, 48, 57, WOOD, 1) +
+      rect(4, 8, 42, 52, WOOD_D, 0.5) +
+      [8, 21, 34, 47].map((y) => rect(4, y + 11, 42, 2, WOOD_L, 0, OL, 0.35)).join('') +
+      books(6, 8, 12, 11, 1) +
+      rect(30, 12, 9, 7, '#c9a46c', 0.4) +
+      books(25, 21, 10, 11, 4) +
+      ell(13, 43, 3.5, 2.5, '#b9573f') +
+      circ(13, 39, 3.5, '#6f935e') +
+      books(7, 47, 16, 11, 2),
+  ],
+  'parts-cabinet': [
+    48,
+    64,
+    () =>
+      shelfTop(48) +
+      rect(1, 6, 46, 57, WOOD, 1) +
+      rect(4, 9, 19, 23, '#cfe7ec', 0.6) +
+      rect(25, 9, 19, 23, '#cfe7ec', 0.6) +
+      circ(11, 15, 3, '#c9a46c', OL, 0.4) +
+      circ(16, 25, 2.5, BRASS, OL, 0.4) +
+      rect(28, 13, 8, 5, '#8d96a1', 0.4) +
+      circ(35, 25, 3, '#d9a441', OL, 0.4) +
+      [35, 44, 53]
+        .map((y) => rect(4, y, 40, 7.5, WOOD_L, 0.6) + rect(20, y + 2.5, 8, 2.4, '#f4efe6', 0.3, OL, 0.3))
+        .join(''),
+  ],
+  'reading-armchair': [
+    30,
+    38,
+    () =>
+      rect(2, 30, 3, 6, WOOD_D) +
+      rect(25, 30, 3, 6, WOOD_D) +
+      rect(4, 0.5, 22, 16, VELVET_D, 5) +
+      circ(10, 6, 0.6, '#4c7347', null) +
+      circ(15, 5, 0.6, '#4c7347', null) +
+      circ(20, 6, 0.6, '#4c7347', null) +
+      rect(7, 13, 16, 11, SEAT, 2.5) +
+      rect(7, 23, 16, 7, '#7fa478', 1.5) +
+      rect(0.5, 15, 7, 16, VELVET, 2) +
+      rect(0.5, 11, 7, 6, '#86ad7e', 2.5) +
+      rect(22.5, 15, 7, 16, VELVET, 2) +
+      rect(22.5, 11, 7, 6, '#86ad7e', 2.5),
+  ],
+  'lounge-couch': [
+    52,
+    38,
+    () =>
+      rect(3, 30, 3, 6, WOOD_D) +
+      rect(46, 30, 3, 6, WOOD_D) +
+      rect(3, 0.5, 46, 16, VELVET_D, 5) +
+      rect(11, 5, 9, 8, '#e8c983', 2.5) +
+      rect(32, 5, 9, 8, '#c96f5f', 2.5) +
+      rect(8, 13, 18, 11, SEAT, 2) +
+      rect(26, 13, 18, 11, SEAT, 2) +
+      rect(8, 23, 18, 7, '#7fa478', 1.5) +
+      rect(26, 23, 18, 7, '#7fa478', 1.5) +
+      rect(0, 15, 8, 16, VELVET, 2.5) +
+      rect(0, 11, 8, 6, '#86ad7e', 2.5) +
+      rect(44, 15, 8, 16, VELVET, 2.5) +
+      rect(44, 11, 8, 6, '#86ad7e', 2.5),
+  ],
+  'chair-north': [
+    20,
+    32,
+    () =>
+      rect(3, 22, 2.4, 9.5, WOOD_D) +
+      rect(14.6, 22, 2.4, 9.5, WOOD_D) +
+      rect(2, 6, 16, 9, TOP, 1.2) +
+      rect(2, 15, 16, 2.5, WOOD, 0.5) +
+      rect(2.4, 1, 2.4, 22, WOOD, 0.8) +
+      rect(15.2, 1, 2.4, 22, WOOD, 0.8) +
+      [7, 10, 13].map((x) => rect(x - 0.7, 3.5, 1.4, 17, WOOD, 0.5)).join('') +
+      rect(2, 0.5, 16, 3.5, WOOD_L, 1) +
+      rect(2, 19.5, 16, 2.5, WOOD_L, 0.8),
+  ],
+  'chair-east': [
+    22,
+    32,
+    () =>
+      rect(5, 22, 2.6, 9.5, WOOD_D) +
+      rect(17, 22, 2.6, 9.5, WOOD_D) +
+      rect(4, 13, 16, 8, TOP, 1.2) +
+      rect(4, 21, 16, 2.5, WOOD, 0.5) +
+      rect(2, 1, 3.4, 30, WOOD, 1) +
+      rect(2, 0.5, 4.5, 3, WOOD_L, 1) +
+      rect(4.8, 4, 1.6, 9.5, WOOD_D, 0.5),
+  ],
+  'floor-lamp-on': [
+    13,
+    30,
+    () =>
+      ell(6.5, 27.5, 5.2, 2.2, WOOD_D) +
+      ell(6.5, 27, 4.2, 1.5, WOOD_L, null) +
+      rect(5.8, 10, 1.4, 17, BRASS, 0.5) +
+      path('M1.5 10 L11.5 10 L9.5 2.5 L3.5 2.5 Z', '#f6e2a8') +
+      ell(6.5, 2.5, 3, 1, '#8a6a3a') +
+      ell(6.5, 10, 5, 1.3, '#fff3c4', OL, 0.4),
+  ],
+  'plant-healthy': [
+    14,
+    24,
+    () =>
+      path('M2.5 14 L11.5 14 L10.2 23 L3.8 23 Z', '#c46a4c') +
+      ell(7, 14, 5, 1.9, '#d98a6a') +
+      ell(7, 14, 3.9, 1.3, '#5a3a28', null) +
+      path('M7 13.5 Q1 11 0.8 5 Q5.5 7.5 7 13.5 Z', '#6f9a58') +
+      path('M7 13.5 Q13 11 13.2 5 Q8.5 7.5 7 13.5 Z', '#7fae64') +
+      path('M7 13.5 Q4 7 6 0.8 Q9.5 6 7 13.5 Z', '#8fbf6a') +
+      path('M7 13.5 Q2.5 13.5 1.5 10 Q5 10.5 7 13.5 Z', '#7fae64') +
+      path('M7 13.5 Q11.5 13.5 12.5 10 Q9 10.5 7 13.5 Z', '#6f9a58'),
+  ],
+});
+
 function propSvg(name) {
   const [w, h, draw] = PROPS[name];
   return { w, h, body: draw() };

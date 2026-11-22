@@ -1,7 +1,13 @@
 # Hive visual remake v1
 
-Room backgrounds and interactable props for the facility interiors, made on
-2026-11-22 in three steps.
+Room backgrounds, interactable props and resident characters for the facility
+interiors, made on 2026-11-22. Rooms and props were made in three steps.
+
+**Camera.** Everything shares the rooms' camera: straight-on and looking down at
+about 45 degrees (top-down 3/4, "2.5D"). Floor-standing props show their tops
+(desk tops, seats, table plans, pot soil) as surfaces, with front faces below.
+Only wall-mounted pieces (boards, chart, sconces, switch, mailbox, doorway) are
+seen front-on, because the back wall is.
 
 1. **Mockups.** `make-mockups.mjs` draws each empty room shell at its exact
    world geometry (wall band, floor, timber frame, door openings, rugs,
@@ -38,9 +44,11 @@ Room backgrounds and interactable props for the facility interiors, made on
   neutral ambient light, because the game draws its own lighting. Every later
   room prompt carries the same rule.
 - **Props.** These were generated in a second chat, with the finished Commons
-  attached as the style reference. Each prompt said:
-  - Keep the mockup's silhouette, proportions, front-facing top-down 3/4 view
-    and part placement.
+  attached as the style and camera reference. The first floor-prop pass came out
+  nearly front-on, with desk tops as thin strips. Those props were redrawn as
+  top-down mockups and regenerated. Each prompt said:
+  - Keep the mockup's silhouette, proportions and part placement.
+  - Keep the top-down 3/4 camera, describing which surfaces are seen from above.
   - A list of enhancements.
   - A solid flat #FF00FF background with no floor, shadow or glow.
   - A square canvas, no text.
@@ -52,6 +60,23 @@ Room backgrounds and interactable props for the facility interiors, made on
   - empty mailbox;
   - sconces off;
   - switch off.
+
+## Characters
+
+The six residents (Maple, Fern, Juniper, Bram, Clover, Ollie) live in
+`characters/`.
+
+1. **Mockups.** `characters/mockups/` holds each character's earlier code-drawn
+   sprite, laid out as three references: a turnaround (front, back, side), a
+   walk sheet, and a pose sheet (seated, typing, phone).
+2. **Generation.** Each character had one ChatGPT chat, with the finished
+   Commons attached as the style reference. The chat produced the turnaround,
+   then the walk sheet, then the poses, each prompted as "the same character".
+   Masters are in `characters/generated/`. For Juniper, Bram, Clover and Ollie
+   the first turnaround drew a Maple-like figure. Each was redone in that
+   character's own chat, pointing at the correct walk and pose images.
+3. **Sheets.** `characters/build_sheets.py` writes `public/assets/residents-v2/`
+   (see its `SOURCE.md` for the frame layout).
 
 ## Lighting pairs
 
@@ -66,6 +91,7 @@ corridor floor, the timber, and unused furniture) keep their model-made pairs
 ```
 node design/hive-remake-v1/make-mockups.mjs
 python design/hive-remake-v1/process_art.py
+python design/hive-remake-v1/characters/build_sheets.py
 ```
 
 Restart the dev server after running `process_art.py`. Rewriting dozens of
