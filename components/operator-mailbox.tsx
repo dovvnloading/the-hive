@@ -16,6 +16,7 @@ import type {
   RuntimeAgent,
   RuntimeConnectionStatus,
 } from '@/lib/arena/agentic-types';
+import { HiveIcon } from './hive-ui-art';
 
 const MAX_MESSAGE_LENGTH = 2_000;
 const TERMINAL_AGENT_STATES = new Set(['completed', 'failed', 'canceled']);
@@ -240,9 +241,12 @@ export function OperatorMailbox({
       }}
     >
       <header>
-        <div>
-          <p>Commons dispatch box</p>
-          <h2 id="operator-mailbox-title">Operator dispatch</h2>
+        <div className="hive-dispatch-heading">
+          <HiveIcon name="dispatch" size={43} />
+          <div>
+            <p>Commons dispatch box</p>
+            <h2 id="operator-mailbox-title">Operator dispatch</h2>
+          </div>
         </div>
         <button
           type="button"
@@ -251,7 +255,7 @@ export function OperatorMailbox({
           onClick={closeMailbox}
           disabled={sending}
         >
-          ×
+          <HiveIcon name="close" size={24} />
         </button>
       </header>
 
@@ -312,16 +316,18 @@ export function OperatorMailbox({
         </div>
 
         <footer>
-          <small>Draft document: .arena/operator-mailbox.md</small>
+          <small>Drafts save as you write.</small>
           <div>
             <button
               type="button"
               disabled={!draftLoaded || sending}
               onClick={() => void saveDraft()}
             >
+              <HiveIcon name="journal" size={25} />
               Save draft
             </button>
             <button type="submit" disabled={sendDisabled}>
+              <HiveIcon name="dispatch" size={25} />
               {sending ? 'Queueing…' : 'Send dispatch'}
             </button>
           </div>

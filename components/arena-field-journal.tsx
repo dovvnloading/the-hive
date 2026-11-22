@@ -104,6 +104,7 @@ function eventCategory(event: RuntimeEvent) {
 }
 
 function eventCopy(event: RuntimeEvent) {
+  if (event.kind === 'sandbox.changed') return event.payload.summary;
   if (event.kind === 'agent.spawned')
     return `Entered the facility as ${event.payload.role}.`;
   if (event.kind === 'task.assigned') return event.payload.objective;
@@ -602,8 +603,16 @@ function AgentsView({
               </div>
               <div>
                 <dt>Location</dt>
-                <dd>{room?.name ?? 'In transit'}</dd>
-                <small>{resource?.label ?? location?.label}</small>
+                <dd>
+                  {selected.navigation
+                    ? 'Walking'
+                    : (room?.name ?? 'In transit')}
+                </dd>
+                <small>
+                  {selected.navigation
+                    ? `${worldLocationById(selected.navigation.fromLocationId)?.label ?? selected.navigation.fromLocationId} → ${worldLocationById(selected.navigation.toLocationId)?.label ?? selected.navigation.toLocationId}`
+                    : (resource?.label ?? location?.label)}
+                </small>
               </div>
               <div>
                 <dt>Present with</dt>

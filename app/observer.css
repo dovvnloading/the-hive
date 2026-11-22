@@ -1,0 +1,1010 @@
+/* The observer's controls sit outside the residents' world. */
+.arena-app {
+  --hive-brass: #c9a46c;
+  --hive-copy: #e2d9c8;
+  --hive-muted: #968e7e;
+  --hive-line: #c9a46c26;
+  --hive-panel: #191c19f5;
+  background: radial-gradient(
+    ellipse at 50% 46%,
+    #2b2c22 0%,
+    #151c19 46%,
+    #101614 78%
+  );
+}
+.arena-stage {
+  inset: 76px 12px 132px;
+  overflow: hidden;
+  padding: 0;
+}
+.arena-stage-frame {
+  position: relative;
+  width: min(calc(100vw - 40px), calc((100dvh - 208px) * 12 / 7));
+  aspect-ratio: 12 / 7;
+  pointer-events: auto;
+  touch-action: none;
+}
+.arena-stage-surface {
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  will-change: transform;
+  filter: drop-shadow(0 16px 28px #0006);
+}
+.arena-immersive .arena-stage {
+  inset: 0;
+}
+.arena-immersive .arena-stage-frame {
+  width: min(100vw, calc(100dvh * 12 / 7));
+}
+.hive-topbar {
+  position: absolute;
+  z-index: 6;
+  inset: 0 0 auto;
+  height: 80px;
+  padding: 18px 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--hive-copy);
+  background: linear-gradient(#101614ed, #101614a8, transparent);
+}
+.hive-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.hive-brand h1 {
+  margin: 0 0 4px;
+  font:
+    500 27px/1 Georgia,
+    serif;
+  letter-spacing: -1px;
+}
+.hive-brand h1 > span {
+  color: var(--hive-brass);
+}
+.hive-brand-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 44px;
+  color: var(--hive-brass);
+}
+.hive-brand-mark > span {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: var(--hive-brass);
+  transform: rotate(45deg);
+}
+.hive-eyebrow {
+  color: var(--hive-muted);
+  font:
+    600 10px/1.5 var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.16em;
+}
+.hive-topbar-center {
+  display: flex;
+  gap: 17px;
+  align-items: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.hive-muted {
+  color: var(--hive-muted);
+  margin-left: 3px;
+}
+.hive-divider {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1px;
+  height: 19px;
+  background: var(--hive-line);
+}
+.hive-run-status {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+}
+.hive-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: #aba493;
+  border: 1px solid var(--hive-line);
+  border-radius: 5px;
+  background: #1a211a;
+}
+.hive-status-pill > span,
+.hive-working > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #9c947c;
+}
+.hive-status-pill[data-live='true'] {
+  color: #b5c5a0;
+}
+.hive-status-pill[data-live='true'] > span {
+  background: #9caf7d;
+  box-shadow: 0 0 8px #a1b87d60;
+}
+.hive-status-pill[data-offline='true'] {
+  color: #d5b777;
+}
+.hive-status-pill[data-offline='true'] > span {
+  background: #d5b777;
+}
+.hive-clock {
+  font:
+    12px var(--font-geist-mono),
+    monospace;
+  color: var(--hive-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hive-connection-note {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  font-size: 12px;
+  color: #dbbd88;
+  background: #252117f2;
+  border: 1px solid #c9a46c35;
+  border-radius: 5px;
+  max-width: calc(100% - 32px);
+}
+.hive-bottom-bar {
+  position: absolute;
+  z-index: 5;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+}
+.hive-dock {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  background: linear-gradient(135deg, #282a23f8, #1b211bf7);
+  color: #d3cab8;
+  border: 1px solid #a893613d;
+  border-radius: 10px;
+  box-shadow:
+    0 5px 25px #0005,
+    inset 0 1px #c9b49312;
+}
+.hive-dock nav {
+  display: flex;
+  gap: 2px;
+}
+.hive-dock button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  color: #c9c0af;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.hive-dock button svg {
+  color: #bba780;
+  stroke-width: 1.5;
+}
+.hive-dock button:hover,
+.hive-dock button[aria-pressed='true'] {
+  color: #f0e4cf;
+  background: #c9a46c12;
+  border-color: #c9a46c20;
+}
+.hive-dock button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.hive-count {
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  color: #b6b6a0;
+  background: #ffffff08;
+  border: 1px solid #c9a46c20;
+  border-radius: 4px;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+}
+.hive-observation-line {
+  height: 39px;
+  display: grid;
+  place-items: center;
+  padding: 0 8px;
+}
+.hive-observation-line button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(580px, calc(100vw - 48px));
+  padding: 3px;
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+  color: var(--hive-muted);
+  cursor: pointer;
+}
+.hive-observation-line button strong {
+  color: #b1b3a1;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.hive-observation-line button > span:not(.hive-observation-dot) {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.hive-observation-line button > svg {
+  flex-shrink: 0;
+}
+.hive-observation-dot {
+  flex-shrink: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a19476;
+}
+.hive-quiet-note {
+  color: var(--hive-muted);
+  font-size: 12px;
+}
+.hive-bottom-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 9px;
+  color: #7c8375;
+  font:
+    9px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.11em;
+}
+.hive-bottom-hint span > span {
+  padding: 0 7px;
+}
+.hive-bottom-hint button {
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  background: transparent;
+  border: 0;
+  color: #939881;
+  cursor: pointer;
+  min-width: 28px;
+  height: 24px;
+}
+.hive-camera-controls {
+  position: absolute;
+  z-index: 4;
+  right: 28px;
+  bottom: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+.hive-room-select {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 8px;
+  color: #b1aa92;
+  background: #151c17ef;
+  border: 1px solid var(--hive-line);
+  border-radius: 6px;
+}
+.hive-room-select select {
+  width: 139px;
+  height: 34px;
+  background: transparent;
+  border: none;
+  outline-offset: 4px;
+  color: #bfb7a3;
+  font:
+    12px var(--font-geist-sans),
+    sans-serif;
+  cursor: pointer;
+}
+.hive-room-select option {
+  background: #1b211c;
+  color: #d4c8ac;
+}
+.hive-camera-buttons {
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--hive-line);
+  border-radius: 6px;
+  background: #151c17ef;
+}
+.hive-camera-buttons button {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  color: #b5af9b;
+  cursor: pointer;
+}
+.hive-camera-buttons button:hover {
+  background: #c9a46c13;
+  color: #f0dcc0;
+}
+.hive-camera-buttons button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.hive-camera-buttons .hive-zoom-value {
+  width: 47px;
+  font:
+    11px var(--font-geist-mono),
+    monospace;
+}
+.hive-camera-buttons button[aria-pressed='true'] {
+  color: var(--hive-brass);
+}
+.hive-camera-buttons .hive-divider {
+  margin: 0 3px;
+}
+.hive-immersive-toggle {
+  position: absolute;
+  z-index: 7;
+  bottom: 22px;
+  right: 26px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #c9a46c26;
+  border-radius: 5px;
+  color: #9e9e89;
+  background: #151c17cc;
+  cursor: pointer;
+}
+.hive-immersive-toggle:hover {
+  color: #e9dbc0;
+}
+.hive-following {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 83px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 33px;
+  padding: 4px 11px;
+  border: 1px solid #aebc8736;
+  border-radius: 5px;
+  background: #1a241bf0;
+  color: #bcca9b;
+  font-size: 12px;
+  cursor: pointer;
+}
+.hive-connection-note ~ .hive-following {
+  top: 124px;
+}
+.hive-residents {
+  position: absolute;
+  z-index: 6;
+  top: 91px;
+  left: 27px;
+  width: 298px;
+  max-height: calc(100dvh - 250px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  color: var(--hive-copy);
+  background: var(--hive-panel);
+  border: 1px solid #a8936138;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px #0004;
+  scrollbar-width: thin;
+  scrollbar-color: #7b735a #191c19;
+}
+.hive-residents > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 18px 15px;
+}
+.hive-residents h2 {
+  margin: 6px 0 0;
+  font:
+    23px/1.1 Georgia,
+    serif;
+}
+.hive-residents h2 > span {
+  margin-left: 8px;
+  font:
+    12px var(--font-geist-mono),
+    monospace;
+  color: var(--hive-muted);
+}
+.hive-icon-button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  color: #b4a98f;
+  background: transparent;
+  border: 1px solid var(--hive-line);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.hive-icon-button:hover {
+  color: #eadbc0;
+  background: #c9a46c12;
+}
+.hive-resident-list {
+  list-style: none;
+  padding: 0 8px 10px;
+  margin: 0;
+}
+.hive-resident-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  color: var(--hive-copy);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+}
+.hive-resident-row:hover,
+.hive-resident-row[aria-pressed='true'] {
+  background: #a99f7610;
+  border-color: #c9a46c20;
+}
+.hive-portrait {
+  display: block;
+  flex-shrink: 0;
+  width: 35px;
+  height: 44px;
+  overflow: hidden;
+  background: #2b3026;
+  border: 1px solid #c9a46c25;
+  border-radius: 5px;
+}
+.hive-portrait > span {
+  display: block;
+  width: 32px;
+  height: 64px;
+  margin-top: -3px;
+  background-position: -576px 0;
+  background-repeat: no-repeat;
+  background-size: 768px 64px;
+  image-rendering: pixelated;
+}
+.hive-resident-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.hive-resident-copy > strong {
+  font-weight: 500;
+  font-size: 14px;
+}
+.hive-resident-copy > span {
+  font-size: 11px;
+  color: #979886;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hive-resident-status {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  background: var(--resident-accent);
+  border-radius: 50%;
+}
+.hive-resident-status[data-status='blocked'] {
+  background: #d6ae63;
+}
+.hive-resident-status[data-status='failed'] {
+  background: #c27d6b;
+}
+.hive-resident-detail {
+  padding: 20px;
+  border-top: 1px solid var(--hive-line);
+}
+.hive-resident-detail > .hive-eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+.hive-resident-detail h3 {
+  margin: 9px 0;
+  font:
+    25px Georgia,
+    serif;
+}
+.hive-resident-detail p {
+  margin: 0 0 18px;
+  color: #b7b09e;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.hive-resident-actions {
+  display: flex;
+  gap: 8px;
+}
+.hive-follow-button {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  background: #b6a87918;
+  border: 1px solid #b6a8793a;
+  border-radius: 5px;
+  font-size: 12px;
+  color: #d8caa8;
+  cursor: pointer;
+}
+.hive-follow-button[aria-pressed='true'] {
+  color: #bad2a4;
+  border-color: #98bc7650;
+}
+.hive-working {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #abbf96;
+  font-size: 11px;
+  margin-bottom: 16px;
+}
+.hive-working > span {
+  background: #a4be89;
+}
+.hive-panel-empty {
+  padding: 15px 24px 27px;
+  color: #b3ad99;
+  text-align: center;
+}
+.hive-panel-empty > svg {
+  margin: auto;
+  color: #b4a172;
+}
+.hive-panel-empty h3 {
+  margin: 12px 0 9px;
+  font:
+    20px Georgia,
+    serif;
+  color: #d9ceb6;
+}
+.hive-panel-empty p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.hive-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 5px 0;
+  background: transparent;
+  color: #c5b991;
+  border: 0;
+  border-bottom: 1px solid #b6a87930;
+  font-size: 12px;
+  cursor: pointer;
+}
+.arena-asset-retry {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 15px;
+  pointer-events: auto;
+  color: #e4c088;
+  background: #262016;
+  border: 1px solid #7a623c;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.hive-guide {
+  --hive-line: #c9a46c26;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 28px;
+  color: #d9d0bd;
+  background: #1b211b;
+  border: 1px solid #a8936150;
+  border-radius: 12px;
+  box-shadow: 0 20px 90px #0009;
+}
+.hive-guide::backdrop {
+  background: #08110bba;
+  backdrop-filter: blur(4px);
+}
+.hive-guide header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+}
+.hive-guide h2 {
+  margin: 8px 0 18px;
+  font:
+    30px Georgia,
+    serif;
+}
+.hive-guide p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #b3ad99;
+}
+.hive-guide dl {
+  margin: 24px 0;
+}
+.hive-guide dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 9px 0;
+  border-bottom: 1px solid #c9a46c17;
+}
+.hive-guide dt,
+.hive-guide dd {
+  margin: 0;
+  font-size: 13px;
+}
+.hive-guide kbd {
+  display: block;
+  min-width: 25px;
+  padding: 4px 7px;
+  text-align: center;
+  color: #cebb92;
+  background: #a9986d0e;
+  border: 1px solid #a9986d30;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.hive-guide .hive-guide-note {
+  font-size: 12px;
+  color: #989e88;
+}
+.arena-app button:focus-visible,
+.hive-guide button:focus-visible,
+.hive-room-select:focus-within {
+  outline: 2px solid #d2b67f;
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .hive-topbar-center {
+    display: none;
+  }
+  .hive-camera-controls {
+    right: 20px;
+    bottom: 145px;
+  }
+  .hive-dock button {
+    padding: 0 11px;
+  }
+  .hive-sound-button > span {
+    display: none;
+  }
+  .hive-immersive-toggle {
+    right: 16px;
+    bottom: 20px;
+  }
+}
+@media (max-width: 600px) {
+  .hive-topbar {
+    height: 73px;
+    padding: 15px 17px;
+  }
+  .hive-brand {
+    gap: 5px;
+  }
+  .hive-brand h1 {
+    font-size: 25px;
+  }
+  .hive-brand .hive-eyebrow {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+  .hive-run-status {
+    gap: 8px;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .hive-status-pill {
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+  .hive-clock {
+    font-size: 10px;
+  }
+  .arena-stage {
+    inset: 80px 0 183px;
+  }
+  .arena-stage-frame {
+    width: min(calc(100vw - 16px), calc((100dvh - 263px) * 12 / 7));
+  }
+  .hive-camera-controls {
+    bottom: 145px;
+    left: 16px;
+    right: 16px;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  .hive-room-select select {
+    width: 128px;
+  }
+  .hive-camera-buttons button {
+    height: 36px;
+  }
+  .hive-bottom-bar {
+    bottom: 13px;
+    max-width: calc(100% - 24px);
+  }
+  .hive-dock {
+    padding: 5px;
+    gap: 3px;
+  }
+  .hive-dock nav {
+    flex: 1;
+  }
+  .hive-dock button {
+    min-width: 49px;
+    min-height: 51px;
+    gap: 5px;
+    padding: 6px 9px;
+    font-size: 10px;
+    flex-direction: column;
+  }
+  .hive-dock .hive-count {
+    display: none;
+  }
+  .hive-dock .hive-sound-button {
+    min-width: 43px;
+  }
+  .hive-dock .hive-divider {
+    margin: 0 3px;
+  }
+  .hive-bottom-hint {
+    font-size: 8px;
+    gap: 4px;
+  }
+  .hive-bottom-hint span > span {
+    padding: 0 3px;
+  }
+  .hive-immersive-toggle {
+    bottom: 94px;
+    right: 15px;
+    width: 29px;
+    height: 29px;
+  }
+  .hive-observation-line {
+    padding-right: 22px;
+  }
+  .hive-observation-line button {
+    max-width: calc(100vw - 70px);
+    font-size: 11px;
+  }
+  .hive-quiet-note {
+    font-size: 11px;
+  }
+  .hive-residents {
+    left: 12px;
+    top: 81px;
+    width: min(300px, calc(100vw - 24px));
+    max-height: calc(100dvh - 265px);
+  }
+  .hive-following {
+    top: 82px;
+  }
+  .hive-connection-note {
+    top: 77px;
+    width: max-content;
+    font-size: 11px;
+  }
+}
+/* A readable single page replaces the tiny book spread on compact screens. */
+@media (max-width: 700px), (max-height: 500px) {
+  .field-journal {
+    inset: 12px;
+    width: auto;
+    height: auto;
+    max-height: calc(100dvh - 24px);
+    margin: 0;
+    aspect-ratio: auto;
+    background: #e6d9bd;
+    border: 1px solid #6e563d;
+    border-radius: 8px;
+    padding: 17px;
+    overflow: hidden;
+  }
+  .field-journal[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  .journal-heading {
+    position: relative;
+    inset: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    min-height: 44px;
+    margin-bottom: 12px;
+    pointer-events: auto;
+  }
+  .journal-heading h2 {
+    position: static;
+    font-size: 25px;
+    line-height: 1.3;
+  }
+  .journal-heading > button {
+    position: relative;
+    inset: auto;
+    min-width: 44px;
+    width: 44px;
+    min-height: 44px;
+    aspect-ratio: 1;
+    border: 1px solid #856e5040;
+    border-radius: 4px;
+  }
+  .journal-heading > button::before {
+    content: '×';
+    font:
+      26px/1 Georgia,
+      serif;
+    color: #49301f;
+  }
+  .journal-tabs {
+    position: static;
+    width: 100%;
+    height: auto;
+    display: flex;
+    flex-shrink: 0;
+    gap: 5px;
+    border-bottom: 1px solid #856e5040;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+  }
+  .journal-tabs button {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 44px;
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+  }
+  .journal-tabs button[aria-current='page'] {
+    background: #8d765723;
+  }
+  .journal-content {
+    position: static;
+    inset: auto;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .journal-feed {
+    column-count: 1;
+    min-height: 0;
+    padding: 0 0 16px;
+  }
+  .journal-entry {
+    margin-bottom: 15px;
+    padding: 12px 0 14px 13px;
+  }
+  .journal-entry > p {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .journal-entry header {
+    font-size: 12px;
+  }
+  .journal-entry > header > div:last-child {
+    display: flex;
+  }
+  .journal-split {
+    height: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .journal-index {
+    max-height: 180px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    padding: 0;
+    border-bottom: 1px solid #856e5040;
+  }
+  .journal-index button {
+    min-height: 54px;
+    padding: 10px;
+  }
+  .journal-index button strong {
+    font-size: 15px;
+  }
+  .journal-index button span {
+    font-size: 12px;
+  }
+  .journal-detail {
+    overflow: visible;
+    padding: 4px 3px 20px;
+  }
+  .journal-detail p,
+  .journal-detail dd,
+  .journal-artifacts p,
+  .journal-agent-events span {
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .journal-detail h3 {
+    font-size: 22px;
+  }
+  .journal-facts dt,
+  .journal-detail small {
+    font-size: 12px;
+  }
+  .journal-facts > div {
+    padding: 12px 8px 12px 0;
+  }
+  .journal-empty {
+    width: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 30px 18px;
+  }
+  .journal-empty strong {
+    font-size: 18px;
+  }
+  .journal-empty p {
+    font-size: 14px;
+  }
+}

@@ -17,6 +17,7 @@ import {
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { SandboxStore } from '../lib/arena/sandbox-store.mjs';
 
 import {
   AUTONOMY_DIRECTIVE,
@@ -695,15 +696,20 @@ function readState(path, events, intents) {
   }
 
   const lastEvent = events.at(-1);
+  const lastRunEvent = [...events]
+    .reverse()
+    .find((event) => event.kind === 'run.started');
   const lastIntent = intents.at(-1);
   return {
     schemaVersion: 1,
     runId:
       typeof saved.runId === 'string'
         ? saved.runId
-        : typeof lastEvent?.runId === 'string'
-          ? lastEvent.runId
-          : null,
+        : saved.runId === null
+          ? null
+          : typeof lastRunEvent?.runId === 'string'
+            ? lastRunEvent.runId
+            : null,
     sequence: Math.max(
       Number(saved.sequence) || 0,
       Number(lastEvent?.sequence) || 0,
@@ -939,12 +945,90 @@ const intents = readJsonLines(intentsPath);
 const privateJournalEntries = readJsonLines(privateJournalPath);
 const state = readState(statePath, events, intents);
 
+const sandbox = new SandboxStore({
+  events,
+  projectRoot: process.cwd(),
+  dataDir: options.dataDir,
+  isActorActive(actor) {
+    return (
+      actor.runId === state.runId &&
+      !currentRunIsClosed() &&
+      activeResidents(projectAgentStates()).some(
+        (resident) => resident.id === actor.agentId,
+      )
+    );
+  },
+  append(payload, actor) {
+    const event = {
+      schemaVersion: 1,
+      eventId: `evt_${randomUUID()}`,
+      sequence: state.sequence + 1,
+      occurredAt: new Date().toISOString(),
+      source: actor.agentId ? 'codex' : 'operator',
+      runId: state.runId ?? 'unbound',
+      kind: 'sandbox.changed',
+      ...(actor.agentId ? { agentId: actor.agentId } : {}),
+      payload,
+    };
+    appendFileSync(eventsPath, `${JSON.stringify(event)}\n`, 'utf8');
+    events.push(event);
+    state.sequence = event.sequence;
+    // The append-only journal has committed. A cache failure must not undo
+    // the in-memory workshop or turn a successful action into an ambiguous one.
+    try {
+      persistState();
+    } catch (error) {
+      process.stderr.write(
+        `[arena-bridge] state cache write failed (${error.code ?? 'IO'}); journal retained\n`,
+      );
+    }
+    return event;
+  },
+  recordArtifact(actor, payload) {
+    const artifactId = `artifact_${randomUUID()}`;
+    appendEvent({
+      kind: 'artifact.recorded',
+      agentId: actor.agentId,
+      payload: {
+        ...payload,
+        artifactId,
+        ...(actor.tool.topicId ? { topicId: actor.tool.topicId } : {}),
+      },
+    });
+    return artifactId;
+  },
+  proofFinished(proof) {
+    return (
+      !!proof &&
+      events.some(
+        (event) =>
+          event.kind === 'tool.finished' &&
+          event.runId === proof.runId &&
+          event.agentId === proof.agentId &&
+          event.payload.toolCallId === proof.toolCallId &&
+          event.payload.outcome === 'succeeded' &&
+          event.payload.artifactIds?.includes(proof.artifactId),
+      )
+    );
+  },
+});
+
 function persistState() {
   state.updatedAt = new Date().toISOString();
   writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 }
 
 function resetRun() {
+  if (
+    Object.values(sandbox.snapshot().inventories).some((bag) =>
+      Object.values(bag.parts).some((count) => count > 0),
+    )
+  ) {
+    throw httpError(
+      409,
+      'Return carried workshop parts before starting another run; abandoned satchels can be recovered from the workshop',
+    );
+  }
   const now = new Date().toISOString();
   state.runId = `run_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
   state.startedAt = now;
@@ -2414,6 +2498,47 @@ function purposeForResident(
     : undefined;
   const artifacts = currentArtifacts();
   const opportunities = [];
+  const workshopLocation = effectiveLocation(self);
+  if (
+    entities.some((entity) =>
+      ['build-bench-a', 'comms-board'].includes(entity.id),
+    ) &&
+    !self.activeTool
+  ) {
+    const projects = sandbox.state.projects.filter(
+      (project) => !project.archived && project.stage !== 'installed',
+    );
+    for (const project of projects
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(
+            b.claim?.agentId === self.id && b.claim?.runId === state.runId,
+          ) -
+            Number(
+              a.claim?.agentId === self.id && a.claim?.runId === state.runId,
+            ) ||
+          { high: 2, normal: 1, low: 0 }[b.priority ?? 'normal'] -
+            { high: 2, normal: 1, low: 0 }[a.priority ?? 'normal'],
+      )
+      .slice(0, 3)) {
+      const owned =
+        project.claim?.agentId === self.id &&
+        project.claim?.runId === state.runId;
+      opportunities.push({
+        id: `workshop:${project.id}`,
+        kind: 'workshop',
+        priority: owned ? 'continue' : 'explore',
+        title: `${owned ? 'Continue' : 'Consider'} ${project.title} (${project.stage})`,
+        reason:
+          project.purpose ||
+          'A shared blueprint can become a working document instrument.',
+        suggestedAction: `${project.claim ? `Lead: ${project.claim.name ?? project.claim.agentId}. ` : 'This commission has no lead. '}${project.stage === 'blueprint' ? 'Review the parts already placed, collect missing parts from the cabinet, and assemble them at the fabrication bench.' : project.stage === 'assembled' ? 'Build the assembled document index at the fabrication bench.' : project.stage === 'built' ? 'Take the completed build to the diagnostic rig for its acceptance checks.' : 'Review the successful evidence, then install the instrument at the fabrication bench.'}`,
+        locationId:
+          workshopLocation === 'comms-board' ? 'comms-board' : 'build-bench-a',
+      });
+    }
+  }
   const handoffSignalsByThread = new Map();
   for (const message of currentBoardMessages()) {
     if (
@@ -4432,7 +4557,16 @@ function compileObservation(agentId, after = 0) {
     people,
     privateNoteCount: privateJournalEntriesForSelf.length,
   });
+  const workshop = {
+    revision: sandbox.state.revision,
+    ...sandbox.local(
+      { agentId, runId: state.runId },
+      roomId,
+      perception.vision === 'clear',
+    ),
+  };
   const observationId = sceneObservationId({
+    workshop,
     self: {
       name: self.name,
       role: self.role,
@@ -4609,6 +4743,37 @@ function compileObservation(agentId, after = 0) {
     `BOARD ${locationId === 'comms-board' ? `unread:${visibleUnread.length} accessible here` : visibleUnread.length > 0 ? `chime:${visibleUnread.length} unread; contents are at comms-board` : 'quiet'}`,
     `MAILBOX ${locationId === OPERATOR_MAILBOX_ENTITY_ID ? `unread:${unreadMailbox.length} accessible here; use read to open one addressed dispatch` : unreadMailbox.length > 0 ? `flag:${unreadMailbox.length} unread; contents are at operator-mailbox in Commons` : 'quiet'}`,
     `JOURNAL private-to-you | notes:${privateJournalEntriesForSelf.length} | ${privateJournalAccessible ? 'open at this writing desk' : 'bound volume at context-kiosk; use the desk to open it'}`,
+    `SATCHEL ${
+      Object.entries(workshop.inventory)
+        .filter(([, count]) => count > 0)
+        .map(([part, count]) => `${count} ${part}`)
+        .join(', ') || 'empty'
+    }`,
+    ...(workshop.cabinet
+      ? [
+          `PARTS parts-cabinet holds ${Object.entries(workshop.cabinet)
+            .map(([part, count]) => `${count} ${part}`)
+            .join(', ')}; approach the cabinet to take or return parts`,
+        ]
+      : []),
+    ...(workshop.projects
+      ? [
+          `PROJECTS ${workshop.projects.map((project) => `${project.id}: ${project.title} [${project.stage}] at build-bench-a; parts ${JSON.stringify(project.allocated)}`).join(' ; ') || 'the fabrication bench awaits a blueprint'}`,
+        ]
+      : []),
+    ...(perception.vision === 'clear' && locationId === 'comms-board'
+      ? [
+          `COMMISSIONS ${
+            sandbox.state.projects
+              .filter((project) => !project.archived)
+              .map(
+                (project) =>
+                  `${project.id}: ${project.title} [${project.stage}, ${project.priority ?? 'normal'} priority] ${project.claim ? `lead:${project.claim.name ?? project.claim.agentId}` : 'unclaimed'}${project.purpose ? `; ${project.purpose}` : ''}`,
+              )
+              .join(' ; ') || 'none posted'
+          }`,
+        ]
+      : []),
     `MEM ${
       self.inspectedEntityIds.has('facility-plan')
         ? 'facility plan memorized'
@@ -4637,6 +4802,7 @@ function compileObservation(agentId, after = 0) {
     sequence: state.sequence,
     after,
     text: lines.join('\n'),
+    workshop,
     you: {
       name: self.name,
       role: self.role,
@@ -5445,6 +5611,13 @@ function appendEvent(body, source = 'codex') {
   }
 
   if (kind === 'agent.completed') {
+    if (
+      sandbox.hasInventory({
+        runId: state.runId,
+        agentId: body.agentId?.trim(),
+      })
+    )
+      throw httpError(409, 'Return carried workshop parts before completing');
     const unresolvedMessages = unresolvedDirectMessagesFor(body.agentId.trim());
     if (unresolvedMessages.length > 0) {
       throw httpError(
@@ -5466,6 +5639,15 @@ function appendEvent(body, source = 'codex') {
   }
 
   if (kind === 'run.completed') {
+    if (
+      Object.values(sandbox.snapshot().inventories).some((bag) =>
+        Object.values(bag.parts).some((count) => count > 0),
+      )
+    )
+      throw httpError(
+        409,
+        'Return carried workshop parts before completing the run',
+      );
     const unreadMailbox = unreadMailboxDeliveries();
     if (unreadMailbox.length > 0) {
       throw httpError(
@@ -5742,6 +5924,114 @@ const server = createServer(async (request, response) => {
   }
 
   try {
+    if (request.method === 'GET' && url.pathname === '/sandbox') {
+      writeJson(request, response, 200, sandbox.snapshot());
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/sandbox/documents') {
+      writeJson(request, response, 200, sandbox.documents());
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/sandbox/dossier') {
+      writeJson(
+        request,
+        response,
+        200,
+        sandbox.dossier(url.searchParams.get('projectId')),
+      );
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/sandbox/history') {
+      writeJson(
+        request,
+        response,
+        200,
+        sandbox.history({
+          projectId: url.searchParams.get('projectId') || undefined,
+          before: url.searchParams.has('before')
+            ? Number(url.searchParams.get('before'))
+            : undefined,
+        }),
+      );
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/sandbox/operator') {
+      if (
+        !options.allowedOrigins.has(request.headers.origin) &&
+        !hasEmitterAuthority(request)
+      )
+        throw httpError(
+          401,
+          'Local operator origin or emitter authentication required',
+        );
+      const body = await readJsonBody(request);
+      const residents = activeResidents(projectAgentStates());
+      const busy =
+        body.operation === 'recover'
+          ? (!currentRunIsClosed() && residents.length > 0) ||
+            residents.some((resident) => activeNavigation(resident))
+          : residents.some(
+              (resident) => activeNavigation(resident) || resident.activeTool,
+            );
+      writeJson(request, response, 200, sandbox.operator(body, { busy }));
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/sandbox/query') {
+      if (
+        !options.allowedOrigins.has(request.headers.origin) &&
+        !hasEmitterAuthority(request)
+      )
+        throw httpError(
+          401,
+          'Local operator origin or emitter authentication required',
+        );
+      const body = await readJsonBody(request);
+      writeJson(
+        request,
+        response,
+        200,
+        sandbox.query(body.projectId, body.query),
+      );
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/sandbox/action') {
+      const agentId = agentAuthority(request);
+      if (!agentId) throw httpError(401, 'Agent authentication required');
+      assertActiveAgent(agentId);
+      const body = await readJsonBody(request);
+      const actorIdentity = { agentId, runId: state.runId };
+      const prior = sandbox.receipt(actorIdentity, body).prior;
+      if (!prior) assertFreshObservation(agentId, body.observationId);
+      const self = projectAgentStates().get(agentId);
+      const locationId = effectiveLocation(self);
+      const perception = roomPerception(
+        roomIdForLocation(locationId),
+        projectWorldEntityStates(),
+      );
+      const result = sandbox.action(
+        {
+          ...actorIdentity,
+          name: self.name,
+          locationId,
+          vision: perception.vision,
+          moving: !!activeNavigation(self),
+          tool: {
+            callId: self.activeToolCallId,
+            capability: self.capability,
+            activityId: self.activeActivityId,
+            resourceId: self.engagedResourceId,
+            topicId: self.activeToolTopicId,
+          },
+        },
+        body,
+      );
+      const { snapshot: _snapshot, ...receipt } = result;
+      writeJson(request, response, 200, {
+        ...receipt,
+        observation: compileObservation(agentId, 0),
+      });
+      return;
+    }
     if (request.method === 'GET' && url.pathname === '/health') {
       syncChatIngressJournal();
       const runEvents = currentRunEvents();

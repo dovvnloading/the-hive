@@ -122,6 +122,11 @@ Tools and communication:
   resume         --agent ID --prompt-id ID [--response TEXT]
 
 Protocol inspection:
+  sandbox-action --agent ID --observation OBS_ID --revision N --operation take|return|place|assemble|build|test|install|use|claim|release|note|chronicle|diagnose|dismantle
+                 [--project ID] [--part oak-case|index-core|brass-dial] [--quantity N]
+                 [--call-id ID] [--query TEXT] [--action-id ID]
+                 [--text TEXT] [--before SEQUENCE]
+  sandbox        Read the operator workshop snapshot (residents use observe).
   health
   events         [--after N]
   intents        [--after N]
@@ -138,6 +143,21 @@ Aliases: --agent-id, --parent-agent-id, --task-id, --correlation-id,
 `;
 
 const COMMAND_FLAGS = {
+  sandbox: [],
+  'sandbox-action': [
+    'text',
+    'before',
+    'agent',
+    'observation',
+    'revision',
+    'operation',
+    'project',
+    'part',
+    'quantity',
+    'call-id',
+    'query',
+    'action-id',
+  ],
   health: [],
   events: ['after'],
   intents: ['after'],
@@ -492,6 +512,27 @@ async function execute(command, args, flags, baseUrl) {
       throw new Error('--after must be a non-negative integer');
     return request(baseUrl, `/agent/observation?after=${after}`, {
       headers: { 'X-Arena-Agent-Token': await agentToken(flags.agent) },
+    });
+  }
+  if (command === 'sandbox') return request(baseUrl, '/sandbox');
+  if (command === 'sandbox-action') {
+    required(flags, 'agent', 'observation', 'revision', 'operation');
+    return request(baseUrl, '/sandbox/action', {
+      method: 'POST',
+      headers: { 'X-Arena-Agent-Token': await agentToken(flags.agent) },
+      body: JSON.stringify({
+        actionId: flags['action-id'] || identifier(`sandbox_${flags.agent}`),
+        observationId: flags.observation,
+        expectedRevision: Number(flags.revision),
+        operation: flags.operation,
+        ...(flags.project ? { projectId: flags.project } : {}),
+        ...(flags.part ? { part: flags.part } : {}),
+        ...(flags.quantity ? { quantity: Number(flags.quantity) } : {}),
+        ...(flags['call-id'] ? { toolCallId: flags['call-id'] } : {}),
+        ...(flags.query ? { query: flags.query } : {}),
+        ...(flags.text ? { text: flags.text } : {}),
+        ...(flags.before ? { before: Number(flags.before) } : {}),
+      }),
     });
   }
   if (command === 'move' || command === 'interact') {

@@ -56,6 +56,7 @@ const RECEIPT_KEYS = new Set([
   'reasonCode',
 ]);
 const EVENT_KINDS = new Set([
+  'sandbox.changed',
   'run.started',
   'run.completed',
   'run.canceled',

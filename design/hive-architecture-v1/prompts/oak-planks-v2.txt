@@ -1,0 +1,9 @@
+Use case: stylized-concept
+Asset type: production game environment floor texture; one square opaque image only.
+Primary request: Create an EXTREMELY QUIET, LOW-CONTRAST, muted warm oak floor texture that recedes beneath richly detailed pixel-art furniture and rugs.
+Composition/framing: top-down orthographic flat floor only, edge-to-edge square, horizontal parallel long straight planks. Exactly 20 narrow plank rows across the entire square, with sparse staggered end joints. Long boards run left to right. No perspective, border, or objects.
+Style/medium: cozy hand-authored crisp pixel art at a 320x320 logical pixel scale. Flat restrained matte colors, clean intentional pixel edges.
+Color palette: a very narrow muted warm oak/taupe range centered around #987b58. Adjacent board faces are nearly the same value; uniformly subdued. Fine shallow seams are only 10–15 percent darker than board faces, not outlined. No bright light bands.
+Materials/textures: at least 85 percent of the image is broad plain wood color. Only a few faint short woodgrain strokes, widely spaced. Gentle oak impression, almost untextured. Low visual frequency and very low contrast are the highest priorities. Do not decorate each board.
+Lighting: uniform flat albedo, no sunlight, no baked shadows, no glow or glossy highlights.
+Avoid: diagonal boards, chevron, herringbone, parquet, checker geometry, knots, nails, dark outlines, scratches, dithering, speckling, noisy grain, pores, distressed texture, gradients, rugs, props, walls, borders, perspective, text, watermarks. No transparent areas. This floor must feel calm and disappear behind the room furnishings.

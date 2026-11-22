@@ -1,0 +1,53 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-09-05",
+  "processing": "Model-generated illumination; nearest-neighbor canvas alignment and original crop; exact production alpha retained. No brightness or color filter.",
+  "limitation": "The model returned opaque RGB masters with a painted transparency preview. Export restores the exact existing production alpha. Internal model edits may differ at isolated pixels.",
+  "assets": [
+    {
+      "name": "parts-cabinet-lights-off",
+      "source": "sources/parts-cabinet-lights-off.png",
+      "reference": "sources/parts-cabinet.png",
+      "width": 48,
+      "height": 64,
+      "crop": {
+        "left": 158,
+        "top": 20,
+        "width": 771,
+        "height": 1408
+      },
+      "alphaSource": "public/assets/facility-v6/sandbox/parts-cabinet.png",
+      "output": "public/assets/facility-v6/sandbox/parts-cabinet-lights-off.png"
+    },
+    {
+      "name": "document-index-blueprint-lights-off",
+      "source": "sources/document-index-blueprint-lights-off.png",
+      "reference": "sources/document-index-blueprint.png",
+      "width": 48,
+      "height": 32,
+      "crop": {
+        "left": 20,
+        "top": 72,
+        "width": 1497,
+        "height": 831
+      },
+      "alphaSource": "public/assets/facility-v6/sandbox/document-index-blueprint.png",
+      "output": "public/assets/facility-v6/sandbox/document-index-blueprint-lights-off.png"
+    },
+    {
+      "name": "document-index-device-lights-off",
+      "source": "sources/document-index-device-lights-off.png",
+      "reference": "sources/document-index-device.png",
+      "width": 40,
+      "height": 40,
+      "crop": {
+        "left": 129,
+        "top": 80,
+        "width": 1117,
+        "height": 990
+      },
+      "alphaSource": "public/assets/facility-v6/sandbox/document-index-device.png",
+      "output": "public/assets/facility-v6/sandbox/document-index-device-lights-off.png"
+    }
+  ]
+}

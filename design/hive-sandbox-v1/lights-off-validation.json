@@ -1,0 +1,32 @@
+{
+  "method": "Exact output dimension and per-pixel alpha comparison; visible-pixel relative luminance statistics. Final sprites visually inspected separately.",
+  "checks": [
+    {
+      "name": "parts-cabinet",
+      "width": 48,
+      "height": 64,
+      "alphaDifferences": 0,
+      "meanVisibleBrightnessRatio": 0.42465214019682457,
+      "visiblePixelsAbove200": 0,
+      "generatedMasterHasAlpha": false
+    },
+    {
+      "name": "document-index-blueprint",
+      "width": 48,
+      "height": 32,
+      "alphaDifferences": 0,
+      "meanVisibleBrightnessRatio": 0.20236005381449396,
+      "visiblePixelsAbove200": 0,
+      "generatedMasterHasAlpha": false
+    },
+    {
+      "name": "document-index-device",
+      "width": 40,
+      "height": 40,
+      "alphaDifferences": 0,
+      "meanVisibleBrightnessRatio": 0.297647534337699,
+      "visiblePixelsAbove200": 0,
+      "generatedMasterHasAlpha": false
+    }
+  ]
+}

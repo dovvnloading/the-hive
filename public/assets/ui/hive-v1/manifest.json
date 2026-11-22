@@ -1,0 +1,349 @@
+{
+  "source": "built-in image_gen",
+  "assets": [
+    {
+      "name": "title-sign",
+      "source": "title-sign.png",
+      "sourceWidth": 2112,
+      "sourceHeight": 744,
+      "crop": {
+        "left": 9,
+        "top": 89,
+        "width": 2094,
+        "height": 529
+      },
+      "width": 768,
+      "height": 194
+    },
+    {
+      "name": "tool-tray",
+      "source": "tool-tray.png",
+      "sourceWidth": 2092,
+      "sourceHeight": 752,
+      "crop": {
+        "left": 32,
+        "top": 133,
+        "width": 2029,
+        "height": 443
+      },
+      "width": 768,
+      "height": 168
+    },
+    {
+      "name": "resident-ledger",
+      "source": "resident-ledger.png",
+      "sourceWidth": 1086,
+      "sourceHeight": 1448,
+      "crop": {
+        "left": 46,
+        "top": 26,
+        "width": 994,
+        "height": 1364
+      },
+      "width": 480,
+      "height": 659
+    },
+    {
+      "name": "button-face",
+      "source": "button-face.png",
+      "sourceWidth": 1254,
+      "sourceHeight": 1254,
+      "crop": {
+        "left": 35,
+        "top": 37,
+        "width": 1185,
+        "height": 1168
+      },
+      "width": 192,
+      "height": 189
+    },
+    {
+      "name": "residents",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 0,
+        "top": 0,
+        "width": 326,
+        "height": 314
+      },
+      "crop": {
+        "left": 20,
+        "top": 59,
+        "width": 299,
+        "height": 255
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "journal",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 326,
+        "top": 0,
+        "width": 301,
+        "height": 314
+      },
+      "crop": {
+        "left": 9,
+        "top": 60,
+        "width": 292,
+        "height": 244
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "research",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 627,
+        "top": 0,
+        "width": 314,
+        "height": 314
+      },
+      "crop": {
+        "left": 82,
+        "top": 26,
+        "width": 191,
+        "height": 288
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "dispatch",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 941,
+        "top": 0,
+        "width": 313,
+        "height": 314
+      },
+      "crop": {
+        "left": 31,
+        "top": 69,
+        "width": 268,
+        "height": 234
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "plus",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 0,
+        "top": 314,
+        "width": 314,
+        "height": 313
+      },
+      "crop": {
+        "left": 44,
+        "top": 46,
+        "width": 231,
+        "height": 242
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "minus",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 314,
+        "top": 314,
+        "width": 313,
+        "height": 313
+      },
+      "crop": {
+        "left": 41,
+        "top": 115,
+        "width": 233,
+        "height": 103
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "home",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 627,
+        "top": 314,
+        "width": 314,
+        "height": 313
+      },
+      "crop": {
+        "left": 24,
+        "top": 22,
+        "width": 289,
+        "height": 289
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "follow",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 941,
+        "top": 314,
+        "width": 313,
+        "height": 313
+      },
+      "crop": {
+        "left": 46,
+        "top": 14,
+        "width": 221,
+        "height": 290
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "sound-on",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 0,
+        "top": 627,
+        "width": 326,
+        "height": 314
+      },
+      "crop": {
+        "left": 24,
+        "top": 34,
+        "width": 294,
+        "height": 245
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "sound-off",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 326,
+        "top": 627,
+        "width": 301,
+        "height": 314
+      },
+      "crop": {
+        "left": 13,
+        "top": 34,
+        "width": 271,
+        "height": 245
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "labels",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 627,
+        "top": 627,
+        "width": 314,
+        "height": 314
+      },
+      "crop": {
+        "left": 39,
+        "top": 13,
+        "width": 259,
+        "height": 283
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "keyboard",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 941,
+        "top": 627,
+        "width": 313,
+        "height": 314
+      },
+      "crop": {
+        "left": 10,
+        "top": 28,
+        "width": 283,
+        "height": 270
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "eye-open",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 0,
+        "top": 941,
+        "width": 314,
+        "height": 313
+      },
+      "crop": {
+        "left": 25,
+        "top": 19,
+        "width": 264,
+        "height": 232
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "eye-closed",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 314,
+        "top": 941,
+        "width": 313,
+        "height": 313
+      },
+      "crop": {
+        "left": 22,
+        "top": 17,
+        "width": 263,
+        "height": 233
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "close",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 627,
+        "top": 941,
+        "width": 314,
+        "height": 313
+      },
+      "crop": {
+        "left": 47,
+        "top": 22,
+        "width": 219,
+        "height": 225
+      },
+      "width": 128,
+      "height": 128
+    },
+    {
+      "name": "next",
+      "source": "icon-atlas.png",
+      "cell": {
+        "left": 941,
+        "top": 941,
+        "width": 313,
+        "height": 313
+      },
+      "crop": {
+        "left": 78,
+        "top": 21,
+        "width": 170,
+        "height": 233
+      },
+      "width": 128,
+      "height": 128
+    }
+  ]
+}

@@ -1,0 +1,1064 @@
+{
+  "tool": "built-in image_gen",
+  "extraction": "solid magenta chroma key; no source downsampling",
+  "assets": [
+    {
+      "name": "oak-floor",
+      "sheet": "architecture",
+      "crop": {
+        "left": 51,
+        "top": 84,
+        "width": 700,
+        "height": 412
+      },
+      "width": 700,
+      "height": 412,
+      "logicalWidth": 320,
+      "logicalHeight": 192,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0.0048543689320388345
+      }
+    },
+    {
+      "name": "plaster-wall",
+      "sheet": "architecture",
+      "crop": {
+        "left": 796,
+        "top": 86,
+        "width": 694,
+        "height": 408
+      },
+      "width": 694,
+      "height": 408,
+      "logicalWidth": 128,
+      "logicalHeight": 64,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0024509803921568627,
+        "size": 0.002881844380403458
+      }
+    },
+    {
+      "name": "oak-beam",
+      "sheet": "architecture",
+      "crop": {
+        "left": 51,
+        "top": 691,
+        "width": 703,
+        "height": 77
+      },
+      "width": 703,
+      "height": 77,
+      "logicalWidth": 320,
+      "logicalHeight": 32,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.01948051948051948,
+        "size": 0.012987012987012988
+      }
+    },
+    {
+      "name": "woven-rug",
+      "sheet": "architecture",
+      "crop": {
+        "left": 802,
+        "top": 571,
+        "width": 650,
+        "height": 341
+      },
+      "width": 650,
+      "height": 341,
+      "logicalWidth": 112,
+      "logicalHeight": 63,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.001466275659824047,
+        "size": 0.002932551319648094
+      }
+    },
+    {
+      "name": "utility-workstation",
+      "sheet": "tables",
+      "crop": {
+        "left": 72,
+        "top": 117,
+        "width": 393,
+        "height": 326
+      },
+      "width": 393,
+      "height": 326,
+      "logicalWidth": 54,
+      "logicalHeight": 40,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.003067484662576687,
+        "size": 0.002544529262086514
+      }
+    },
+    {
+      "name": "build-workbench",
+      "sheet": "tables",
+      "crop": {
+        "left": 553,
+        "top": 157,
+        "width": 432,
+        "height": 286
+      },
+      "width": 432,
+      "height": 286,
+      "logicalWidth": 70,
+      "logicalHeight": 40,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0017482517482517483,
+        "size": 0.0034965034965034965
+      }
+    },
+    {
+      "name": "verification-desk",
+      "sheet": "tables",
+      "crop": {
+        "left": 1053,
+        "top": 124,
+        "width": 418,
+        "height": 321
+      },
+      "width": 418,
+      "height": 321,
+      "logicalWidth": 62,
+      "logicalHeight": 40,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "writing-desk",
+      "sheet": "tables",
+      "crop": {
+        "left": 72,
+        "top": 518,
+        "width": 395,
+        "height": 334
+      },
+      "width": 395,
+      "height": 334,
+      "logicalWidth": 50,
+      "logicalHeight": 38,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "planning-table",
+      "sheet": "tables",
+      "crop": {
+        "left": 577,
+        "top": 557,
+        "width": 367,
+        "height": 295
+      },
+      "width": 367,
+      "height": 295,
+      "logicalWidth": 54,
+      "logicalHeight": 40,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0013623978201634877,
+        "size": 0.0027247956403269754
+      }
+    },
+    {
+      "name": "research-desk",
+      "sheet": "tables",
+      "crop": {
+        "left": 1049,
+        "top": 553,
+        "width": 401,
+        "height": 299
+      },
+      "width": 401,
+      "height": 299,
+      "logicalWidth": 62,
+      "logicalHeight": 40,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0016722408026755853,
+        "size": 0.0033444816053511705
+      }
+    },
+    {
+      "name": "project-blueprint",
+      "sheet": "tables",
+      "crop": {
+        "left": 697,
+        "top": 190,
+        "width": 146,
+        "height": 105
+      },
+      "width": 146,
+      "height": 105,
+      "logicalWidth": 48,
+      "logicalHeight": 32,
+      "lightingPair": true
+    },
+    {
+      "name": "bookshelf-empty",
+      "sheet": "storage",
+      "crop": {
+        "left": 94,
+        "top": 62,
+        "width": 333,
+        "height": 422
+      },
+      "width": 333,
+      "height": 422,
+      "logicalWidth": 50,
+      "logicalHeight": 64,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0015015015015015015,
+        "size": 0.003003003003003003
+      }
+    },
+    {
+      "name": "bookshelf-filled",
+      "sheet": "storage",
+      "crop": {
+        "left": 564,
+        "top": 62,
+        "width": 313,
+        "height": 422
+      },
+      "width": 313,
+      "height": 422,
+      "logicalWidth": 50,
+      "logicalHeight": 64,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.001597444089456869,
+        "size": 0.003194888178913738
+      }
+    },
+    {
+      "name": "lounge-couch",
+      "sheet": "storage",
+      "crop": {
+        "left": 965,
+        "top": 171,
+        "width": 506,
+        "height": 313
+      },
+      "width": 506,
+      "height": 313,
+      "logicalWidth": 52,
+      "logicalHeight": 38,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0009881422924901185,
+        "size": 0.001976284584980237
+      }
+    },
+    {
+      "name": "reading-armchair",
+      "sheet": "storage",
+      "crop": {
+        "left": 102,
+        "top": 572,
+        "width": 316,
+        "height": 344
+      },
+      "width": 316,
+      "height": 344,
+      "logicalWidth": 30,
+      "logicalHeight": 38,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0014534883720930232,
+        "size": 0.006329113924050633
+      }
+    },
+    {
+      "name": "parts-cabinet",
+      "sheet": "storage",
+      "crop": {
+        "left": 567,
+        "top": 538,
+        "width": 307,
+        "height": 394
+      },
+      "width": 307,
+      "height": 394,
+      "logicalWidth": 48,
+      "logicalHeight": 64,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0016286644951140066,
+        "size": 0.003257328990228013
+      }
+    },
+    {
+      "name": "sideboard",
+      "sheet": "storage",
+      "crop": {
+        "left": 996,
+        "top": 619,
+        "width": 441,
+        "height": 306
+      },
+      "width": 441,
+      "height": 306,
+      "logicalWidth": 46,
+      "logicalHeight": 34,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0011337868480725624,
+        "size": 0.0022675736961451248
+      }
+    },
+    {
+      "name": "chair-south",
+      "sheet": "chairs",
+      "crop": {
+        "left": 204,
+        "top": 84,
+        "width": 274,
+        "height": 466
+      },
+      "width": 274,
+      "height": 466,
+      "logicalWidth": 20,
+      "logicalHeight": 30,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.001072961373390558,
+        "size": 0.002145922746781116
+      }
+    },
+    {
+      "name": "chair-north",
+      "sheet": "chairs",
+      "crop": {
+        "left": 770,
+        "top": 101,
+        "width": 276,
+        "height": 430
+      },
+      "width": 276,
+      "height": 430,
+      "logicalWidth": 20,
+      "logicalHeight": 32,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0036231884057971015,
+        "size": 0.002325581395348837
+      }
+    },
+    {
+      "name": "chair-east",
+      "sheet": "chairs",
+      "crop": {
+        "left": 204,
+        "top": 665,
+        "width": 284,
+        "height": 448
+      },
+      "width": 284,
+      "height": 448,
+      "logicalWidth": 22,
+      "logicalHeight": 32,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "chair-west",
+      "sheet": "chairs",
+      "crop": {
+        "left": 761,
+        "top": 665,
+        "width": 285,
+        "height": 448
+      },
+      "width": 285,
+      "height": 448,
+      "logicalWidth": 22,
+      "logicalHeight": 32,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0017543859649122807,
+        "size": 0.0035087719298245615
+      }
+    },
+    {
+      "name": "command-board",
+      "sheet": "fixtures",
+      "crop": {
+        "left": 79,
+        "top": 86,
+        "width": 535,
+        "height": 313
+      },
+      "width": 535,
+      "height": 313,
+      "logicalWidth": 132,
+      "logicalHeight": 52,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "tool-board",
+      "sheet": "fixtures",
+      "crop": {
+        "left": 681,
+        "top": 137,
+        "width": 508,
+        "height": 236
+      },
+      "width": 508,
+      "height": 236,
+      "logicalWidth": 140,
+      "logicalHeight": 36,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.000984251968503937,
+        "size": 0.001968503937007874
+      }
+    },
+    {
+      "name": "verification-chart",
+      "sheet": "fixtures",
+      "crop": {
+        "left": 147,
+        "top": 507,
+        "width": 419,
+        "height": 267
+      },
+      "width": 419,
+      "height": 267,
+      "logicalWidth": 68,
+      "logicalHeight": 34,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0011933174224343676,
+        "size": 0.002386634844868735
+      }
+    },
+    {
+      "name": "doorway",
+      "sheet": "fixtures",
+      "crop": {
+        "left": 747,
+        "top": 466,
+        "width": 343,
+        "height": 375
+      },
+      "width": 343,
+      "height": 375,
+      "logicalWidth": 44,
+      "logicalHeight": 64,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0029154518950437317,
+        "size": 0.0026666666666666666
+      }
+    },
+    {
+      "name": "mailbox-full",
+      "sheet": "fixtures",
+      "crop": {
+        "left": 190,
+        "top": 887,
+        "width": 314,
+        "height": 259
+      },
+      "width": 314,
+      "height": 259,
+      "logicalWidth": 24,
+      "logicalHeight": 20,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "mailbox-empty",
+      "sheet": "fixtures",
+      "crop": {
+        "left": 756,
+        "top": 898,
+        "width": 305,
+        "height": 259
+      },
+      "width": 305,
+      "height": 259,
+      "logicalWidth": 24,
+      "logicalHeight": 20,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0019305019305019305,
+        "size": 0.003861003861003861
+      }
+    },
+    {
+      "name": "wall-lamp-single-on",
+      "sheet": "details",
+      "crop": {
+        "left": 87,
+        "top": 67,
+        "width": 180,
+        "height": 240
+      },
+      "width": 180,
+      "height": 240,
+      "logicalWidth": 22,
+      "logicalHeight": 26,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "wall-lamp-single-off",
+      "sheet": "details",
+      "crop": {
+        "left": 361,
+        "top": 68,
+        "width": 179,
+        "height": 239
+      },
+      "width": 179,
+      "height": 239,
+      "logicalWidth": 22,
+      "logicalHeight": 26,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.002793296089385475,
+        "size": 0.00558659217877095
+      }
+    },
+    {
+      "name": "wall-lamp-dual-on",
+      "sheet": "details",
+      "crop": {
+        "left": 629,
+        "top": 97,
+        "width": 244,
+        "height": 212
+      },
+      "width": 244,
+      "height": 212,
+      "logicalWidth": 48,
+      "logicalHeight": 28,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0.009433962264150943
+      }
+    },
+    {
+      "name": "wall-lamp-dual-off",
+      "sheet": "details",
+      "crop": {
+        "left": 969,
+        "top": 98,
+        "width": 233,
+        "height": 212
+      },
+      "width": 233,
+      "height": 212,
+      "logicalWidth": 48,
+      "logicalHeight": 28,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0023584905660377358,
+        "size": 0.0047169811320754715
+      }
+    },
+    {
+      "name": "floor-lamp-on",
+      "sheet": "details",
+      "crop": {
+        "left": 98,
+        "top": 402,
+        "width": 132,
+        "height": 387
+      },
+      "width": 132,
+      "height": 387,
+      "logicalWidth": 13,
+      "logicalHeight": 30,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "floor-lamp-off",
+      "sheet": "details",
+      "crop": {
+        "left": 372,
+        "top": 401,
+        "width": 132,
+        "height": 388
+      },
+      "width": 132,
+      "height": 388,
+      "logicalWidth": 13,
+      "logicalHeight": 30,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.001288659793814433,
+        "size": 0.002577319587628866
+      }
+    },
+    {
+      "name": "plant-healthy",
+      "sheet": "details",
+      "crop": {
+        "left": 596,
+        "top": 414,
+        "width": 300,
+        "height": 384
+      },
+      "width": 300,
+      "height": 384,
+      "logicalWidth": 14,
+      "logicalHeight": 24,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0018315018315018315,
+        "size": 0.003663003663003663
+      }
+    },
+    {
+      "name": "plant-wilted",
+      "sheet": "details",
+      "crop": {
+        "left": 930,
+        "top": 414,
+        "width": 300,
+        "height": 384
+      },
+      "width": 300,
+      "height": 384,
+      "logicalWidth": 14,
+      "logicalHeight": 24,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "plant-dead",
+      "sheet": "details",
+      "crop": {
+        "left": 8,
+        "top": 800,
+        "width": 300,
+        "height": 384
+      },
+      "width": 300,
+      "height": 384,
+      "logicalWidth": 14,
+      "logicalHeight": 24,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "switch-on",
+      "sheet": "details",
+      "crop": {
+        "left": 355,
+        "top": 896,
+        "width": 149,
+        "height": 257
+      },
+      "width": 149,
+      "height": 257,
+      "logicalWidth": 6,
+      "logicalHeight": 10,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "switch-off",
+      "sheet": "details",
+      "crop": {
+        "left": 612,
+        "top": 896,
+        "width": 149,
+        "height": 257
+      },
+      "width": 149,
+      "height": 257,
+      "logicalWidth": 6,
+      "logicalHeight": 10,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0,
+        "size": 0
+      }
+    },
+    {
+      "name": "document-index",
+      "sheet": "details",
+      "crop": {
+        "left": 867,
+        "top": 926,
+        "width": 342,
+        "height": 221
+      },
+      "width": 342,
+      "height": 221,
+      "logicalWidth": 40,
+      "logicalHeight": 40,
+      "lightingPair": true,
+      "pairDrift": {
+        "center": 0.0014619883040935672,
+        "size": 0.0029239766081871343
+      }
+    },
+    {
+      "name": "icon-residents",
+      "sheet": "icons",
+      "crop": {
+        "left": 51,
+        "top": 99,
+        "width": 279,
+        "height": 205
+      },
+      "width": 279,
+      "height": 205,
+      "logicalWidth": 48,
+      "logicalHeight": 48,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-journal",
+      "sheet": "icons",
+      "crop": {
+        "left": 400,
+        "top": 97,
+        "width": 175,
+        "height": 223
+      },
+      "width": 175,
+      "height": 223,
+      "logicalWidth": 48,
+      "logicalHeight": 48,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-research",
+      "sheet": "icons",
+      "crop": {
+        "left": 660,
+        "top": 112,
+        "width": 244,
+        "height": 183
+      },
+      "width": 244,
+      "height": 183,
+      "logicalWidth": 48,
+      "logicalHeight": 48,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-dispatch",
+      "sheet": "icons",
+      "crop": {
+        "left": 976,
+        "top": 124,
+        "width": 205,
+        "height": 163
+      },
+      "width": 205,
+      "height": 163,
+      "logicalWidth": 48,
+      "logicalHeight": 48,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-plus",
+      "sheet": "icons",
+      "crop": {
+        "left": 87,
+        "top": 390,
+        "width": 188,
+        "height": 192
+      },
+      "width": 188,
+      "height": 192,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-minus",
+      "sheet": "icons",
+      "crop": {
+        "left": 378,
+        "top": 448,
+        "width": 188,
+        "height": 75
+      },
+      "width": 188,
+      "height": 75,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-home",
+      "sheet": "icons",
+      "crop": {
+        "left": 660,
+        "top": 390,
+        "width": 241,
+        "height": 199
+      },
+      "width": 241,
+      "height": 199,
+      "logicalWidth": 48,
+      "logicalHeight": 48,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-follow",
+      "sheet": "icons",
+      "crop": {
+        "left": 991,
+        "top": 382,
+        "width": 184,
+        "height": 205
+      },
+      "width": 184,
+      "height": 205,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-sound-on",
+      "sheet": "icons",
+      "crop": {
+        "left": 64,
+        "top": 644,
+        "width": 207,
+        "height": 241
+      },
+      "width": 207,
+      "height": 241,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-sound-off",
+      "sheet": "icons",
+      "crop": {
+        "left": 347,
+        "top": 645,
+        "width": 208,
+        "height": 240
+      },
+      "width": 208,
+      "height": 240,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-labels",
+      "sheet": "icons",
+      "crop": {
+        "left": 656,
+        "top": 710,
+        "width": 236,
+        "height": 120
+      },
+      "width": 236,
+      "height": 120,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-keyboard",
+      "sheet": "icons",
+      "crop": {
+        "left": 961,
+        "top": 705,
+        "width": 240,
+        "height": 129
+      },
+      "width": 240,
+      "height": 129,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-eye-open",
+      "sheet": "icons",
+      "crop": {
+        "left": 71,
+        "top": 985,
+        "width": 198,
+        "height": 127
+      },
+      "width": 198,
+      "height": 127,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-eye-closed",
+      "sheet": "icons",
+      "crop": {
+        "left": 360,
+        "top": 1026,
+        "width": 206,
+        "height": 75
+      },
+      "width": 206,
+      "height": 75,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-close",
+      "sheet": "icons",
+      "crop": {
+        "left": 672,
+        "top": 952,
+        "width": 178,
+        "height": 187
+      },
+      "width": 178,
+      "height": 187,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    },
+    {
+      "name": "icon-next",
+      "sheet": "icons",
+      "crop": {
+        "left": 969,
+        "top": 955,
+        "width": 199,
+        "height": 175
+      },
+      "width": 199,
+      "height": 175,
+      "logicalWidth": 28,
+      "logicalHeight": 28,
+      "lightingPair": false
+    }
+  ],
+  "sources": [
+    {
+      "name": "architecture-key.png",
+      "width": 1536,
+      "height": 1024,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "architecture-dark.png",
+      "width": 1536,
+      "height": 1024,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "tables-key.png",
+      "width": 1536,
+      "height": 1024,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "tables-dark.png",
+      "width": 1536,
+      "height": 1024,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "storage-key.png",
+      "width": 1536,
+      "height": 1024,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "storage-dark.png",
+      "width": 1536,
+      "height": 1024,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "chairs-key.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "chairs-dark.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "fixtures-key.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "fixtures-dark.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "details-key.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "details-dark.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    },
+    {
+      "name": "icons-key.png",
+      "width": 1254,
+      "height": 1254,
+      "borderKeyRatio": 1
+    }
+  ],
+  "pending": []
+}

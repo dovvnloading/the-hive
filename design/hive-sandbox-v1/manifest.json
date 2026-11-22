@@ -1,0 +1,49 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-09-04",
+  "processing": "Crop and nearest-neighbor fit; original alpha retained. No repainting, recoloring, background replacement, or synthetic pixels.",
+  "assets": [
+    {
+      "name": "parts-cabinet",
+      "source": "sources/parts-cabinet.png",
+      "width": 48,
+      "height": 64,
+      "crop": {
+        "left": 158,
+        "top": 20,
+        "width": 771,
+        "height": 1408
+      },
+      "output": "../../../public/assets/facility-v6/sandbox/parts-cabinet.png",
+      "alpha": "Original generated alpha retained; nearest-neighbor export."
+    },
+    {
+      "name": "document-index-blueprint",
+      "source": "sources/document-index-blueprint.png",
+      "width": 48,
+      "height": 32,
+      "crop": {
+        "left": 20,
+        "top": 72,
+        "width": 1497,
+        "height": 831
+      },
+      "output": "../../../public/assets/facility-v6/sandbox/document-index-blueprint.png",
+      "alpha": "Original generated alpha retained; nearest-neighbor export."
+    },
+    {
+      "name": "document-index-device",
+      "source": "sources/document-index-device.png",
+      "width": 40,
+      "height": 40,
+      "crop": {
+        "left": 129,
+        "top": 80,
+        "width": 1117,
+        "height": 990
+      },
+      "output": "../../../public/assets/facility-v6/sandbox/document-index-device.png",
+      "alpha": "Original generated alpha retained; nearest-neighbor export."
+    }
+  ]
+}

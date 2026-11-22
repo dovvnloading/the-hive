@@ -1,0 +1,83 @@
+{
+  "generator": "built-in image_gen",
+  "assets": [
+    {
+      "name": "title-sign",
+      "crop": {
+        "left": 0,
+        "top": 124,
+        "width": 580,
+        "height": 276
+      },
+      "width": 580,
+      "height": 276,
+      "alphaPreserved": true
+    },
+    {
+      "name": "paper-frame",
+      "crop": {
+        "left": 596,
+        "top": 32,
+        "width": 440,
+        "height": 434
+      },
+      "width": 220,
+      "height": 217,
+      "alphaPreserved": true
+    },
+    {
+      "name": "wood-button",
+      "crop": {
+        "left": 1142,
+        "top": 92,
+        "width": 330,
+        "height": 330
+      },
+      "width": 165,
+      "height": 165,
+      "alphaPreserved": true
+    },
+    {
+      "name": "journal",
+      "crop": {
+        "left": 58,
+        "top": 544,
+        "width": 432,
+        "height": 410
+      },
+      "width": 96,
+      "height": 91,
+      "alphaPreserved": true
+    },
+    {
+      "name": "mail",
+      "crop": {
+        "left": 580,
+        "top": 580,
+        "width": 425,
+        "height": 378
+      },
+      "width": 96,
+      "height": 85,
+      "alphaPreserved": true
+    },
+    {
+      "name": "map",
+      "crop": {
+        "left": 1058,
+        "top": 534,
+        "width": 462,
+        "height": 432
+      },
+      "width": 96,
+      "height": 90,
+      "alphaPreserved": true
+    },
+    {
+      "name": "homestead-map",
+      "width": 1536,
+      "height": 1024,
+      "unchangedMaster": true
+    }
+  ]
+}

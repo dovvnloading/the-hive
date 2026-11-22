@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -39,10 +40,25 @@ import {
   sideChairForegroundCrop,
   type SeatForegroundCrop,
 } from '@/lib/arena/seated-presentation';
+import {
+  ambientFlies,
+  lightFlickerMultiplier,
+  lightTransitionLevel,
+} from '@/lib/arena/environment-effects';
+import {
+  FIT_CAMERA,
+  constrainCamera,
+  focusCamera,
+  zoomCamera,
+  type ArenaCamera,
+} from '@/lib/arena/camera';
+import { roomViewport, type HomesteadRoomId } from '@/lib/arena/homestead';
+import { INTERIOR_ART } from '@/lib/arena/interior-art';
+import { revealKeyboardFocus } from '@/components/camera-focus';
 
 const WORLD_WIDTH = 768;
 const WORLD_HEIGHT = 448;
-const WORLD_RENDER_SCALE = 2;
+const WORLD_RENDER_SCALE = 8;
 const BACK_WALL_HEIGHT = 64;
 const BACK_WALL_FURNITURE_OVERLAP = 4;
 // A 24 x 48 resident is the visual midpoint for this interior set: readable
@@ -50,7 +66,7 @@ const BACK_WALL_FURNITURE_OVERLAP = 4;
 const CHARACTER_SCALE = 1.5;
 const CHARACTER_FRAME_WIDTH = 16;
 const CHARACTER_FRAME_HEIGHT = 32;
-const FACILITY_ASSET_ROOT = '/assets/facility-v3';
+const INTERIOR_ASSET_ROOT = '/assets/homestead-v1/interiors';
 const ASSET_MOTIONS = ['run', 'idle_anim', 'phone', 'sit', 'sit2'] as const;
 
 type Motion = (typeof ASSET_MOTIONS)[number] | 'sit_back' | 'sit_front';
@@ -71,6 +87,8 @@ type Room = {
   h: number;
 };
 type WorldProps = {
+  focusRoomId?: HomesteadRoomId;
+  workshopProjects?: { id: string; title: string; stage: string }[];
   state: AgentArenaState;
   onSelectAgent: (agentId?: string) => void;
   onOpenJournal: (eventId?: string) => void;
@@ -78,6 +96,9 @@ type WorldProps = {
   journalOpen: boolean;
   mailboxOpen?: boolean;
   mailboxHasUnread?: boolean;
+  camera?: ArenaCamera;
+  onCameraChange?: (camera: ArenaCamera) => void;
+  showLabels?: boolean;
 };
 type CanvasPointEvent = {
   clientX: number;
@@ -87,88 +108,30 @@ type CanvasPointEvent = {
 
 const ROOMS = FACILITY_ROOMS.map((room) => ({
   id: room.id as RoomId,
-  label: room.label,
+  label: room.name.replace(' and ', ' & '),
   ...room.rect,
 })) satisfies Room[];
 
-const FURNITURE_ASSET_ROOT = '/assets/facility-v4/furniture';
-const FURNITURE_ASSET_REVISION = '20260830-5';
-const furnitureAsset = (filename: string) =>
-  `${FURNITURE_ASSET_ROOT}/${filename}?rev=${FURNITURE_ASSET_REVISION}`;
+type FacilityAssetKey = keyof typeof INTERIOR_ART;
+const FACILITY_ASSETS = Object.fromEntries(
+  Object.entries(INTERIOR_ART).map(([key, art]) => [
+    key,
+    `${INTERIOR_ASSET_ROOT}/${art.file}.png`,
+  ]),
+) as Record<FacilityAssetKey, string>;
+function facilitySize(key: FacilityAssetKey, _image: HTMLImageElement) {
+  return INTERIOR_ART[key];
+}
 
-const FACILITY_ASSETS = {
-  architectureFloor: 'generated/oak-floor-v1.png',
-  architectureWall: 'generated/plaster-wall-v1.png',
-  architectureCorridor: 'generated/slate-corridor-v1.png',
-  doorwayFront: 'generated/doorway-front-v1.png?rev=20260830-1',
-  buildVerificationChart:
-    'generated/build-verification-chart-v1.png?rev=20260830-1',
-  commandRoutingBoard: 'generated/command-routing-board-v1.png',
-  utilityToolsBoard: 'generated/utility-tools-board-v1.png',
-  wallLightDual: 'generated/wall-light-dual-v1.png',
-  wallLightDualOff: 'generated/wall-light-dual-off-v1.png',
-  wallLightSingle: 'generated/wall-light-single-v1.png',
-  wallLightSingleOff: 'generated/wall-light-single-off-v1.png',
-  operatorMailbox: 'generated/operator-mailbox-v1.png?rev=20260903-2',
-  operatorMailboxEmpty:
-    'generated/operator-mailbox-empty-v1.png?rev=20260903-1',
-  researchDesk: furnitureAsset('research-desk.png'),
-  utilityWorkstation: furnitureAsset('utility-workstation.png'),
-  buildWorkbench: furnitureAsset('build-workbench.png'),
-  verificationDesk: furnitureAsset('verification-desk.png'),
-  writingDesk: furnitureAsset('writing-desk.png'),
-  planningTable: furnitureAsset('planning-table.png'),
-  bookshelfA: furnitureAsset('bookshelf-empty.png'),
-  bookshelfB: furnitureAsset('bookshelf-empty.png'),
-  bookshelfC: furnitureAsset('bookshelf-empty.png'),
-  bookshelfFilled: furnitureAsset('bookshelf-filled.png'),
-  sideboard: furnitureAsset('sideboard.png'),
-  wallShelf: furnitureAsset('wall-shelf.png'),
-  cabinetA: 'cozy-cabin/sprites/cabinet-a.png',
-  cabinetFilled: 'cozy-cabin/sprites/cabinet-filled.png',
-  sideboardA: 'cozy-cabin/sprites/sideboard-a.png',
-  sideboardB: 'cozy-cabin/sprites/sideboard-b.png',
-  deskRect: 'cozy-cabin/sprites/desk-rect.png',
-  deskSmall: 'cozy-cabin/sprites/desk-small.png',
-  tableRound: 'cozy-cabin/sprites/table-round.png',
-  tableBlue: 'cozy-cabin/sprites/table-blue.png',
-  tableYellow: 'cozy-cabin/sprites/table-yellow.png',
-  tableVertical: 'cozy-cabin/sprites/table-vertical.png',
-  chairEast: furnitureAsset('chair-east.png'),
-  chairWest: furnitureAsset('chair-west.png'),
-  chairNorth: furnitureAsset('chair-north.png'),
-  chairSouth: furnitureAsset('chair-south.png'),
-  armchairGreen: furnitureAsset('reading-armchair.png'),
-  armchairAmber: furnitureAsset('reading-armchair.png'),
-  sofaGreen: furnitureAsset('lounge-couch.png'),
-  sofaAmber: furnitureAsset('lounge-couch.png'),
-  floorLamp: 'cozy-cabin/sprites/floor-lamp.png',
-  plantSmall: 'cozy-cabin/sprites/plant-small.png',
-  plantTall: 'cozy-cabin/sprites/plant-tall.png',
-  flowerPot: 'cozy-cabin/sprites/flower-pot.png',
-  plantPair: 'cozy-cabin/sprites/plant-pair.png',
-} as const;
-
-type FacilityAssetKey = keyof typeof FACILITY_ASSETS;
 type FacilityLighting = 'lit' | 'lightsOff';
-
-const LIGHTS_OFF_GENERATED_ASSETS = new Set<FacilityAssetKey>([
-  'architectureFloor',
-  'architectureWall',
-  'doorwayFront',
-  'buildVerificationChart',
-  'commandRoutingBoard',
-  'utilityToolsBoard',
-  'operatorMailbox',
-  'operatorMailboxEmpty',
-  'wallLightDualOff',
-  'wallLightSingleOff',
-  'floorLamp',
-  'plantSmall',
-  'plantTall',
-  'flowerPot',
-  'plantPair',
-]);
+type FacilityImageOptions = {
+  state?: AgentArenaState;
+  roomId?: RoomId;
+  now?: number;
+  lighting?: FacilityLighting;
+  lightLevel?: number;
+  reducedMotion?: boolean;
+};
 
 const SELF_AUTHORED_FURNITURE = new Set<FacilityAssetKey>([
   'researchDesk',
@@ -267,12 +230,12 @@ const SCENE_PROPS: SceneProp[] = [
     resourceId: 'archive-desk',
   },
   {
-    asset: 'bookshelfB',
+    asset: 'partsCabinet',
     roomId: 'research',
     x: 96,
     baseline: 100,
     backWallRoomId: 'research',
-    resourceId: 'archive-desk',
+    entityId: 'parts-cabinet',
   },
   {
     asset: 'bookshelfC',
@@ -483,8 +446,10 @@ type DoorGeometry = {
   centerX: number;
 };
 
-const NORTH_DOORS = FACILITY_COLLISION_GEOMETRY.northDoors as readonly DoorGeometry[];
-const SOUTH_DOORS = FACILITY_COLLISION_GEOMETRY.southDoors as readonly DoorGeometry[];
+const NORTH_DOORS =
+  FACILITY_COLLISION_GEOMETRY.northDoors as readonly DoorGeometry[];
+const SOUTH_DOORS =
+  FACILITY_COLLISION_GEOMETRY.southDoors as readonly DoorGeometry[];
 const roomIdForDoor = (door: DoorGeometry) =>
   door.locationId.replace(/^door-/, '') as RoomId;
 const NORTH_DOOR_CENTERS = Object.fromEntries(
@@ -495,58 +460,103 @@ const LOWER_PARTITION_X = ROOMS.filter((room) => room.y >= 200)
   .slice(0, -1)
   .map((room) => room.x + room.w - 4);
 
-function imageReady(image: HTMLImageElement | undefined) {
+function imageReady(
+  image: HTMLImageElement | undefined,
+): image is HTMLImageElement {
   return Boolean(image?.complete && image.naturalWidth > 0);
 }
 
-function facilityKey(key: FacilityAssetKey, lighting: FacilityLighting = 'lit') {
+function facilityKey(
+  key: FacilityAssetKey,
+  lighting: FacilityLighting = 'lit',
+) {
   return `facility:${lighting}:${key}`;
-}
-
-function assetPathname(filename: string) {
-  return filename.split('?', 1)[0];
 }
 
 function facilityAssetSource(
   key: FacilityAssetKey,
   lighting: FacilityLighting,
 ) {
-  const filename = FACILITY_ASSETS[key];
-  if (lighting === 'lightsOff') {
-    const pathname = assetPathname(filename);
-    const basename = pathname.slice(pathname.lastIndexOf('/') + 1);
-    if (pathname.startsWith(`${FURNITURE_ASSET_ROOT}/`)) {
-      return `${FURNITURE_ASSET_ROOT}/lights-off/${basename}`;
-    }
-    if (LIGHTS_OFF_GENERATED_ASSETS.has(key)) {
-      return `${FACILITY_ASSET_ROOT}/generated/lights-off/${basename}`;
-    }
-  }
-  return filename.startsWith('/')
-    ? filename
-    : `${FACILITY_ASSET_ROOT}/${filename}`;
+  return lighting === 'lightsOff'
+    ? `${INTERIOR_ASSET_ROOT}/lights-off/${INTERIOR_ART[key].file}.png`
+    : FACILITY_ASSETS[key];
 }
 
 function resolveFacilityImage(
   bank: ImageBank,
   key: FacilityAssetKey,
-  options: {
-    state?: AgentArenaState;
-    roomId?: RoomId;
-    now?: number;
-    lighting?: FacilityLighting;
-  } = {},
+  options: FacilityImageOptions = {},
 ) {
+  const roomLevel =
+    options.state && options.roomId
+      ? roomLightLevel(
+          options.state,
+          options.roomId,
+          options.now ?? Date.now(),
+          options.reducedMotion,
+        )
+      : 1;
   const lighting =
     options.lighting ??
-    (options.state && options.roomId
-      ? roomLightIsOn(options.state, options.roomId, options.now ?? Date.now())
-        ? 'lit'
-        : 'lightsOff'
-      : 'lit');
+    ((options.lightLevel ?? roomLevel) >= 0.5 ? 'lit' : 'lightsOff');
   const selected = bank[facilityKey(key, lighting)];
   if (imageReady(selected)) return selected;
   return bank[facilityKey(key, 'lit')];
+}
+
+function facilityLightLevel(options: FacilityImageOptions) {
+  if (options.lightLevel !== undefined) return options.lightLevel;
+  if (options.lighting) return options.lighting === 'lit' ? 1 : 0;
+  if (options.state && options.roomId) {
+    return roomLightLevel(
+      options.state,
+      options.roomId,
+      options.now ?? Date.now(),
+      options.reducedMotion,
+    );
+  }
+  return 1;
+}
+
+function drawLightingVariant(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  key: FacilityAssetKey,
+  options: FacilityImageOptions,
+  draw: (image: HTMLImageElement) => void,
+) {
+  const lit = bank[facilityKey(key, 'lit')];
+  const lightsOff = bank[facilityKey(key, 'lightsOff')];
+  const litReady = imageReady(lit);
+  const lightsOffReady = imageReady(lightsOff);
+  if (!litReady && !lightsOffReady) return;
+  if (!litReady) {
+    draw(lightsOff);
+    return;
+  }
+  if (!lightsOffReady || lit.src === lightsOff.src) {
+    draw(lit);
+    return;
+  }
+
+  const level = Math.max(0, Math.min(1, facilityLightLevel(options)));
+  if (level <= 0.001) {
+    draw(lightsOff);
+    return;
+  }
+  if (level >= 0.999) {
+    draw(lit);
+    return;
+  }
+  const startingAlpha = context.globalAlpha;
+  context.save();
+  context.globalAlpha = startingAlpha * (1 - level);
+  draw(lightsOff);
+  context.restore();
+  context.save();
+  context.globalAlpha = startingAlpha * level;
+  draw(lit);
+  context.restore();
 }
 
 function drawFacilitySprite(
@@ -555,16 +565,12 @@ function drawFacilitySprite(
   key: FacilityAssetKey,
   x: number,
   y: number,
-  options: {
-    state?: AgentArenaState;
-    roomId?: RoomId;
-    now?: number;
-    lighting?: FacilityLighting;
-  } = {},
+  options: FacilityImageOptions = {},
 ) {
-  const image = resolveFacilityImage(bank, key, options);
-  if (!imageReady(image)) return;
-  context.drawImage(image, Math.round(x), Math.round(y));
+  drawLightingVariant(context, bank, key, options, (image) => {
+    const { width, height } = facilitySize(key, image);
+    context.drawImage(image, Math.round(x), Math.round(y), width, height);
+  });
 }
 
 function drawWoodFloor(
@@ -613,16 +619,74 @@ function drawTiledTexture(
   height: number,
   tileWidth: number,
   tileHeight: number,
+  reflected = false,
 ) {
   context.save();
   context.beginPath();
   context.rect(x, y, width, height);
   context.clip();
-  for (let tileY = y; tileY < y + height; tileY += tileHeight) {
-    for (let tileX = x; tileX < x + width; tileX += tileWidth) {
-      context.drawImage(image, tileX, tileY, tileWidth, tileHeight);
+  for (let row = 0; row * tileHeight < height; row += 1) {
+    for (let column = 0; column * tileWidth < width; column += 1) {
+      const flipX = reflected && column % 2 === 1;
+      const flipY = reflected && row % 2 === 1;
+      context.save();
+      context.translate(
+        x + (column + Number(flipX)) * tileWidth,
+        y + (row + Number(flipY)) * tileHeight,
+      );
+      context.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+      context.drawImage(image, 0, 0, tileWidth, tileHeight);
+      context.restore();
     }
   }
+  context.restore();
+}
+
+function drawTimber(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  x: number,
+  y: number,
+  length: number,
+  thickness = 8,
+  vertical = false,
+  lightLevel = 1,
+) {
+  if (length <= 0) return;
+  const image = resolveFacilityImage(bank, 'architectureBeam');
+  if (!imageReady(image)) {
+    context.fillStyle = '#513322';
+    context.fillRect(
+      x,
+      y,
+      vertical ? thickness : length,
+      vertical ? length : thickness,
+    );
+    return;
+  }
+  drawLightingVariant(
+    context,
+    bank,
+    'architectureBeam',
+    { lightLevel },
+    (variant) =>
+      drawTimberImage(context, variant, x, y, length, thickness, vertical),
+  );
+}
+
+function drawTimberImage(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  length: number,
+  thickness: number,
+  vertical: boolean,
+) {
+  context.save();
+  context.translate(vertical ? x + thickness : x, y);
+  if (vertical) context.rotate(Math.PI / 2);
+  context.drawImage(image, 0, 0, length, thickness);
   context.restore();
 }
 
@@ -633,29 +697,27 @@ function drawRoom(
   room: Room,
   index: number,
   now: number,
+  reducedMotion: boolean,
 ) {
   context.save();
   context.beginPath();
   context.rect(room.x, room.y, room.w, room.h);
   context.clip();
   const north = room.y < 200;
+  const lightLevel = roomLightLevel(state, room.id, now, reducedMotion);
   const floorY = room.y + BACK_WALL_HEIGHT;
   const floorHeight = room.h - BACK_WALL_HEIGHT - (north ? 0 : 8);
   const floorTexture = resolveFacilityImage(bank, 'architectureFloor', {
-    state,
-    roomId: room.id,
-    now,
+    lighting: 'lit',
   });
   if (imageReady(floorTexture)) {
-    drawTiledTexture(
+    drawLightingVariant(
       context,
-      floorTexture,
-      room.x + 8,
-      floorY,
-      room.w - 16,
-      floorHeight,
-      128,
-      128,
+      bank,
+      'architectureFloor',
+      { state, roomId: room.id, now, reducedMotion },
+      (image) =>
+        context.drawImage(image, room.x + 8, floorY, room.w - 16, floorHeight),
     );
   } else {
     drawWoodFloor(context, room.x + 8, floorY, room.w - 16, floorHeight, index);
@@ -664,22 +726,24 @@ function drawRoom(
   const colors = WALL_COLORS[room.id];
   // A real back-wall assembly: dark cap, plaster face, and a wood baseboard.
   // Floor-standing sprites overlap the baseboard by their own authored depth;
-  // wall-mounted pieces stay entirely inside this forty-pixel plane.
+  // wall-mounted pieces stay entirely inside this sixty-four-pixel plane.
   const wallTexture = resolveFacilityImage(bank, 'architectureWall', {
-    state,
-    roomId: room.id,
-    now,
+    lighting: 'lit',
   });
   if (imageReady(wallTexture)) {
-    drawTiledTexture(
+    drawLightingVariant(
       context,
-      wallTexture,
-      room.x + 8,
-      room.y,
-      room.w - 16,
-      BACK_WALL_HEIGHT,
-      128,
-      BACK_WALL_HEIGHT,
+      bank,
+      'architectureWall',
+      { state, roomId: room.id, now, reducedMotion },
+      (image) =>
+        context.drawImage(
+          image,
+          room.x + 8,
+          room.y,
+          room.w - 16,
+          BACK_WALL_HEIGHT,
+        ),
     );
   } else {
     context.fillStyle = colors.panel;
@@ -694,36 +758,65 @@ function drawRoom(
     context.fillStyle = colors.panel;
     context.fillRect(room.x + 8, room.y + BACK_WALL_HEIGHT - 6, room.w - 16, 6);
   }
-  context.fillStyle = colors.panel;
-  context.fillRect(room.x, room.y, 8, room.h);
-  context.fillRect(room.x + room.w - 8, room.y, 8, room.h);
+  drawTimber(context, bank, room.x, room.y, room.w, 5, false, lightLevel);
+  drawTimber(context, bank, room.x, room.y, room.h, 8, true, lightLevel);
+  drawTimber(
+    context,
+    bank,
+    room.x + room.w - 8,
+    room.y,
+    room.h,
+    8,
+    true,
+    lightLevel,
+  );
   if (north) {
     const doorCenter = NORTH_DOOR_CENTERS[room.id];
     const openingLeft = (doorCenter ?? room.x) - 18;
-    context.fillRect(
+    drawTimber(
+      context,
+      bank,
       room.x,
       room.y + room.h - 8,
       Math.max(0, openingLeft - room.x),
       8,
+      false,
+      lightLevel,
     );
-    context.fillRect(
+    drawTimber(
+      context,
+      bank,
       openingLeft + 36,
       room.y + room.h - 8,
       room.x + room.w - (openingLeft + 36),
       8,
+      false,
+      lightLevel,
     );
   } else {
-    context.fillRect(room.x, room.y + room.h - 8, room.w, 8);
+    drawTimber(
+      context,
+      bank,
+      room.x,
+      room.y + room.h - 8,
+      room.w,
+      8,
+      false,
+      lightLevel,
+    );
   }
-  if (roomLightIsOn(state, room.id, now)) {
-    context.fillStyle = 'rgba(255,238,200,.42)';
-    context.fillRect(room.x + 8, room.y + 8, room.w - 16, 1);
+  if (room.id === 'context' || room.id === 'synthesis') {
+    drawLightingVariant(
+      context,
+      bank,
+      'wovenRug',
+      { state, roomId: room.id, now, reducedMotion },
+      (rug) => {
+        if (room.id === 'context') context.drawImage(rug, 330, 338, 112, 63);
+        else context.drawImage(rug, 70, 351, 113, 55);
+      },
+    );
   }
-  context.fillStyle = 'rgba(45,25,18,.55)';
-  context.fillRect(room.x + 8, room.y + BACK_WALL_HEIGHT - 1, room.w - 16, 1);
-  context.strokeStyle = '#3c251c';
-  context.lineWidth = 2;
-  context.strokeRect(room.x + 1, room.y + 1, room.w - 2, room.h - 2);
   context.restore();
 }
 
@@ -734,7 +827,17 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
   const height = 64;
   const corridorTexture = resolveFacilityImage(bank, 'architectureCorridor');
   if (imageReady(corridorTexture)) {
-    drawTiledTexture(context, corridorTexture, x, y, width, height, 96, 96);
+    drawTiledTexture(
+      context,
+      corridorTexture,
+      x,
+      y,
+      width,
+      height,
+      96,
+      96,
+      true,
+    );
   } else {
     context.fillStyle = '#706157';
     context.fillRect(x, y, width, height);
@@ -750,11 +853,8 @@ function drawCorridor(context: CanvasRenderingContext2D, bank: ImageBank) {
       }
     }
   }
-  context.fillStyle = '#513325';
-  context.fillRect(32, 192, 704, 6);
-  context.fillRect(32, 250, 704, 6);
-  context.fillStyle = 'rgba(237,204,151,.28)';
-  context.fillRect(42, 222, 684, 2);
+  drawTimber(context, bank, 32, 192, 704, 6);
+  drawTimber(context, bank, 32, 250, 704, 6);
 }
 
 function drawUpwardDoor(
@@ -764,13 +864,15 @@ function drawUpwardDoor(
   roomId: RoomId,
   centerX: number,
   now: number,
+  reducedMotion: boolean,
 ) {
   const openingLeft = centerX - 18;
+  const lightLevel = roomLightLevel(state, roomId, now, reducedMotion);
   // Keep a real shadowed opening behind the transparent generated frame. The
   // aperture remains clear; only the substantial walnut jambs occupy pixels.
   context.fillStyle = '#241c18';
   context.fillRect(openingLeft, 256, 36, BACK_WALL_HEIGHT);
-  context.fillStyle = '#3b2a20';
+  context.fillStyle = lightLevel > 0.5 ? '#3b2a20' : '#242a33';
   context.fillRect(openingLeft + 3, 260, 30, BACK_WALL_HEIGHT - 4);
   context.fillStyle = 'rgba(0,0,0,.3)';
   context.fillRect(openingLeft + 3, 260, 30, 5);
@@ -778,38 +880,52 @@ function drawUpwardDoor(
     state,
     roomId,
     now,
+    reducedMotion,
   });
 }
 
-function drawDownwardDoor(context: CanvasRenderingContext2D, centerX: number) {
+function drawDownwardDoor(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  centerX: number,
+  lightLevel: number,
+) {
   // Upper rooms expose only the south-wall cutaway: embed a shallow U-frame
   // in that seam without a door leaf, loose sprite, or corridor projection.
   context.fillStyle = '#241c18';
   context.fillRect(centerX - 18, 184, 36, 8);
-  drawDownwardDoorFrame(context, centerX);
+  drawDownwardDoorFrame(context, bank, centerX, lightLevel);
 }
 
 function drawDownwardDoorFrame(
   context: CanvasRenderingContext2D,
+  bank: ImageBank,
   centerX: number,
+  lightLevel: number,
 ) {
-  context.fillStyle = '#3e281d';
-  context.fillRect(centerX - 21, 181, 4, 11);
-  context.fillRect(centerX + 17, 181, 4, 11);
-  context.fillRect(centerX - 21, 181, 42, 4);
-  context.fillStyle = '#835536';
-  context.fillRect(centerX - 18, 182, 36, 2);
-  context.fillRect(centerX - 20, 184, 2, 7);
-  context.fillRect(centerX + 18, 184, 2, 7);
+  drawTimber(context, bank, centerX - 21, 181, 42, 4, false, lightLevel);
+  drawTimber(context, bank, centerX - 21, 181, 11, 4, true, lightLevel);
+  drawTimber(context, bank, centerX + 17, 181, 11, 4, true, lightLevel);
 }
 
-function drawDoorwayForegrounds(context: CanvasRenderingContext2D) {
+function drawDoorwayForegrounds(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  state: AgentArenaState,
+  now: number,
+  reducedMotion: boolean,
+) {
   // Upper openings occupy the south-wall seam, so their shallow rim remains
   // in front of a crossing body. Lower generated frames already surround a
   // 36px aperture around a 24px resident; repainting those sprites here cuts
   // moving residents apart at the jamb and must not happen.
   NORTH_DOORS.forEach((door) => {
-    drawDownwardDoorFrame(context, door.centerX);
+    drawDownwardDoorFrame(
+      context,
+      bank,
+      door.centerX,
+      roomLightLevel(state, roomIdForDoor(door), now, reducedMotion),
+    );
   });
 }
 
@@ -818,37 +934,59 @@ function drawDoorways(
   bank: ImageBank,
   state: AgentArenaState,
   now: number,
+  reducedMotion: boolean,
 ) {
   NORTH_DOORS.forEach((door) => {
-    drawDownwardDoor(context, door.centerX);
+    drawDownwardDoor(
+      context,
+      bank,
+      door.centerX,
+      roomLightLevel(state, roomIdForDoor(door), now, reducedMotion),
+    );
   });
   SOUTH_DOORS.forEach((door) => {
-    drawUpwardDoor(context, bank, state, roomIdForDoor(door), door.centerX, now);
+    drawUpwardDoor(
+      context,
+      bank,
+      state,
+      roomIdForDoor(door),
+      door.centerX,
+      now,
+      reducedMotion,
+    );
   });
 }
 
-function drawShell(context: CanvasRenderingContext2D) {
-  context.fillStyle = '#12100d';
-  context.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-  context.fillStyle = '#18130f';
-  context.fillRect(20, 20, 728, 408);
-  context.fillStyle = '#2d2018';
-  context.fillRect(25, 25, 718, 398);
-  context.strokeStyle = '#8b6544';
-  context.lineWidth = 4;
-  context.strokeRect(28, 28, 712, 392);
-  context.strokeStyle = '#3b271c';
-  context.lineWidth = 2;
-  context.strokeRect(33, 33, 702, 382);
+function drawShell(context: CanvasRenderingContext2D, bank: ImageBank) {
+  context.fillStyle = '#211910';
+  context.fillRect(26, 26, 716, 396);
+  drawTimber(context, bank, 24, 24, 720, 8);
+  drawTimber(context, bank, 24, 416, 720, 8);
+  drawTimber(context, bank, 24, 24, 400, 8, true);
+  drawTimber(context, bank, 736, 24, 400, 8, true);
 }
 
-function drawPartitions(context: CanvasRenderingContext2D) {
-  context.fillStyle = '#3e271c';
-  [252, 444].forEach((x) => context.fillRect(x, 32, 8, 160));
-  LOWER_PARTITION_X.forEach((x) => context.fillRect(x, 256, 8, 160));
-  context.fillStyle = '#a7784e';
-  [255, 447].forEach((x) => context.fillRect(x, 35, 2, 154));
-  LOWER_PARTITION_X.forEach((x) => context.fillRect(x + 3, 259, 2, 154));
+function drawPartitions(
+  context: CanvasRenderingContext2D,
+  bank: ImageBank,
+  state: AgentArenaState,
+  now: number,
+  reducedMotion: boolean,
+) {
+  for (const room of ROOMS) {
+    const level = roomLightLevel(state, room.id, now, reducedMotion);
+    context.save();
+    context.beginPath();
+    context.rect(room.x, room.y, room.w, room.h);
+    context.clip();
+    [252, 444].forEach((x) =>
+      drawTimber(context, bank, x, 32, 160, 8, true, level),
+    );
+    LOWER_PARTITION_X.forEach((x) =>
+      drawTimber(context, bank, x, 256, 160, 8, true, level),
+    );
+    context.restore();
+  }
 }
 
 function drawWallDetails(
@@ -856,22 +994,26 @@ function drawWallDetails(
   bank: ImageBank,
   state: AgentArenaState,
   now: number,
+  reducedMotion: boolean,
 ) {
   // Every wall mark describes an in-world resource; none are dashboard chrome.
   drawFacilitySprite(context, bank, 'commandRoutingBoard', 284, 38, {
     state,
     roomId: 'command',
     now,
+    reducedMotion,
   });
   drawFacilitySprite(context, bank, 'utilityToolsBoard', 528, 38, {
     state,
     roomId: 'tools',
     now,
+    reducedMotion,
   });
   drawFacilitySprite(context, bank, 'buildVerificationChart', 650, 262, {
     state,
     roomId: 'build',
     now,
+    reducedMotion,
   });
 }
 
@@ -880,15 +1022,16 @@ function drawArchitecture(
   bank: ImageBank,
   state: AgentArenaState,
   now: number,
+  reducedMotion: boolean,
 ) {
-  drawShell(context);
+  drawShell(context, bank);
   ROOMS.forEach((room, index) =>
-    drawRoom(context, bank, state, room, index, now),
+    drawRoom(context, bank, state, room, index, now, reducedMotion),
   );
   drawCorridor(context, bank);
-  drawPartitions(context);
-  drawDoorways(context, bank, state, now);
-  drawWallDetails(context, bank, state, now);
+  drawPartitions(context, bank, state, now, reducedMotion);
+  drawDoorways(context, bank, state, now, reducedMotion);
+  drawWallDetails(context, bank, state, now, reducedMotion);
 }
 
 type ResourceWorkState = {
@@ -1001,10 +1144,39 @@ function effectiveEntityState(
   };
 }
 
-function roomLightIsOn(state: AgentArenaState, roomId: RoomId, now: number) {
-  return (
-    effectiveEntityState(state, `room-light-${roomId}`, now).power === 'on'
+function entityLightLevel(
+  state: AgentArenaState,
+  entityId: string,
+  now: number,
+  reducedMotion = false,
+) {
+  const power =
+    effectiveEntityState(state, entityId, now).power === 'on' ? 'on' : 'off';
+  // Entity timestamps also advance for harmless actions such as `inspect`.
+  // Animate only from a real power transition so inspection cannot make a
+  // settled fixture appear to switch again.
+  const powerTransition = state.events.find(
+    (event) =>
+      event.kind === 'world.interaction' &&
+      event.payload.entityId === entityId &&
+      (event.payload.verb === 'switch_on' ||
+        event.payload.verb === 'switch_off'),
   );
+  return lightTransitionLevel(
+    power,
+    powerTransition?.occurredAt,
+    now,
+    reducedMotion,
+  );
+}
+
+function roomLightLevel(
+  state: AgentArenaState,
+  roomId: RoomId,
+  now: number,
+  reducedMotion = false,
+) {
+  return entityLightLevel(state, `room-light-${roomId}`, now, reducedMotion);
 }
 
 function drawRoomLightFixtures(
@@ -1012,37 +1184,84 @@ function drawRoomLightFixtures(
   bank: ImageBank,
   state: AgentArenaState,
   now: number,
+  reducedMotion: boolean,
 ) {
   ROOMS.forEach((room) => {
     const fixture = LIGHT_FIXTURES[room.id];
-    const powered = roomLightIsOn(state, room.id, now);
+    const lightLevel = roomLightLevel(state, room.id, now, reducedMotion);
     const single = fixture.variant === 'single';
-    drawFacilitySprite(
-      context,
-      bank,
-      single
-        ? powered
-          ? 'wallLightSingle'
-          : 'wallLightSingleOff'
-        : powered
-          ? 'wallLightDual'
-          : 'wallLightDualOff',
-      fixture.fixtureX - (single ? 11 : 24),
-      fixture.fixtureY - (single ? 13 : 14),
-    );
+    const onKey = single ? 'wallLightSingle' : 'wallLightDual';
+    const offKey = single ? 'wallLightSingleOff' : 'wallLightDualOff';
+    const onImage = bank[facilityKey(onKey, 'lit')];
+    const darkOffImage = bank[facilityKey(offKey, 'lightsOff')];
+    const regularOffImage = bank[facilityKey(offKey, 'lit')];
+    const offImage = imageReady(darkOffImage) ? darkOffImage : regularOffImage;
+    const fixtureX = fixture.fixtureX - (single ? 11 : 24);
+    const fixtureY = fixture.fixtureY - (single ? 13 : 14);
+    if (imageReady(offImage) && lightLevel < 0.999) {
+      context.save();
+      context.globalAlpha = 1 - lightLevel;
+      context.drawImage(
+        offImage,
+        fixtureX,
+        fixtureY,
+        single ? 22 : 48,
+        single ? 26 : 28,
+      );
+      context.restore();
+    }
+    if (imageReady(onImage) && lightLevel > 0.001) {
+      context.save();
+      context.globalAlpha = lightLevel;
+      context.drawImage(
+        onImage,
+        fixtureX,
+        fixtureY,
+        single ? 22 : 48,
+        single ? 26 : 28,
+      );
+      context.restore();
+    }
+    const switchOn = resolveFacilityImage(bank, 'switchOn');
+    const switchOff = resolveFacilityImage(bank, 'switchOff', {
+      lighting: 'lightsOff',
+    });
+    if (imageReady(switchOn) && imageReady(switchOff)) {
+      context.save();
+      context.globalAlpha = 1 - lightLevel;
+      context.drawImage(
+        switchOff,
+        fixture.switchX - 3,
+        fixture.switchY - 5,
+        6,
+        10,
+      );
+      context.globalAlpha = lightLevel;
+      context.drawImage(
+        switchOn,
+        fixture.switchX - 3,
+        fixture.switchY - 5,
+        6,
+        10,
+      );
+      context.restore();
+      return;
+    }
     context.fillStyle = 'rgba(35,25,18,.38)';
     context.fillRect(fixture.switchX - 2, fixture.switchY - 3, 7, 9);
     context.fillStyle = '#6d5845';
     context.fillRect(fixture.switchX - 3, fixture.switchY - 5, 6, 10);
     context.fillStyle = '#382b22';
     context.fillRect(fixture.switchX - 2, fixture.switchY - 4, 4, 8);
-    context.fillStyle = powered ? '#d9b967' : '#777064';
-    context.fillRect(
-      fixture.switchX - 1,
-      fixture.switchY + (powered ? -3 : 1),
-      2,
-      3,
-    );
+    context.fillStyle = '#777064';
+    context.fillRect(fixture.switchX - 1, fixture.switchY + 1, 2, 3);
+    if (lightLevel > 0.001) {
+      context.save();
+      context.globalAlpha = lightLevel;
+      context.fillStyle = '#d9b967';
+      context.fillRect(fixture.switchX - 1, fixture.switchY - 3, 2, 3);
+      context.restore();
+    }
   });
 }
 
@@ -1050,57 +1269,93 @@ function drawEnvironmentalLighting(
   context: CanvasRenderingContext2D,
   state: AgentArenaState,
   now: number,
+  reducedMotion: boolean,
 ) {
   context.save();
   ROOMS.forEach((room) => {
     const fixture = LIGHT_FIXTURES[room.id];
-    const powered = roomLightIsOn(state, room.id, now);
-    context.save();
-    context.beginPath();
-    // Cover the full room bounds. Insets leave a bright seam at the top and
-    // sides when a room is dark, especially at the 2x presentation scale.
-    context.rect(room.x, room.y, room.w, room.h);
-    context.clip();
-    if (!powered) {
-      // Dark assets carry the room's material lighting. This light veil only
-      // shades residents and the remaining procedural architecture pixels.
-      context.fillStyle = 'rgba(5,8,15,.48)';
+    const lightLevel = roomLightLevel(state, room.id, now, reducedMotion);
+    if (lightLevel < 0.999) {
+      context.save();
+      context.beginPath();
+      // The darkness veil covers the complete room so no light seam can appear
+      // around dark assets while the switch transition is in flight.
+      context.rect(room.x, room.y, room.w, room.h);
+      context.clip();
+      // Asset variants and the architecture material pass carry room lighting.
+      // This veil keeps residents and their surroundings in the same darkness.
+      context.fillStyle = `rgba(5,8,15,${0.12 * (1 - lightLevel)})`;
       context.fillRect(room.x, room.y, room.w, room.h);
-    } else {
-      const glow = context.createRadialGradient(
+      context.restore();
+    }
+    if (lightLevel > 0.001) {
+      const shimmer = lightFlickerMultiplier(room.id, now, reducedMotion);
+      const luminousLevel = Math.max(0, Math.min(1.015, lightLevel * shimmer));
+      context.save();
+      context.beginPath();
+      // Bloom is clipped inside the timber uprights. This preserves the hard
+      // room boundaries even at the brightest point of a transition.
+      context.rect(room.x + 8, room.y, room.w - 16, room.h);
+      context.clip();
+      context.globalCompositeOperation = 'screen';
+
+      const roomGlow = context.createRadialGradient(
         fixture.fixtureX,
-        fixture.fixtureY + 24,
+        fixture.fixtureY + 22,
         4,
         fixture.fixtureX,
         fixture.fixtureY + 34,
         Math.max(room.w * 0.58, 112),
       );
-      glow.addColorStop(0, 'rgba(255,225,157,.2)');
-      glow.addColorStop(0.5, 'rgba(234,183,106,.08)');
-      glow.addColorStop(1, 'rgba(234,183,106,0)');
-      context.globalCompositeOperation = 'screen';
-      context.fillStyle = glow;
+      roomGlow.addColorStop(0, `rgba(255,225,157,${0.22 * luminousLevel})`);
+      roomGlow.addColorStop(0.5, `rgba(234,183,106,${0.085 * luminousLevel})`);
+      roomGlow.addColorStop(1, 'rgba(234,183,106,0)');
+      context.fillStyle = roomGlow;
       context.fillRect(room.x, room.y, room.w, room.h);
+
+      const fixtureBloom = context.createRadialGradient(
+        fixture.fixtureX,
+        fixture.fixtureY + 7,
+        1,
+        fixture.fixtureX,
+        fixture.fixtureY + 10,
+        fixture.variant === 'single' ? 28 : 42,
+      );
+      fixtureBloom.addColorStop(0, `rgba(255,241,190,${0.31 * luminousLevel})`);
+      fixtureBloom.addColorStop(
+        0.36,
+        `rgba(255,204,112,${0.13 * luminousLevel})`,
+      );
+      fixtureBloom.addColorStop(1, 'rgba(255,188,88,0)');
+      context.fillStyle = fixtureBloom;
+      context.fillRect(fixture.fixtureX - 48, fixture.fixtureY - 22, 96, 78);
       context.globalCompositeOperation = 'source-over';
+      context.restore();
     }
-    context.restore();
   });
 
-  const archiveLamp = effectiveEntityState(state, 'archive-lamp', now);
   const researchRoom = ROOMS.find((room) => room.id === 'research');
-  if (archiveLamp.power === 'on' && researchRoom) {
+  const taskLampLevel = entityLightLevel(
+    state,
+    'archive-lamp',
+    now,
+    reducedMotion,
+  );
+  if (researchRoom && taskLampLevel > 0.001) {
+    const shimmer = lightFlickerMultiplier('archive-lamp', now, reducedMotion);
+    const luminousLevel = Math.max(0, Math.min(1.015, taskLampLevel * shimmer));
     context.save();
     context.beginPath();
     context.rect(
-      researchRoom.x + 3,
-      researchRoom.y + 3,
-      researchRoom.w - 6,
-      researchRoom.h - 6,
+      researchRoom.x + 8,
+      researchRoom.y,
+      researchRoom.w - 16,
+      researchRoom.h,
     );
     context.clip();
     const taskGlow = context.createRadialGradient(234, 109, 3, 234, 109, 62);
-    taskGlow.addColorStop(0, 'rgba(255,211,121,.34)');
-    taskGlow.addColorStop(0.55, 'rgba(239,172,82,.13)');
+    taskGlow.addColorStop(0, `rgba(255,211,121,${0.34 * luminousLevel})`);
+    taskGlow.addColorStop(0.55, `rgba(239,172,82,${0.13 * luminousLevel})`);
     taskGlow.addColorStop(1, 'rgba(239,172,82,0)');
     context.globalCompositeOperation = 'screen';
     context.fillStyle = taskGlow;
@@ -1108,6 +1363,37 @@ function drawEnvironmentalLighting(
     context.restore();
   }
   context.restore();
+}
+
+function drawAmbientLife(
+  context: CanvasRenderingContext2D,
+  state: AgentArenaState,
+  now: number,
+  reducedMotion: boolean,
+) {
+  ROOMS.forEach((room) => {
+    const lightLevel = roomLightLevel(state, room.id, now, reducedMotion);
+    const plant = SCENE_PROPS.find(
+      (prop) => prop.roomId === room.id && prop.entityId?.startsWith('plant-'),
+    );
+    if (!plant) return;
+    const flies = ambientFlies(
+      room.id,
+      room,
+      { x: plant.x + 8, y: (plant.y ?? room.y + room.h - 30) + 9 },
+      now,
+      lightLevel,
+      reducedMotion,
+    );
+    flies.forEach((fly) => {
+      context.fillStyle = 'rgba(18,13,10,.82)';
+      context.fillRect(fly.x, fly.y, 1, 1);
+      if (fly.wing === 1) {
+        context.fillStyle = 'rgba(218,196,146,.42)';
+        context.fillRect(fly.x + 1, fly.y - 1, 1, 1);
+      }
+    });
+  });
 }
 
 function drawSurfaceDetail(
@@ -1193,49 +1479,6 @@ function drawSurfaceDetail(
   }
 }
 
-function drawLivingPlant(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  condition: string,
-) {
-  const width = image.naturalWidth;
-  const height = image.naturalHeight;
-  if (condition === 'dead') {
-    const potHeight = Math.min(10, height);
-    context.drawImage(
-      image,
-      0,
-      height - potHeight,
-      width,
-      potHeight,
-      x,
-      y + height - potHeight,
-      width,
-      potHeight,
-    );
-    context.fillStyle = '#76513a';
-    context.fillRect(x + Math.floor(width / 2), y + 7, 1, height - 14);
-    context.fillRect(x + Math.floor(width / 2) - 3, y + 11, 4, 1);
-    context.fillRect(x + Math.floor(width / 2), y + 15, 4, 1);
-    return;
-  }
-
-  const compression =
-    condition === 'wilted' ? 5 : condition === 'thirsty' ? 2 : 0;
-  context.save();
-  context.globalAlpha =
-    condition === 'wilted' ? 0.68 : condition === 'thirsty' ? 0.84 : 1;
-  context.drawImage(image, x, y + compression, width, height - compression);
-  context.restore();
-  if (condition !== 'healthy') {
-    context.fillStyle = condition === 'wilted' ? '#9b6946' : '#b28a50';
-    context.fillRect(x + 3, y + 10 + compression, 3, 1);
-    context.fillRect(x + width - 6, y + 13 + compression, 3, 1);
-  }
-}
-
 function drawSceneProp(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
@@ -1243,39 +1486,55 @@ function drawSceneProp(
   prop: SceneProp,
   mailboxHasUnread: boolean,
   now: number,
+  reducedMotion: boolean,
 ) {
   // Resolve the mailbox's physical state before selecting the room-lighting
   // variant so full and empty boxes both have faithful illuminated/dark art.
-  const asset =
+  let asset: FacilityAssetKey =
     prop.entityId === 'operator-mailbox' && !mailboxHasUnread
       ? 'operatorMailboxEmpty'
       : prop.asset;
-  const archiveTaskLampIsOn =
+  if (prop.entityId?.startsWith('plant-')) {
+    const condition = effectiveEntityState(state, prop.entityId, now).condition;
+    asset =
+      condition === 'dead'
+        ? 'plantDead'
+        : condition === 'wilted'
+          ? 'plantWilted'
+          : 'plantSmall';
+  }
+  if (
     prop.resourceId === 'archive-lamp' &&
-    effectiveEntityState(state, 'archive-lamp', now).power === 'on';
-  const image = resolveFacilityImage(bank, asset, {
+    effectiveEntityState(state, 'archive-lamp', now).power !== 'on'
+  )
+    asset = 'floorLampOff';
+  const archiveTaskLampLevel =
+    prop.resourceId === 'archive-lamp'
+      ? Math.max(
+          roomLightLevel(state, prop.roomId, now, reducedMotion),
+          entityLightLevel(state, 'archive-lamp', now, reducedMotion),
+        )
+      : undefined;
+  const lightingOptions = {
     state,
     roomId: prop.roomId,
     now,
-    lighting: archiveTaskLampIsOn ? 'lit' : undefined,
+    reducedMotion,
+    ...(archiveTaskLampLevel === undefined
+      ? {}
+      : { lightLevel: archiveTaskLampLevel }),
+  } satisfies FacilityImageOptions;
+  const image = resolveFacilityImage(bank, asset, {
+    lighting: 'lit',
   });
   if (!imageReady(image)) return;
-  const width = image.naturalWidth;
-  const height = image.naturalHeight;
+  const { width, height } = facilitySize(asset, image);
   const anchoredRoom = prop.backWallRoomId
     ? ROOMS.find((room) => room.id === prop.backWallRoomId)
     : undefined;
   const y = anchoredRoom
     ? anchoredRoom.y + BACK_WALL_HEIGHT - height + BACK_WALL_FURNITURE_OVERLAP
     : (prop.y ?? 0);
-  if (prop.entityId?.startsWith('plant-')) {
-    const condition = String(
-      effectiveEntityState(state, prop.entityId, now).condition ??
-        'healthy',
-    );
-    drawLivingPlant(context, image, prop.x, y, condition);
-    return;
-  }
   const work = resourceWorkState(state, prop.resourceId);
   if (work.mode !== 'idle') {
     context.fillStyle =
@@ -1285,7 +1544,15 @@ function drawSceneProp(
       work.mode === 'active' ? activityScreenColor(work) : '#a88c56';
     context.fillRect(prop.x, y + height + 1, width, 2);
   }
-  context.drawImage(image, Math.round(prop.x), Math.round(y));
+  drawLightingVariant(context, bank, asset, lightingOptions, (variant) => {
+    context.drawImage(
+      variant,
+      Math.round(prop.x),
+      Math.round(y),
+      width,
+      height,
+    );
+  });
   drawSurfaceDetail(context, state, prop, width, y);
 }
 
@@ -1295,6 +1562,7 @@ function drawOccupiedSeatForeground(
   state: AgentArenaState,
   prop: SceneProp,
   now: number,
+  reducedMotion: boolean,
 ) {
   if (
     prop.seatForegroundHeight === undefined &&
@@ -1303,26 +1571,25 @@ function drawOccupiedSeatForeground(
     return;
   }
   const image = resolveFacilityImage(bank, prop.asset, {
-    state,
-    roomId: prop.roomId,
-    now,
+    lighting: 'lit',
   });
   if (!imageReady(image)) return;
+  const logicalSize = facilitySize(prop.asset, image);
   const requestedCrop = prop.seatForegroundCrop ?? {
     x: 0,
     y: 0,
-    width: image.naturalWidth,
-    height: prop.seatForegroundHeight ?? image.naturalHeight,
+    width: logicalSize.width,
+    height: prop.seatForegroundHeight ?? logicalSize.height,
   };
-  const sourceX = Math.max(0, Math.min(requestedCrop.x, image.naturalWidth));
-  const sourceY = Math.max(0, Math.min(requestedCrop.y, image.naturalHeight));
+  const sourceX = Math.max(0, Math.min(requestedCrop.x, logicalSize.width));
+  const sourceY = Math.max(0, Math.min(requestedCrop.y, logicalSize.height));
   const width = Math.max(
     0,
-    Math.min(requestedCrop.width, image.naturalWidth - sourceX),
+    Math.min(requestedCrop.width, logicalSize.width - sourceX),
   );
   const height = Math.max(
     0,
-    Math.min(requestedCrop.height, image.naturalHeight - sourceY),
+    Math.min(requestedCrop.height, logicalSize.height - sourceY),
   );
   if (width === 0 || height === 0) return;
   const y = prop.y ?? 0;
@@ -1330,16 +1597,23 @@ function drawOccupiedSeatForeground(
   // The complete chair is rendered behind its occupant first. North-facing
   // chairs repaint the full authored silhouette; side-facing chairs repaint
   // only the back rail so the body remains visible on the seat.
-  context.drawImage(
-    image,
-    sourceX,
-    sourceY,
-    width,
-    height,
-    Math.round(prop.x + sourceX),
-    Math.round(y + sourceY),
-    width,
-    height,
+  drawLightingVariant(
+    context,
+    bank,
+    prop.asset,
+    { state, roomId: prop.roomId, now, reducedMotion },
+    (variant) =>
+      context.drawImage(
+        variant,
+        (sourceX / logicalSize.width) * variant.naturalWidth,
+        (sourceY / logicalSize.height) * variant.naturalHeight,
+        (width / logicalSize.width) * variant.naturalWidth,
+        (height / logicalSize.height) * variant.naturalHeight,
+        Math.round(prop.x + sourceX),
+        Math.round(y + sourceY),
+        width,
+        height,
+      ),
   );
 }
 
@@ -1373,8 +1647,52 @@ function roomActivityLabel(agents: RuntimeAgent[]) {
   return 'IDLE';
 }
 
+// Cache each fitted frame so the animation loop only draws one image per sign.
+const plaqueFrames = new WeakMap<
+  HTMLImageElement,
+  Map<number, HTMLCanvasElement>
+>();
+
+function fittedPlaque(image: HTMLImageElement, width: number) {
+  let frames = plaqueFrames.get(image);
+  if (!frames) {
+    frames = new Map();
+    plaqueFrames.set(image, frames);
+  }
+  const cached = frames.get(width);
+  if (cached) return cached;
+  const frame = document.createElement('canvas');
+  frame.width = width * 2;
+  frame.height = 42;
+  const context = frame.getContext('2d');
+  if (!context) return;
+  context.imageSmoothingEnabled = false;
+  const sourceX = [0, 44, image.naturalWidth - 44, image.naturalWidth];
+  const sourceY = [0, 44, image.naturalHeight - 44, image.naturalHeight];
+  const targetX = [0, 10, frame.width - 10, frame.width];
+  const targetY = [0, 8, frame.height - 8, frame.height];
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 0; column < 3; column += 1) {
+      context.drawImage(
+        image,
+        sourceX[column],
+        sourceY[row],
+        sourceX[column + 1] - sourceX[column],
+        sourceY[row + 1] - sourceY[row],
+        targetX[column],
+        targetY[row],
+        targetX[column + 1] - targetX[column],
+        targetY[row + 1] - targetY[row],
+      );
+    }
+  }
+  frames.set(width, frame);
+  return frame;
+}
+
 function drawPlaque(
   context: CanvasRenderingContext2D,
+  bank: ImageBank,
   state: AgentArenaState,
   room: Room,
 ) {
@@ -1386,21 +1704,30 @@ function drawPlaque(
   const activity = roomActivityLabel(agents);
   const accent = agents.find((agent) => agent.status === 'working');
 
-  context.fillStyle = 'rgba(28,20,15,.97)';
-  context.fillRect(left, top, width, 21);
-  context.strokeStyle = '#795b41';
-  context.lineWidth = 1;
-  context.strokeRect(left + 0.5, top + 0.5, width - 1, 20);
-  context.fillStyle = accent ? presentationForAgent(accent).accent : '#a67a4d';
-  context.fillRect(left, top, 3, 21);
+  const plaque = bank['ui:room-plaque'];
+  const frame = imageReady(plaque) ? fittedPlaque(plaque, width) : undefined;
+  if (frame) {
+    context.drawImage(frame, left, top, width, 21);
+  } else {
+    context.fillStyle = 'rgba(28,20,15,.97)';
+    context.fillRect(left, top, width, 21);
+    context.strokeStyle = '#795b41';
+    context.lineWidth = 1;
+    context.strokeRect(left + 0.5, top + 0.5, width - 1, 20);
+  }
+  if (accent) {
+    context.fillStyle = presentationForAgent(accent).accent;
+    context.fillRect(left + 5, top + 7, 2, 7);
+  }
   context.fillStyle = '#f0e3c8';
-  context.font = `${room.id === 'context' ? 9 : 10}px ui-monospace, SFMono-Regular, Consolas, monospace`;
+  context.font = '600 10px Georgia, serif';
   context.textBaseline = 'middle';
   context.fillText(room.label, left + 11, top + 11);
-  context.fillStyle = agents.length > 0 ? '#d4b67a' : '#9b8974';
+  context.fillStyle = agents.length > 0 ? '#e7c884' : '#b3ac8d';
   if (room.id === 'context') {
     context.fillRect(left + width - 9, top + 8, 3, 6);
   } else {
+    context.font = '8px ui-monospace, SFMono-Regular, Consolas, monospace';
     context.textAlign = 'right';
     context.fillText(activity, left + width - 9, top + 11);
   }
@@ -1558,6 +1885,7 @@ function drawAgent(
   selected: boolean,
   followed: boolean,
   now: number,
+  reducedMotion: boolean,
 ) {
   const motion = motionFor(agent, avatar);
   const sheetMotion = isSeatedMotion(motion)
@@ -1569,7 +1897,9 @@ function drawAgent(
   const seated = isSeatedMotion(motion);
   const frameWidth = seated ? seatedFrameWidth(motion) : CHARACTER_FRAME_WIDTH;
   const frameCount = motion === 'phone' ? 9 : 6;
-  const frame = Math.floor(now / (motion === 'run' ? 95 : 150)) % frameCount;
+  const frame = reducedMotion
+    ? 0
+    : Math.floor(now / (motion === 'run' ? 95 : 150)) % frameCount;
   const seatedProjection = seatedProjectionFor(agent, avatar);
   const renderedDirection = seatedProjection?.direction ?? avatar.direction;
   const seatedDirection = seated
@@ -1623,6 +1953,8 @@ function drawDepthSortedScene(
   agentsById: Map<string, RuntimeAgent>,
   now: number,
   mailboxHasUnread: boolean,
+  reducedMotion: boolean,
+  workshopProjects: NonNullable<WorldProps['workshopProjects']>,
 ) {
   const occupiedSeats = new Map<
     string,
@@ -1660,9 +1992,42 @@ function drawDepthSortedScene(
         : prop.baseline,
       stableOrder: index,
       draw: () =>
-        drawSceneProp(context, bank, state, prop, mailboxHasUnread, now),
+        drawSceneProp(
+          context,
+          bank,
+          state,
+          prop,
+          mailboxHasUnread,
+          now,
+          reducedMotion,
+        ),
     };
   });
+
+  if (workshopProjects.length > 0) {
+    const installed = workshopProjects.some(
+      (project) => project.stage === 'installed',
+    );
+    entries.push({
+      baseline: 370,
+      stableOrder: SCENE_PROPS.length,
+      draw: () =>
+        drawLightingVariant(
+          context,
+          bank,
+          installed ? 'projectDevice' : 'projectBlueprint',
+          { state, roomId: 'build', now, reducedMotion },
+          (image) =>
+            context.drawImage(
+              image,
+              492,
+              installed ? 330 : 340,
+              34,
+              installed ? 34 : 23,
+            ),
+        ),
+    });
+  }
 
   state.avatars.forEach((avatar, index) => {
     const agent = agentsById.get(avatar.agentId);
@@ -1680,6 +2045,7 @@ function drawDepthSortedScene(
           state.selectedAgentId === agent.id,
           state.followedAgentId === agent.id,
           now,
+          reducedMotion,
         ),
     });
   });
@@ -1699,7 +2065,15 @@ function drawDepthSortedScene(
     entries.push({
       baseline: occupiedSeat.baseline + 0.5,
       stableOrder: 2000 + index,
-      draw: () => drawOccupiedSeatForeground(context, bank, state, prop, now),
+      draw: () =>
+        drawOccupiedSeatForeground(
+          context,
+          bank,
+          state,
+          prop,
+          now,
+          reducedMotion,
+        ),
     });
   });
 
@@ -1740,11 +2114,12 @@ function drawNameplate(
 
 function drawLabels(
   context: CanvasRenderingContext2D,
+  bank: ImageBank,
   state: AgentArenaState,
   agentsById: Map<string, RuntimeAgent>,
   hoveredAgentId?: string,
 ) {
-  ROOMS.forEach((room) => drawPlaque(context, state, room));
+  ROOMS.forEach((room) => drawPlaque(context, bank, state, room));
   state.avatars.forEach((avatar) => {
     const agent = agentsById.get(avatar.agentId);
     if (!agent) return;
@@ -1824,6 +2199,8 @@ function projectSpeechBubbles(state: AgentArenaState, now: number) {
 }
 
 export function AgentArenaWorldV2({
+  focusRoomId,
+  workshopProjects = [],
   state,
   onSelectAgent,
   onOpenJournal,
@@ -1831,14 +2208,37 @@ export function AgentArenaWorldV2({
   journalOpen,
   mailboxOpen = false,
   mailboxHasUnread = false,
+  camera = FIT_CAMERA,
+  onCameraChange = () => undefined,
+  showLabels = true,
 }: WorldProps) {
+  const frameRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelCanvasRef = useRef<HTMLCanvasElement>(null);
   const bankRef = useRef<ImageBank>({});
   const [assetRevision, setAssetRevision] = useState(0);
   const [assetsReady, setAssetsReady] = useState(false);
+  const [failedAssetCount, setFailedAssetCount] = useState(0);
+  const [retryAssets, setRetryAssets] = useState(0);
   const [hoveredAgentId, setHoveredAgentId] = useState<string>();
   const [bubbleNow, setBubbleNow] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    camera: ArenaCamera;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const viewport = roomViewport(focusRoomId);
+  const displayedCamera = camera;
+  const cameraRef = useRef({ camera: displayedCamera, onCameraChange });
+  useLayoutEffect(() => {
+    cameraRef.current = { camera: displayedCamera, onCameraChange };
+  });
 
   const agentsById = useMemo(
     () => new Map(state.agents.map((agent) => [agent.id, agent])),
@@ -1848,11 +2248,67 @@ export function AgentArenaWorldV2({
   const observedAgentIds = useMemo(
     () =>
       state.agents
-        .map((agent) => agent.id)
+        .map((agent) => `${agent.id}:${presentationForAgent(agent).sprite}`)
         .sort()
         .join('|'),
     [state.agents],
   );
+  const latestFrame = useRef({
+    state,
+    agentsById,
+    hoveredAgentId,
+    mailboxHasUnread,
+    assetsReady,
+    showLabels,
+    workshopProjects,
+    viewport,
+  });
+  const residentManifest = useRef(state.agents);
+  useLayoutEffect(() => {
+    latestFrame.current = {
+      state,
+      agentsById,
+      hoveredAgentId,
+      mailboxHasUnread,
+      assetsReady,
+      showLabels,
+      workshopProjects,
+      viewport,
+    };
+    residentManifest.current = state.agents;
+  });
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const onWheel = (event: WheelEvent) => {
+      // Ctrl+wheel belongs to browser page zoom and text enlargement.
+      if (event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      const bounds = frame.getBoundingClientRect();
+      const anchor = {
+        x: ((event.clientX - bounds.left) / bounds.width - 0.5) * 100,
+        y: ((event.clientY - bounds.top) / bounds.height - 0.5) * 100,
+      };
+      const current = cameraRef.current;
+      const delta =
+        event.deltaY *
+        (event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? bounds.height
+            : 1);
+      current.onCameraChange(
+        zoomCamera(
+          current.camera,
+          current.camera.zoom * Math.exp(-delta * 0.0015),
+          anchor,
+        ),
+      );
+    };
+    frame.addEventListener('wheel', onWheel, { passive: false });
+    return () => frame.removeEventListener('wheel', onWheel);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setBubbleNow(Date.now()), 250);
@@ -1860,27 +2316,42 @@ export function AgentArenaWorldV2({
   }, []);
 
   useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setReducedMotion(preference.matches);
+    updatePreference();
+    preference.addEventListener('change', updatePreference);
+    return () => preference.removeEventListener('change', updatePreference);
+  }, []);
+
+  useEffect(() => {
     let canceled = false;
     const sources: Array<[string, string]> = (
       Object.keys(FACILITY_ASSETS) as FacilityAssetKey[]
     ).flatMap((key) =>
-      (['lit', 'lightsOff'] as const).map((lighting) => [
-        facilityKey(key, lighting),
-        encodeURI(facilityAssetSource(key, lighting)),
-      ]),
+      (['lit', 'lightsOff'] as const).map(
+        (lighting) =>
+          [
+            facilityKey(key, lighting),
+            encodeURI(facilityAssetSource(key, lighting)),
+          ] as [string, string],
+      ),
     );
-    state.agents.forEach((agent) => {
+    sources.push(['ui:room-plaque', '/assets/homestead-v1/paper-frame.png']);
+    residentManifest.current.forEach((agent) => {
       const folder = presentationForAgent(agent).sprite;
       ASSET_MOTIONS.forEach((motion) => {
         sources.push([`${agent.id}:${motion}`, `${folder}/${motion}.png`]);
       });
     });
 
-    const missing = sources.filter(([key]) => !bankRef.current[key]);
+    const missing = sources.filter(
+      ([key, source]) =>
+        !imageReady(bankRef.current[key]) ||
+        bankRef.current[key]?.getAttribute('src') !== source,
+    );
     if (missing.length === 0) {
-      setAssetsReady(
-        imageReady(bankRef.current[facilityKey('bookshelfFilled', 'lit')]),
-      );
+      setAssetsReady(true);
+      setFailedAssetCount(0);
       return () => {
         canceled = true;
       };
@@ -1899,8 +2370,9 @@ export function AgentArenaWorldV2({
       ),
     ).then(() => {
       if (canceled) return;
-      setAssetsReady(
-        imageReady(bankRef.current[facilityKey('bookshelfFilled', 'lit')]),
+      setAssetsReady(true);
+      setFailedAssetCount(
+        sources.filter(([key]) => !imageReady(bankRef.current[key])).length,
       );
       setAssetRevision((revision) => revision + 1);
     });
@@ -1908,7 +2380,7 @@ export function AgentArenaWorldV2({
     return () => {
       canceled = true;
     };
-  }, [observedAgentIds, state.agents]);
+  }, [observedAgentIds, retryAssets]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1917,61 +2389,105 @@ export function AgentArenaWorldV2({
     const labelContext = labelCanvas?.getContext('2d');
     if (!canvas || !context || !labelCanvas || !labelContext) return;
 
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.setTransform(WORLD_RENDER_SCALE, 0, 0, WORLD_RENDER_SCALE, 0, 0);
-    context.imageSmoothingEnabled = false;
-    const bank = bankRef.current;
-    const environmentNow = bubbleNow || Date.now();
-    drawArchitecture(context, bank, state, environmentNow);
-    drawRoomLightFixtures(context, bank, state, environmentNow);
-    drawDepthSortedScene(
-      context,
-      bank,
-      state,
-      agentsById,
-      environmentNow,
-      mailboxHasUnread,
-    );
-    drawDoorwayForegrounds(context);
-    drawEnvironmentalLighting(context, state, environmentNow);
+    let animationFrame = 0;
+    let previousFrame = Number.NEGATIVE_INFINITY;
+    const drawFrame = (frameTime: number) => {
+      if (
+        document.hidden ||
+        frameTime - previousFrame < 1_000 / (reducedMotion ? 12 : 30)
+      ) {
+        animationFrame = window.requestAnimationFrame(drawFrame);
+        return;
+      }
+      previousFrame = frameTime;
+      const environmentNow = Date.now();
+      const bank = bankRef.current;
+      const {
+        state,
+        agentsById,
+        hoveredAgentId,
+        mailboxHasUnread,
+        assetsReady,
+        showLabels,
+        workshopProjects,
+        viewport,
+      } = latestFrame.current;
 
-    labelContext.setTransform(1, 0, 0, 1, 0, 0);
-    labelContext.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
-    labelContext.setTransform(2, 0, 0, 2, 0, 0);
-    labelContext.imageSmoothingEnabled = true;
-    drawLabels(labelContext, state, agentsById, hoveredAgentId);
-    if (!assetsReady) {
-      labelContext.fillStyle = '#aeb8b9';
-      labelContext.font =
-        '10px ui-monospace, SFMono-Regular, Consolas, monospace';
-      labelContext.fillText('Loading facility assets…', 31, 414);
-    }
-  }, [
-    agentsById,
-    assetRevision,
-    assetsReady,
-    bubbleNow,
-    hoveredAgentId,
-    mailboxHasUnread,
-    state,
-  ]);
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.setTransform(
+        WORLD_RENDER_SCALE,
+        0,
+        0,
+        WORLD_RENDER_SCALE,
+        -viewport.x * WORLD_RENDER_SCALE,
+        -viewport.y * WORLD_RENDER_SCALE,
+      );
+      context.imageSmoothingEnabled = false;
+      drawArchitecture(context, bank, state, environmentNow, reducedMotion);
+      drawRoomLightFixtures(
+        context,
+        bank,
+        state,
+        environmentNow,
+        reducedMotion,
+      );
+      drawDepthSortedScene(
+        context,
+        bank,
+        state,
+        agentsById,
+        environmentNow,
+        mailboxHasUnread,
+        reducedMotion,
+        workshopProjects,
+      );
+      drawDoorwayForegrounds(
+        context,
+        bank,
+        state,
+        environmentNow,
+        reducedMotion,
+      );
+      drawEnvironmentalLighting(context, state, environmentNow, reducedMotion);
+      drawAmbientLife(context, state, environmentNow, reducedMotion);
+
+      labelContext.setTransform(1, 0, 0, 1, 0, 0);
+      labelContext.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+      labelContext.setTransform(
+        WORLD_RENDER_SCALE,
+        0,
+        0,
+        WORLD_RENDER_SCALE,
+        -viewport.x * WORLD_RENDER_SCALE,
+        -viewport.y * WORLD_RENDER_SCALE,
+      );
+      labelContext.imageSmoothingEnabled = true;
+      if (showLabels)
+        drawLabels(labelContext, bank, state, agentsById, hoveredAgentId);
+      if (!assetsReady) {
+        labelContext.fillStyle = '#aeb8b9';
+        labelContext.font =
+          '10px ui-monospace, SFMono-Regular, Consolas, monospace';
+        labelContext.fillText('Loading facility assets…', 31, 414);
+      }
+
+      animationFrame = window.requestAnimationFrame(drawFrame);
+    };
+
+    drawFrame(0);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [assetRevision, reducedMotion]);
 
   function logicalPoint(event: CanvasPointEvent) {
     const bounds = event.currentTarget.getBoundingClientRect();
-    const scale = Math.min(
-      bounds.width / WORLD_WIDTH,
-      bounds.height / WORLD_HEIGHT,
-    );
-    const renderedWidth = WORLD_WIDTH * scale;
-    const renderedHeight = WORLD_HEIGHT * scale;
     return {
       x:
-        (event.clientX - bounds.left - (bounds.width - renderedWidth) / 2) /
-        scale,
+        viewport.x +
+        ((event.clientX - bounds.left) / bounds.width) * viewport.w,
       y:
-        (event.clientY - bounds.top - (bounds.height - renderedHeight) / 2) /
-        scale,
+        viewport.y +
+        ((event.clientY - bounds.top) / bounds.height) * viewport.h,
     };
   }
 
@@ -2014,76 +2530,204 @@ export function AgentArenaWorldV2({
 
   return (
     <div className="arena-stage">
-      <div className="arena-stage-surface">
-        <canvas
-          ref={canvasRef}
-          width={WORLD_WIDTH * WORLD_RENDER_SCALE}
-          height={WORLD_HEIGHT * WORLD_RENDER_SCALE}
-          className="arena-world"
-          aria-hidden="true"
-          onPointerMove={(event) => setHoveredAgentId(agentAt(event))}
-          onPointerLeave={() => setHoveredAgentId(undefined)}
-          onClick={(event) => onSelectAgent(agentAt(event))}
-          style={{ cursor: hoveredAgentId ? 'pointer' : 'default' }}
-        />
-        <canvas
-          ref={labelCanvasRef}
-          width={WORLD_WIDTH * 2}
-          height={WORLD_HEIGHT * 2}
-          className="arena-world-labels"
-          aria-hidden="true"
-        />
-        <div className="arena-bubble-layer" aria-live="polite">
-          {speechBubbles.map(({ event, speaker, left, top }) => (
-            <button
-              key={event.eventId}
-              type="button"
-              className="arena-speech-bubble"
-              data-speech-act={event.payload.speechAct}
-              aria-label={`Open ${speaker.name}'s full speech in the field journal`}
-              style={
-                {
-                  left: `${left}%`,
-                  top: `${top}%`,
-                  '--speaker-accent': presentationForAgent(speaker).accent,
-                } as CSSProperties
-              }
-              onClick={(clickEvent) => {
-                clickEvent.stopPropagation();
-                onOpenJournal(event.eventId);
+      <div
+        ref={frameRef}
+        className="arena-stage-frame"
+        data-room-view={focusRoomId}
+        style={{ '--room-ratio': viewport.w / viewport.h } as CSSProperties}
+        onPointerDown={(event) => {
+          if (
+            event.button !== 0 ||
+            (event.target as HTMLElement).closest('button')
+          )
+            return;
+          suppressClickRef.current = false;
+          dragRef.current = {
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            camera: displayedCamera,
+            moved: false,
+          };
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.id !== event.pointerId || drag.camera.zoom <= 1)
+            return;
+          const dx = event.clientX - drag.x;
+          const dy = event.clientY - drag.y;
+          if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+          drag.moved = true;
+          suppressClickRef.current = true;
+          setDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+          const bounds = event.currentTarget.getBoundingClientRect();
+          onCameraChange(
+            constrainCamera({
+              zoom: drag.camera.zoom,
+              x: drag.camera.x + (dx / bounds.width) * 100,
+              y: drag.camera.y + (dy / bounds.height) * 100,
+            }),
+          );
+        }}
+        onPointerUp={(event) => {
+          dragRef.current = null;
+          setDragging(false);
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+          setDragging(false);
+        }}
+        onLostPointerCapture={() => {
+          dragRef.current = null;
+          setDragging(false);
+        }}
+        onClickCapture={(event) => {
+          if (suppressClickRef.current) {
+            event.stopPropagation();
+            suppressClickRef.current = false;
+          }
+        }}
+      >
+        <div
+          className="arena-room-camera"
+          onFocusCapture={(event) =>
+            revealKeyboardFocus(
+              event,
+              frameRef.current,
+              displayedCamera,
+              onCameraChange,
+            )
+          }
+          style={{
+            transform: `translate(${displayedCamera.x}%, ${displayedCamera.y}%) scale(${displayedCamera.zoom})`,
+          }}
+        >
+          <div
+            className="arena-stage-surface"
+            style={{
+              position: 'absolute',
+              width: `${(WORLD_WIDTH / viewport.w) * 100}%`,
+              height: `${(WORLD_HEIGHT / viewport.h) * 100}%`,
+              left: `${(-viewport.x / viewport.w) * 100}%`,
+              top: `${(-viewport.y / viewport.h) * 100}%`,
+            }}
+          >
+            <canvas
+              ref={canvasRef}
+              width={viewport.w * WORLD_RENDER_SCALE}
+              height={viewport.h * WORLD_RENDER_SCALE}
+              className="arena-world"
+              aria-hidden="true"
+              onPointerMove={(event) => setHoveredAgentId(agentAt(event))}
+              onPointerLeave={() => setHoveredAgentId(undefined)}
+              onClick={(event) => onSelectAgent(agentAt(event))}
+              onDoubleClick={(event) => {
+                const point = logicalPoint(event);
+                onCameraChange(
+                  focusCamera(
+                    {
+                      x: ((point.x - viewport.x) / viewport.w) * 100,
+                      y: ((point.y - viewport.y) / viewport.h) * 100,
+                    },
+                    2.2,
+                  ),
+                );
               }}
-            >
-              {event.payload.preview}
-            </button>
-          ))}
+              style={{
+                left: `${(viewport.x / WORLD_WIDTH) * 100}%`,
+                top: `${(viewport.y / WORLD_HEIGHT) * 100}%`,
+                width: `${(viewport.w / WORLD_WIDTH) * 100}%`,
+                height: `${(viewport.h / WORLD_HEIGHT) * 100}%`,
+                cursor: dragging
+                  ? 'grabbing'
+                  : hoveredAgentId
+                    ? 'pointer'
+                    : displayedCamera.zoom > 1
+                      ? 'grab'
+                      : 'default',
+              }}
+            />
+            <canvas
+              ref={labelCanvasRef}
+              width={viewport.w * WORLD_RENDER_SCALE}
+              height={viewport.h * WORLD_RENDER_SCALE}
+              style={{
+                left: `${(viewport.x / WORLD_WIDTH) * 100}%`,
+                top: `${(viewport.y / WORLD_HEIGHT) * 100}%`,
+                width: `${(viewport.w / WORLD_WIDTH) * 100}%`,
+                height: `${(viewport.h / WORLD_HEIGHT) * 100}%`,
+              }}
+              className="arena-world-labels"
+              aria-hidden="true"
+            />
+            <div className="arena-bubble-layer" aria-live="polite">
+              {speechBubbles.map(({ event, speaker, left, top }) => (
+                <button
+                  key={event.eventId}
+                  type="button"
+                  className="arena-speech-bubble"
+                  data-speech-act={event.payload.speechAct}
+                  aria-label={`Open ${speaker.name}'s full speech in the field journal`}
+                  style={
+                    {
+                      left: `${left}%`,
+                      top: `${top}%`,
+                      '--speaker-accent': presentationForAgent(speaker).accent,
+                    } as CSSProperties
+                  }
+                  onClick={(clickEvent) => {
+                    clickEvent.stopPropagation();
+                    onOpenJournal(event.eventId);
+                  }}
+                >
+                  {event.payload.preview}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="comms-board-hotspot"
+              hidden={Boolean(focusRoomId && focusRoomId !== 'command')}
+              aria-label={`Open field journal, ${state.boardMessages.length} agent messages`}
+              aria-expanded={journalOpen}
+              aria-haspopup="dialog"
+              onClick={() => onOpenJournal()}
+            />
+            <button
+              type="button"
+              className="field-journal-hotspot"
+              hidden={Boolean(focusRoomId && focusRoomId !== 'context')}
+              style={CONTEXT_KIOSK_ACTION_STYLE}
+              aria-label={`Open field journal, ${state.avatars.length} agents present`}
+              aria-expanded={journalOpen}
+              aria-haspopup="dialog"
+              onClick={() => onOpenJournal()}
+            />
+            <button
+              type="button"
+              className="operator-mailbox-hotspot"
+              hidden={Boolean(focusRoomId && focusRoomId !== 'context')}
+              style={OPERATOR_MAILBOX_ACTION_STYLE}
+              aria-label="Open operator dispatch box"
+              aria-expanded={mailboxOpen}
+              aria-haspopup="dialog"
+              onClick={onOpenMailbox}
+            />
+          </div>
         </div>
-        <button
-          type="button"
-          className="comms-board-hotspot"
-          aria-label={`Open field journal, ${state.boardMessages.length} agent messages`}
-          aria-expanded={journalOpen}
-          aria-haspopup="dialog"
-          onClick={() => onOpenJournal()}
-        />
-        <button
-          type="button"
-          className="field-journal-hotspot"
-          style={CONTEXT_KIOSK_ACTION_STYLE}
-          aria-label={`Open field journal, ${state.avatars.length} agents present`}
-          aria-expanded={journalOpen}
-          aria-haspopup="dialog"
-          onClick={() => onOpenJournal()}
-        />
-        <button
-          type="button"
-          className="operator-mailbox-hotspot"
-          style={OPERATOR_MAILBOX_ACTION_STYLE}
-          aria-label="Open operator dispatch box"
-          aria-expanded={mailboxOpen}
-          aria-haspopup="dialog"
-          onClick={onOpenMailbox}
-        />
       </div>
+      {failedAssetCount > 0 && (
+        <button
+          type="button"
+          className="arena-asset-retry"
+          onClick={() => setRetryAssets((value) => value + 1)}
+        >
+          {failedAssetCount} assets couldn’t load · Retry
+        </button>
+      )}
     </div>
   );
 }

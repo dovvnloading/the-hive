@@ -1,0 +1,22 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-09-05",
+  "mode": "lighting-weather edit",
+  "assets": [
+    {
+      "name": "parts-cabinet-lights-off",
+      "reference": "sources/parts-cabinet.png",
+      "prompt": "Use case: lighting-weather\nInput image 1: exact generated parts-cabinet original, EDIT TARGET.\nCreate its lights-off illumination variant, changing only lighting. Preserve the identical four green drawers, brass handles, cubby with gear at left, mechanical cylinder in center and spindle at right, cabinet top, feet, corners and every contour. Same object proportions, exact silhouette and exact placement on the same canvas.\nRelight this identical object in dim cool blue-gray ambient light of an unlit workshop. Walnut becomes dark desaturated cool brown, green drawers become deep slate-green, brass parts and pulls become dull dark bronze with only faint cool edge highlights. No bright gold reflections. The sprite should appear about one third of the current perceived brightness, faintly readable in darkness.\nKeep the same pixel art details and source framing. Preserve actual RGBA transparency outside the cabinet, no background, floor, glow or added shadow. Do not redraw, move, rescale, crop, reinterpret, simplify, add detail, blur or alter perspective. Only change illumination, color temperature and highlight strength."
+    },
+    {
+      "name": "document-index-blueprint-lights-off",
+      "reference": "sources/document-index-blueprint.png",
+      "prompt": "Use case: lighting-weather\nInput image 1: exact generated blueprint original, EDIT TARGET.\nCreate its lights-off illumination variant, changing only lighting. The model must preserve the exact drawing: SAME scroll contours, curled ends, right-side gold clasp at the same location, machine drawing in the center, stack of papers upper left, ring upper right, pedestal lower right, all the same line positions. Keep the source canvas aspect and same framing.\nRelight this identical object in dim cool blue-gray ambient light of an unlit room. Paper and diagram lines must be dim dark gray; sage sheet becomes dark slate-green; brass becomes dull dark bronze. No bright reflections. The sprite should appear about one third of the current perceived brightness.\nPreserve the exact pixel art contours and details, with actual RGBA transparency outside the scroll, no floor or painted background. Absolutely no new objects, extra belt buckle, centered clasp, repositioned diagram, checkerboard painting, cast shadow, glow, bloom, blur, camera change or redraw. Only change the illumination, colors and highlight strength."
+    },
+    {
+      "name": "document-index-device-lights-off",
+      "reference": "sources/document-index-device.png",
+      "prompt": "Use case: lighting-weather\nInput image1 is the exact original brass document-index appliance. Make a strictly matching lights-off version. This is a lighting edit only: preserve every pixel-art contour, both paper cards, the top knob, window, base and right-side crank in exactly the same positions and with the same shapes.\nLighting is dim cool blue-gray ambient room spill. Brass becomes very dark dull bronze. Paper is dim blue-gray. The green glass is inactive and unlit, with one faint blue-gray reflection only; no emissive glow anywhere. Keep the appliance only about one quarter as bright as the reference.\nPreserve the square canvas and full exact original silhouette. Exterior must be truly transparent with zero alpha; NEVER draw a white/gray checkerboard, white background, white rim, shadow or bright edge around the silhouette. If any transparent preview is rendered it must appear black, not white, but the intended output is transparent RGBA. Do not redraw any object, change proportions or add or remove a detail."
+    }
+  ]
+}

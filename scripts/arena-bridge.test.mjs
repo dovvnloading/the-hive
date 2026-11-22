@@ -383,6 +383,320 @@ async function runDriver(args) {
   return { exitCode, stdout, stderr };
 }
 
+void test('sandbox operator persistence and authenticated physical build loop survive cancellation and restart', async (t) => {
+  // An isolated protocol harness, never a live facility or a represented resident.
+  const port = await availablePort();
+  const dataDir = await mkdtemp(resolve(tmpdir(), 'hive-sandbox-bridge-'));
+  const origin = `http://127.0.0.1:${port}`;
+  let child;
+  function launch() {
+    child = spawn(
+      process.execPath,
+      [bridgeScript, '--port', String(port), '--data-dir', dataDir],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          ARENA_EMITTER_TOKEN: emitterToken,
+          ARENA_TRAVEL_SPEED_PX_PER_SECOND: '100000',
+          ARENA_MIN_TRAVEL_MS: '1',
+          ARENA_ALLOWED_ORIGINS: trustedOrigin,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    );
+  }
+  async function stop() {
+    if (child.exitCode === null) {
+      child.kill('SIGTERM');
+      await new Promise((done) => child.once('exit', done));
+    }
+  }
+  t.after(async () => {
+    await stop();
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  launch();
+  await waitForHealth(origin, child);
+  let action = 0;
+  const snapshot = async () => json(await fetch(`${origin}/sandbox`));
+  async function operator(operation, fields = {}, withOrigin = true) {
+    return fetch(`${origin}/sandbox/operator`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(withOrigin ? { Origin: trustedOrigin } : {}),
+      },
+      body: JSON.stringify({
+        actionId: `operator-${++action}`,
+        expectedRevision: (await snapshot()).revision,
+        operation,
+        ...fields,
+      }),
+    });
+  }
+  assert.equal(
+    (await operator('save', { title: 'unauthorized' }, false)).status,
+    401,
+  );
+  const blueprint = await json(
+    await operator('blueprint', {
+      title: 'Contract field guide',
+      sources: ['docs/embodied-world.md'],
+      query: 'room',
+      expectedPath: 'docs/embodied-world.md',
+    }),
+  );
+  const projectId = blueprint.projectId;
+  assert.ok(projectId);
+  assert.equal((await json(await fetch(`${origin}/health`))).runId, null);
+  await stop();
+  launch();
+  await waitForHealth(origin, child);
+  assert.equal(
+    (await json(await fetch(`${origin}/health`))).runId,
+    null,
+    'idle sandbox event must not create a fake unbound run',
+  );
+  assert.equal((await snapshot()).projects[0].id, projectId);
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'sandbox.changed',
+        payload: { operation: 'install' },
+      })
+    ).status,
+    400,
+  );
+  const emit = async (body) => {
+    const response = await postEvent(origin, body);
+    assert.equal(response.status, 201, await response.clone().text());
+    return json(response);
+  };
+  let token;
+  async function begin() {
+    await emit({
+      kind: 'run.started',
+      reset: true,
+      payload: { objective: 'Isolated sandbox protocol contract' },
+    });
+    token = (
+      await emit({
+        kind: 'agent.spawned',
+        agentId: 'sandbox-fixture',
+        payload: { name: 'Contract fixture', role: 'implementer' },
+      })
+    ).agentToken;
+    await emit({
+      kind: 'task.assigned',
+      agentId: 'sandbox-fixture',
+      payload: { objective: 'Exercise the isolated workshop contract' },
+    });
+  }
+  await begin();
+  let observation = await walkTo(origin, token, 'parts-cabinet');
+  const residentRequest = async (
+    operation,
+    fields = {},
+    suppliedObservation,
+  ) => {
+    const scene = suppliedObservation ?? (await observe(origin, token));
+    return boardRequest(origin, '/sandbox/action', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        actionId: `resident-${++action}`,
+        observationId: scene.observationId,
+        expectedRevision: scene.workshop.revision,
+        operation,
+        ...fields,
+      }),
+    });
+  };
+  const resident = async (operation, fields = {}) => {
+    const response = await residentRequest(operation, fields);
+    assert.equal(response.status, 200, await response.clone().text());
+    return json(response);
+  };
+  await operator('save', { title: 'Before the contract build' });
+  assert.equal(
+    (
+      await residentRequest(
+        'take',
+        { part: 'oak-case', quantity: 1 },
+        observation,
+      )
+    ).status,
+    409,
+    'operator state change invalidates stale observation',
+  );
+  const take = await resident('take', { part: 'oak-case', quantity: 1 });
+  assert.equal(
+    take.snapshot,
+    undefined,
+    'resident response does not leak global workshop snapshot',
+  );
+  await emit({
+    kind: 'run.canceled',
+    payload: { reason: 'Isolated cancellation recovery check' },
+  });
+  assert.equal(
+    (
+      await residentRequest(
+        'return',
+        { part: 'oak-case', quantity: 1 },
+        take.observation,
+      )
+    ).status,
+    409,
+  );
+  assert.equal((await operator('recover')).status, 200);
+  await begin();
+  observation = await walkTo(origin, token, 'parts-cabinet');
+  assert.deepEqual(observation.workshop.inventory, {});
+  for (const [part, quantity] of [
+    ['oak-case', 1],
+    ['index-core', 1],
+    ['brass-dial', 2],
+  ])
+    await resident('take', { part, quantity });
+  assert.equal(
+    (
+      await postEvent(origin, {
+        kind: 'agent.completed',
+        agentId: 'sandbox-fixture',
+        payload: { summary: 'Must not strand parts' },
+      })
+    ).status,
+    409,
+  );
+  await walkTo(origin, token, 'build-bench-a');
+  await resident('claim', { projectId });
+  await resident('note', {
+    projectId,
+    text: 'Checking the complete device lifecycle with real fixture utilities.',
+  });
+  const chronicle = await resident('chronicle', { projectId });
+  assert.equal(chronicle.snapshot, undefined);
+  assert.equal(chronicle.items[0].operation, 'note');
+  for (const [part, quantity] of [
+    ['oak-case', 1],
+    ['index-core', 1],
+    ['brass-dial', 2],
+  ])
+    await resident('place', { part, quantity, projectId });
+  await resident('assemble', { projectId });
+  let buildProof;
+  for (const operation of ['build', 'test', 'diagnose']) {
+    const resource = operation === 'build' ? 'build-bench-a' : 'verify-rig-b';
+    observation = await walkTo(origin, token, resource);
+    await interactAt(origin, token, observation, resource, 'use');
+    const toolCallId = `sandbox-contract-${operation}`;
+    await emit({
+      kind: 'tool.started',
+      agentId: 'sandbox-fixture',
+      payload: {
+        toolCallId,
+        tool: `sandbox.${operation}`,
+        summary: `Actual document index ${operation}`,
+        capability: operation === 'build' ? 'build' : 'test',
+        activityId:
+          operation === 'build'
+            ? 'build.compile-project'
+            : 'verify.run-scoped-validation',
+      },
+    });
+    const result = await resident(operation, { projectId, toolCallId });
+    assert.ok(result.artifactId);
+    if (operation === 'build') buildProof = result;
+    else if (operation === 'test') assert.equal(result.passed, true);
+    else assert.equal(result.health.status, 'current');
+    await emit({
+      kind: 'tool.finished',
+      agentId: 'sandbox-fixture',
+      payload: {
+        toolCallId,
+        outcome: 'succeeded',
+        summary: `Actual ${operation} completed`,
+        artifactIds: [result.artifactId],
+      },
+    });
+  }
+  await walkTo(origin, token, 'build-bench-a');
+  await resident('install', { projectId });
+  const use = await resident('use', { projectId, query: 'room' });
+  assert.equal(use.results[0].path, 'docs/embodied-world.md');
+  assert.equal(use.digest, buildProof.digest);
+  const saved = await json(
+    await operator('save', { title: 'Installed contract device' }),
+  );
+  const dossier = await json(
+    await fetch(`${origin}/sandbox/dossier?projectId=${projectId}`),
+  );
+  assert.equal(dossier.health.status, 'current');
+  assert.ok(dossier.history.items.some((item) => item.operation === 'claim'));
+  assert.equal(
+    (await snapshot()).projects[0].claim,
+    undefined,
+    'installation closes the commission',
+  );
+  const catalog = await json(await fetch(`${origin}/sandbox/documents`));
+  assert.ok(
+    catalog.documents.some((doc) => doc.path === 'docs/embodied-world.md'),
+  );
+  assert.equal(
+    (await fetch(`${origin}/sandbox/history?before=invalid`)).status,
+    400,
+  );
+  await resident('dismantle', { projectId });
+  assert.equal((await snapshot()).projects[0].stage, 'blueprint');
+  assert.equal(
+    (await operator('restore', { checkpointId: saved.checkpointId })).status,
+    409,
+  );
+  await walkTo(origin, token, 'parts-cabinet');
+  for (const [part, quantity] of [
+    ['oak-case', 1],
+    ['index-core', 1],
+    ['brass-dial', 2],
+  ])
+    await resident('return', { part, quantity });
+  assert.equal((await operator('archive', { projectId })).status, 200);
+  await emit({
+    kind: 'run.canceled',
+    payload: { reason: 'Isolated contract complete; fixture shutdown' },
+  });
+  const beforeRestart = await snapshot();
+  await stop();
+  launch();
+  await waitForHealth(origin, child);
+  assert.equal((await snapshot()).revision, beforeRestart.revision);
+  assert.equal(
+    (await snapshot()).projects[0].archived,
+    true,
+    'salvaged blueprint stays archived through restart',
+  );
+  assert.equal(
+    (await operator('restore', { checkpointId: saved.checkpointId })).status,
+    200,
+  );
+  assert.equal((await snapshot()).projects[0].stage, 'installed');
+  const queryResponse = await fetch(`${origin}/sandbox/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: trustedOrigin },
+    body: JSON.stringify({ projectId, query: 'room' }),
+  });
+  assert.equal(queryResponse.status, 200);
+  assert.equal(
+    (await json(queryResponse)).results[0].path,
+    'docs/embodied-world.md',
+  );
+  assert.equal(
+    (await operator('restore', { checkpointId: saved.checkpointId })).status,
+    200,
+  );
+});
+
 void test('arena driver rejects invalid activity enums before contacting the bridge', async () => {
   const invalidPhase = await runDriver([
     'activity',

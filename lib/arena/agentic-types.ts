@@ -77,6 +77,15 @@ type EventEnvelope<K extends string, P> = {
 };
 
 export type RuntimeEvent =
+  | EventEnvelope<
+      'sandbox.changed',
+      {
+        operation: string;
+        revision: number;
+        summary: string;
+        projectId?: string;
+      }
+    >
   | EventEnvelope<'run.started', { objective: string }>
   | EventEnvelope<'run.completed', { summary: string }>
   | EventEnvelope<'run.canceled', { reason: string }>

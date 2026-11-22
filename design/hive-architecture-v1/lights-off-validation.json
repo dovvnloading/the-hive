@@ -1,0 +1,188 @@
+{
+  "method": "Dimension and alpha-byte comparison, visible-pixel luminance statistics, and dominant horizontal seam-row local-minimum checks. Visual inspection performed on original masters, model edits and final production exports.",
+  "checks": [
+    {
+      "name": "oak-planks-v2",
+      "width": 320,
+      "height": 320,
+      "hasAlpha": false,
+      "alphaDifferences": 0,
+      "meanVisibleBrightnessRatio": 0.5271628916817068,
+      "generatedMasterHasAlpha": false,
+      "seamRowChecks": [
+        {
+          "row": 15,
+          "litLocalContrast": 12.233156875000105,
+          "darkLocalContrast": 8.819360937500072,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 32,
+          "litLocalContrast": 6.257882812500043,
+          "darkLocalContrast": 7.350737187500016,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 50,
+          "litLocalContrast": 21.378217500000247,
+          "darkLocalContrast": 5.503608749999984,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 67,
+          "litLocalContrast": 26.540108437500223,
+          "darkLocalContrast": 12.351270625000119,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 84,
+          "litLocalContrast": 26.91118593750005,
+          "darkLocalContrast": 13.812721250000088,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 101,
+          "litLocalContrast": 30.344795624999932,
+          "darkLocalContrast": 15.504520000000042,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 118,
+          "litLocalContrast": 27.8652540624999,
+          "darkLocalContrast": 15.676453437500058,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 135,
+          "litLocalContrast": 7.437448437500066,
+          "darkLocalContrast": 7.7258275000000864,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 169,
+          "litLocalContrast": 6.6108015624999865,
+          "darkLocalContrast": 6.999155000000158,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 187,
+          "litLocalContrast": 19.630496250000334,
+          "darkLocalContrast": 7.036297187500097,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 204,
+          "litLocalContrast": 22.058802500000084,
+          "darkLocalContrast": 8.753436875000148,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 221,
+          "litLocalContrast": 26.971778750000325,
+          "darkLocalContrast": 10.507621250000064,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 238,
+          "litLocalContrast": 28.090190625000275,
+          "darkLocalContrast": 12.99580968750002,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 254,
+          "litLocalContrast": 6.293915312499948,
+          "darkLocalContrast": 5.174084062500064,
+          "sameRowLocalMinimum": true
+        }
+      ]
+    },
+    {
+      "name": "wall-band",
+      "width": 256,
+      "height": 128,
+      "hasAlpha": false,
+      "alphaDifferences": 0,
+      "meanVisibleBrightnessRatio": 0.3677360192282418,
+      "generatedMasterHasAlpha": false,
+      "seamRowChecks": [
+        {
+          "row": 3,
+          "litLocalContrast": 28.17999101562495,
+          "darkLocalContrast": 9.559291796875005,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 6,
+          "litLocalContrast": 75.16303359374999,
+          "darkLocalContrast": 23.430679296875013,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 83,
+          "litLocalContrast": 66.41811875000003,
+          "darkLocalContrast": 18.01995664062499,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 90,
+          "litLocalContrast": 28.590635156250023,
+          "darkLocalContrast": 10.22573242187502,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 118,
+          "litLocalContrast": 36.35229414062509,
+          "darkLocalContrast": 14.054614062499997,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 122,
+          "litLocalContrast": 27.190297656250053,
+          "darkLocalContrast": 9.484161718749977,
+          "sameRowLocalMinimum": true
+        }
+      ]
+    },
+    {
+      "name": "walnut-beam",
+      "width": 384,
+      "height": 38,
+      "hasAlpha": true,
+      "alphaDifferences": 0,
+      "meanVisibleBrightnessRatio": 0.3791883864260852,
+      "generatedMasterHasAlpha": false,
+      "seamRowChecks": [
+        {
+          "row": 3,
+          "litLocalContrast": 32.02219973958326,
+          "darkLocalContrast": 9.475983593750072,
+          "sameRowLocalMinimum": false
+        },
+        {
+          "row": 6,
+          "litLocalContrast": 62.80416171875001,
+          "darkLocalContrast": 25.114191145833328,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 10,
+          "litLocalContrast": 31.04694166666667,
+          "darkLocalContrast": 11.979286979166663,
+          "sameRowLocalMinimum": true
+        },
+        {
+          "row": 29,
+          "litLocalContrast": 21.58555052083333,
+          "darkLocalContrast": 12.299711458333329,
+          "sameRowLocalMinimum": false
+        },
+        {
+          "row": 32,
+          "litLocalContrast": 22.981633593749926,
+          "darkLocalContrast": 10.551832552083313,
+          "sameRowLocalMinimum": false
+        }
+      ]
+    }
+  ]
+}

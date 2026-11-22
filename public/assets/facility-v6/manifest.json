@@ -1,0 +1,65 @@
+{
+  "generator": "built-in image_gen",
+  "assets": [
+    {
+      "name": "wall-band",
+      "source": "wall-band.png",
+      "width": 256,
+      "height": 128
+    },
+    {
+      "name": "parquet",
+      "source": "parquet.png",
+      "width": 320,
+      "height": 320
+    },
+    {
+      "name": "oak-planks-v2",
+      "source": "oak-planks-v2.png",
+      "width": 320,
+      "height": 320
+    },
+    {
+      "name": "slate",
+      "source": "slate.png",
+      "width": 192,
+      "height": 192
+    },
+    {
+      "name": "walnut-beam",
+      "source": "walnut-beam.png",
+      "width": 384,
+      "height": 38,
+      "crop": {
+        "left": 45,
+        "top": 346,
+        "width": 1683,
+        "height": 162
+      }
+    },
+    {
+      "name": "switch-on",
+      "source": "switch-states.png",
+      "width": 24,
+      "height": 40,
+      "crop": {
+        "left": 190,
+        "top": 98,
+        "width": 448,
+        "height": 788
+      }
+    },
+    {
+      "name": "switch-off",
+      "source": "switch-states.png",
+      "width": 24,
+      "height": 40,
+      "crop": {
+        "left": 899,
+        "top": 98,
+        "width": 448,
+        "height": 788
+      }
+    }
+  ]
+}

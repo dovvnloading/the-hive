@@ -1,0 +1,41 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-09-05",
+  "processing": "Model-generated lighting edit, original canvas registration and crop, nearest-neighbor export, exact original alpha. No color or brightness filter.",
+  "limitation": "Model-rendered RGB texture details may differ at isolated pixels. Original alpha and export geometry remain exact. Raw beam edit has an opaque preview; the production alpha is restored during export.",
+  "assets": [
+    {
+      "name": "wall-band-lights-off",
+      "reference": "sources/wall-band.png",
+      "source": "sources/wall-band-lights-off.png",
+      "width": 256,
+      "height": 128,
+      "originalAlphaRetained": true,
+      "output": "public/assets/facility-v6/wall-band-lights-off.png"
+    },
+    {
+      "name": "oak-planks-v2-lights-off",
+      "reference": "sources/oak-planks-v2.png",
+      "source": "sources/oak-planks-v2-lights-off.png",
+      "width": 320,
+      "height": 320,
+      "originalAlphaRetained": true,
+      "output": "public/assets/facility-v6/oak-planks-v2-lights-off.png"
+    },
+    {
+      "name": "walnut-beam-lights-off",
+      "reference": "sources/walnut-beam.png",
+      "source": "sources/walnut-beam-lights-off.png",
+      "width": 384,
+      "height": 38,
+      "crop": {
+        "left": 45,
+        "top": 346,
+        "width": 1683,
+        "height": 162
+      },
+      "originalAlphaRetained": true,
+      "output": "public/assets/facility-v6/walnut-beam-lights-off.png"
+    }
+  ]
+}

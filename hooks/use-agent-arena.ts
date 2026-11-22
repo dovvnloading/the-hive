@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 
 import {
   agentArenaReducer,
@@ -33,6 +41,10 @@ export function useAgentArena() {
     useState<RuntimeConnectionStatus>('connecting');
   const [mailboxUnreadDeliveryCount, setMailboxUnreadDeliveryCount] =
     useState(0);
+  const projectionStateRef = useRef(state);
+  useLayoutEffect(() => {
+    projectionStateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     const unsubscribe = runtime.subscribe((event) => {
@@ -47,12 +59,22 @@ export function useAgentArena() {
     runtime.start(DEFAULT_AGENT_OBJECTIVE);
 
     let frameId = 0;
+    let previousProjectionTime = -Infinity;
 
     const advanceProjection = (time: number) => {
       // Runtime navigation timestamps are epoch-based. requestAnimationFrame's
       // timestamp is monotonic relative to timeOrigin, so this remains absolute
       // across dropped/background frames without accumulating delta-time drift.
-      dispatch({ type: 'projection.tick', now: performance.timeOrigin + time });
+      if (
+        time - previousProjectionTime >= 1000 / 30 - 0.5 &&
+        projectionStateRef.current.avatars.some((avatar) => avatar.navigation)
+      ) {
+        previousProjectionTime = time;
+        dispatch({
+          type: 'projection.tick',
+          now: performance.timeOrigin + time,
+        });
+      }
       frameId = window.requestAnimationFrame(advanceProjection);
     };
 

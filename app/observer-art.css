@@ -1,0 +1,884 @@
+/* Generated homestead artwork. Originals, prompts and lossless exports: design/homestead-v1/. */
+:root {
+  --homestead-paper: url('/assets/homestead-v1/paper-frame.png');
+  --homestead-wood: url('/assets/homestead-v1/wood-button.png');
+}
+.arena-app {
+  overflow: clip;
+  --hive-copy: #422c1b;
+  --hive-muted: #725536;
+  --hive-brass: #88612d;
+  --hive-line: #8c623b38;
+  --hive-panel: #f3dfb0;
+  background: #526237;
+  color: var(--hive-copy);
+}
+.arena-app::before {
+  content: '';
+  position: absolute;
+  inset: -35px;
+  z-index: -1;
+  background:
+    linear-gradient(#23331842, #29301de0),
+    url('/assets/homestead-v1/homestead-map.png') center / cover;
+  filter: blur(22px);
+}
+.hive-art-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: var(--hive-icon-size);
+  height: var(--hive-icon-size);
+  background: var(--hive-icon-url) center / contain no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+  vertical-align: middle;
+}
+.hive-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.homestead-stage {
+  position: absolute;
+  inset: 10px 12px 150px;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+.homestead-frame {
+  position: relative;
+  width: min(100cqw, calc(100cqh * 1.5));
+  aspect-ratio: 3 / 2;
+  overflow: clip;
+  touch-action: none;
+  border-radius: 5px;
+  box-shadow:
+    0 6px 30px #17200f50,
+    0 0 0 2px #4c57322b;
+  isolation: isolate;
+}
+.homestead-frame[data-zoomed='true'] {
+  cursor: grab;
+}
+.homestead-frame[data-dragging='true'],
+.homestead-frame[data-dragging='true'] button {
+  cursor: grabbing;
+}
+.homestead-surface {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  will-change: transform;
+}
+.homestead-map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  image-rendering: pixelated;
+}
+.homestead-building {
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 15% 15% 5% 5%;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.homestead-building-label {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 29px;
+  padding: 3px 14px;
+  color: #422b18;
+  border: 8px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 8px stretch;
+  white-space: nowrap;
+  font:
+    600 clamp(11px, 1.3cqw, 16px)/1.15 Georgia,
+    serif;
+  filter: drop-shadow(0 2px 1px #34331360);
+  transition:
+    transform 160ms,
+    filter 160ms;
+}
+.homestead-building[data-labels='false']:not(:hover):not(:focus-visible)
+  .homestead-building-label {
+  opacity: 0;
+}
+.homestead-building:hover .homestead-building-label,
+.homestead-building:focus-visible .homestead-building-label {
+  transform: translate(-50%, -4px);
+  filter: drop-shadow(0 3px 3px #28301080) brightness(1.1);
+}
+.homestead-building-invitation {
+  position: absolute;
+  left: 50%;
+  bottom: 29px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 250px;
+  padding: 13px 18px;
+  border: 12px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 12px stretch;
+  color: #594127;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  filter: drop-shadow(0 3px 5px #2f331550);
+}
+.homestead-building-invitation b {
+  display: block;
+  margin-top: 4px;
+  color: #526633;
+  font-size: 13px;
+}
+.homestead-building:hover,
+.homestead-building:focus-visible {
+  z-index: 4;
+}
+.homestead-building:hover .homestead-building-invitation,
+.homestead-building:focus-visible .homestead-building-invitation {
+  opacity: 1;
+  visibility: visible;
+}
+.homestead-occupancy {
+  background: #536636;
+  color: #fff0c6;
+  min-width: 17px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font:
+    10px var(--font-geist-mono),
+    monospace;
+}
+.homestead-object {
+  position: absolute;
+  z-index: 5;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  min-width: 28px;
+  min-height: 30px;
+}
+.homestead-board {
+  left: 57.2%;
+  top: 31.5%;
+  width: 4.5%;
+  height: 8%;
+}
+.homestead-mailbox {
+  left: 53.3%;
+  top: 81.6%;
+  width: 3.4%;
+  height: 7%;
+}
+.homestead-object > span {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: #ffebbe;
+  color: #49331f;
+  padding: 6px 9px;
+  border: 2px solid #80502e;
+  border-radius: 3px;
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+}
+.homestead-object:hover > span,
+.homestead-object:focus-visible > span {
+  opacity: 1;
+}
+.homestead-object > i {
+  position: absolute;
+  top: -10px;
+  right: -3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  background: #ffdfa0;
+  border: 2px solid #724222;
+  color: #a14226;
+  font:
+    bold 15px Georgia,
+    serif;
+}
+.homestead-resident {
+  position: absolute;
+  z-index: 6;
+  width: 2.1%;
+  aspect-ratio: 1/2;
+  transform: translate(-50%, -93%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.homestead-person {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-image: var(--sprite);
+  background-size: 2400% 100%;
+  image-rendering: pixelated;
+  animation: homestead-walk var(--sprite-speed) steps(6) infinite;
+}
+@keyframes homestead-walk {
+  from {
+    background-position-x: calc(var(--direction) * 100% / 23);
+  }
+  to {
+    background-position-x: calc((var(--direction) + 6) * 100% / 23);
+  }
+}
+.homestead-person-name {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  color: #3f2a19;
+  background: #ffebbb;
+  border: 1px solid #7a5935;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+}
+.homestead-resident:hover .homestead-person-name,
+.homestead-resident:focus-visible .homestead-person-name {
+  opacity: 1;
+}
+.arena-stage {
+  inset: 130px 24px 152px;
+  padding: 0;
+  overflow: hidden;
+  container-type: size;
+}
+.arena-stage-frame {
+  width: min(100cqw, calc(100cqh * var(--room-ratio, 1.714286)));
+  aspect-ratio: var(--room-ratio, 1.714286);
+  overflow: clip;
+  border: 3px solid #644223;
+  box-shadow:
+    0 0 0 2px #cb9d5e,
+    0 16px 36px #1b201680;
+}
+.arena-room-camera {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  will-change: transform;
+}
+.arena-stage-surface {
+  filter: none;
+}
+.hive-topbar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 95px;
+  padding: 0 22px;
+  align-items: flex-start;
+  background: transparent;
+  pointer-events: none;
+}
+.hive-brand .hive-brand-sign {
+  width: 244px;
+  height: 112px;
+  margin: 0;
+  background: url('/assets/homestead-v1/title-sign.png') center / contain
+    no-repeat;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 4px 4px #20301350);
+}
+.hive-run-status {
+  margin-top: 19px;
+  padding: 8px 18px;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: 12px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 12px stretch;
+  filter: drop-shadow(0 2px 4px #1d301640);
+}
+.hive-status-pill {
+  padding: 0;
+  color: #5f482d;
+  font:
+    15px Georgia,
+    serif;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.hive-status-pill > span {
+  width: 6px;
+  height: 6px;
+  background: #8b9460;
+}
+.hive-status-pill[data-live='true'] {
+  color: #466334;
+}
+.hive-status-pill[data-offline='true'] {
+  color: #9c4226;
+}
+.hive-resident-total {
+  color: #755b3d;
+  font-size: 11px;
+}
+.hive-room-heading {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #49321d;
+  padding: 6px 17px;
+  border: 13px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 13px stretch;
+  filter: drop-shadow(0 3px 4px #23321b50);
+}
+.hive-room-heading h2 {
+  margin: 0 0 3px;
+  font:
+    24px/1.1 Georgia,
+    serif;
+}
+.hive-room-heading div > span {
+  font-size: 11px;
+  white-space: nowrap;
+  color: #775a39;
+}
+.hive-room-heading button {
+  min-height: 44px;
+  padding: 5px 12px 5px 0;
+  border: 0;
+  border-right: 1px solid #95713e40;
+  background: transparent;
+  color: #5e6136;
+  font:
+    14px Georgia,
+    serif;
+  cursor: pointer;
+}
+.hive-bottom-bar {
+  bottom: 12px;
+  max-width: calc(100% - 24px);
+}
+.hive-observation-line {
+  height: 25px;
+  padding: 0 10px;
+  margin-bottom: 3px;
+}
+.hive-quiet-note {
+  color: #f3e7be;
+  font:
+    italic 14px Georgia,
+    serif;
+  text-shadow: 0 1px 3px #1d2715;
+}
+.hive-observation-line button {
+  color: #e3d4a9;
+  max-width: min(560px, calc(100vw - 48px));
+}
+.hive-observation-line button strong {
+  color: #fff0c6;
+}
+.hive-dock {
+  padding: 0;
+  gap: 15px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #fff0cf;
+}
+.hive-dock nav {
+  gap: 5px;
+  flex: none;
+}
+.hive-dock nav > button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 88px;
+  min-height: 73px;
+  padding: 4px 6px 7px;
+  color: #54351d;
+  border: 12px solid transparent;
+  border-image: var(--homestead-wood) 32 fill / 12px stretch;
+  border-radius: 0;
+  background: transparent;
+  filter: drop-shadow(0 3px 2px #24301960);
+}
+.hive-dock nav > button .hive-art-icon {
+  width: 42px;
+  height: 38px;
+  transition: transform 130ms;
+}
+.hive-dock nav > button:hover .hive-art-icon {
+  transform: translateY(-3px);
+}
+.hive-dock nav > button:hover,
+.hive-dock nav > button[aria-pressed='true'] {
+  color: #382817;
+  background: transparent;
+  filter: drop-shadow(0 3px 2px #24301960) brightness(1.14);
+}
+.hive-dock-label {
+  font:
+    13px/1.2 Georgia,
+    serif;
+  text-shadow: none;
+}
+.hive-dock-label kbd {
+  display: none;
+}
+.hive-dock .hive-count {
+  display: grid;
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  height: 17px;
+  border: 1px solid #976128;
+  color: #f8e4af;
+  background: #553919;
+  border-radius: 2px;
+  font-size: 9px;
+}
+.hive-camera-controls {
+  position: static;
+  display: block;
+}
+.hive-camera-buttons {
+  border: 10px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 10px stretch;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px;
+  filter: drop-shadow(0 3px 3px #23301a50);
+}
+.hive-camera-buttons button {
+  min-width: 34px;
+  width: 34px;
+  min-height: 38px;
+  height: 38px;
+  padding: 0;
+  color: #5b3d21;
+  background: transparent;
+}
+.hive-camera-buttons .hive-zoom-value {
+  width: 47px;
+  font-size: 10px;
+}
+.hive-camera-buttons button:hover {
+  background: #a0722723;
+  color: #392613;
+}
+.hive-camera-buttons button:disabled {
+  opacity: 0.35;
+}
+.hive-camera-buttons .hive-art-icon {
+  display: inline-block;
+  width: 23px;
+  height: 23px;
+}
+.hive-camera-buttons button[aria-pressed='true'] {
+  box-shadow: inset 0 -2px #718348;
+}
+.hive-bottom-hint {
+  margin-top: 3px;
+  color: #d9d7b3;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+.hive-bottom-hint button {
+  height: 20px;
+}
+.hive-bottom-hint .hive-art-icon {
+  width: 23px;
+  height: 20px;
+}
+.hive-eyebrow {
+  color: #8a673d;
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+.hive-residents,
+.hive-guide {
+  border: 18px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 18px stretch;
+  border-radius: 0;
+  background: #f2deb0;
+  background-clip: padding-box;
+  color: #47311e;
+  box-shadow: 0 10px 35px #26311660;
+  color-scheme: light;
+}
+.hive-residents {
+  top: 116px;
+  left: 25px;
+  max-height: calc(100dvh - 260px);
+  scrollbar-color: #9a7641 #edd6a6;
+}
+.hive-residents > header {
+  padding: 12px 7px 13px;
+}
+.hive-residents h2 {
+  font-size: 25px;
+}
+.hive-residents h2 > span {
+  color: #775934;
+}
+.hive-panel-empty {
+  padding: 12px 8px 18px;
+  color: #765736;
+}
+.hive-panel-empty h3 {
+  color: #4d351f;
+}
+.hive-panel-empty > .hive-art-icon {
+  margin: auto;
+}
+.hive-text-button {
+  color: #4d6633;
+  border-color: #73814655;
+}
+.hive-icon-button {
+  color: #553b20;
+  border-color: #98724155;
+  background: #b78b4820;
+}
+.hive-resident-list {
+  padding: 0;
+}
+.hive-resident-row {
+  color: #47311e;
+}
+.hive-resident-row:hover,
+.hive-resident-row[aria-pressed='true'] {
+  background: #a0854920;
+  border-color: #9a73365a;
+}
+.hive-portrait {
+  background: #7a824a38;
+  border-color: #85673255;
+  border-radius: 3px;
+}
+.hive-resident-copy > span,
+.hive-resident-detail p {
+  color: #765736;
+}
+.hive-resident-detail {
+  padding: 15px 8px;
+  border-color: #9a733646;
+}
+.hive-follow-button {
+  background: #75814b25;
+  border-color: #74804277;
+  color: #475831;
+}
+.hive-follow-button[aria-pressed='true'] {
+  color: #334d27;
+  border-color: #5a7039;
+}
+.hive-working {
+  color: #527036;
+}
+.hive-following,
+.hive-connection-note {
+  top: 112px;
+  color: #513b23;
+  border: 9px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 9px stretch;
+  border-radius: 0;
+  background: transparent;
+}
+.hive-guide {
+  padding: 20px;
+}
+.hive-guide p,
+.hive-guide .hive-guide-note {
+  color: #755635;
+}
+.hive-guide dl > div {
+  border-color: #9c733b30;
+}
+.hive-guide kbd {
+  color: #55391e;
+  background: #b3924c1c;
+  border-color: #a3814d60;
+}
+.hive-guide::backdrop,
+.operator-mailbox::backdrop {
+  background: #1e281ca8;
+  backdrop-filter: blur(3px);
+}
+.operator-mailbox {
+  border: 16px solid transparent;
+  border-image: var(--homestead-paper) 32 fill / 16px stretch;
+  border-radius: 0;
+  box-shadow: 0 18px 65px #18251570;
+  background: #f0dcb0;
+}
+.operator-mailbox > header {
+  background: transparent;
+  color: #4c331e;
+  border-bottom: 1px solid #9c773f40;
+}
+.operator-mailbox > header p {
+  color: #87633b;
+}
+.operator-mailbox form {
+  background: transparent;
+}
+.operator-mailbox-close {
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
+  background: #8a633425;
+  color: #52351e;
+  border-color: #9c733b60;
+}
+.arena-app button:focus-visible,
+.hive-guide button:focus-visible {
+  outline: 3px solid #fff1b3;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px #546838;
+}
+.hive-residents button:focus-visible,
+.hive-guide button:focus-visible {
+  outline-color: #54713b;
+  box-shadow: none;
+}
+.hive-immersive-toggle {
+  width: 44px;
+  height: 44px;
+  right: 20px;
+  bottom: 20px;
+  border: 10px solid transparent;
+  border-image: var(--homestead-wood) 32 fill / 10px stretch;
+  background: transparent;
+  border-radius: 0;
+}
+.arena-immersive .homestead-stage,
+.arena-immersive .arena-stage {
+  inset: 8px;
+}
+.arena-immersive .arena-stage-frame {
+  width: min(100cqw, calc(100cqh * var(--room-ratio, 1.714286)));
+}
+@media (max-width: 900px) {
+  .hive-brand .hive-brand-sign {
+    width: 200px;
+    height: 94px;
+  }
+  .hive-topbar {
+    padding: 0 12px;
+  }
+  .hive-room-heading {
+    top: 88px;
+    padding: 6px 14px;
+  }
+  .arena-stage {
+    inset: 173px 16px 133px;
+  }
+  .hive-camera-controls {
+    position: static;
+  }
+  .hive-dock {
+    gap: 8px;
+  }
+  .hive-camera-buttons button {
+    min-width: 31px;
+    width: 31px;
+  }
+  .hive-camera-buttons .hive-zoom-value {
+    width: 44px;
+  }
+  .hive-camera-buttons .hive-sound-button > span {
+    display: inline-block;
+  }
+}
+@media (max-width: 600px) {
+  .homestead-stage {
+    inset: 96px 0 171px;
+  }
+  .homestead-frame {
+    border-radius: 0;
+  }
+  .hive-topbar {
+    height: 87px;
+    padding: 0 8px;
+  }
+  .hive-brand .hive-brand-sign {
+    width: 176px;
+    height: 84px;
+  }
+  .hive-run-status {
+    margin-top: 14px;
+    padding: 5px 9px;
+    gap: 4px;
+    border-width: 10px;
+    border-image-width: 10px;
+  }
+  .hive-status-pill {
+    font-size: 12px;
+  }
+  .hive-resident-total {
+    font-size: 10px;
+  }
+  .hive-room-heading {
+    top: 86px;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    gap: 10px;
+    padding: 4px 9px;
+  }
+  .hive-room-heading h2 {
+    font-size: 21px;
+  }
+  .hive-room-heading div > span {
+    font-size: 10px;
+    white-space: normal;
+  }
+  .arena-stage {
+    inset: 168px 10px 184px;
+  }
+  .homestead-building-label {
+    font-size: 11px;
+    padding: 2px 7px;
+    min-height: 25px;
+    border-width: 6px;
+    border-image-width: 6px;
+    bottom: -13px;
+  }
+  .homestead-building-invitation {
+    display: none;
+  }
+  .homestead-object {
+    min-width: 24px;
+    min-height: 26px;
+  }
+  .hive-bottom-bar {
+    bottom: 12px;
+    max-width: calc(100% - 16px);
+  }
+  .hive-observation-line {
+    padding: 0;
+    height: 24px;
+  }
+  .hive-quiet-note {
+    font-size: 12px;
+  }
+  .hive-dock {
+    flex-direction: column;
+    gap: 7px;
+  }
+  .hive-dock nav {
+    gap: 7px;
+  }
+  .hive-dock nav > button {
+    width: 88px;
+    min-height: 70px;
+    padding: 2px 4px 5px;
+  }
+  .hive-dock-label {
+    font-size: 12px;
+  }
+  .hive-camera-buttons {
+    padding: 0 2px;
+    border-width: 8px;
+    border-image-width: 8px;
+  }
+  .hive-camera-buttons button {
+    min-width: 35px;
+    width: 35px;
+    min-height: 35px;
+    height: 35px;
+    padding: 0;
+  }
+  .hive-camera-buttons .hive-sound-button {
+    min-width: 35px;
+  }
+  .hive-bottom-hint {
+    display: none;
+  }
+  .hive-residents {
+    top: 90px;
+    left: 12px;
+    max-height: calc(100dvh - 260px);
+  }
+  .hive-following,
+  .hive-connection-note {
+    top: 88px;
+  }
+}
+@media (max-height: 540px) and (min-width: 601px) {
+  .homestead-stage {
+    inset: 5px 12px 86px;
+  }
+  .hive-brand .hive-brand-sign {
+    width: 165px;
+    height: 78px;
+  }
+  .hive-run-status {
+    margin-top: 7px;
+    padding: 4px 10px;
+  }
+  .hive-room-heading {
+    top: 8px;
+    padding: 2px 10px;
+  }
+  .arena-stage {
+    inset: 85px 12px 90px;
+  }
+  .hive-bottom-bar {
+    bottom: 5px;
+  }
+  .hive-observation-line,
+  .hive-bottom-hint {
+    display: none;
+  }
+  .hive-dock nav > button {
+    min-height: 66px;
+  }
+  .hive-residents {
+    top: 78px;
+    max-height: calc(100dvh - 175px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .homestead-person {
+    animation: none;
+    background-position-x: calc(var(--direction) * 100% / 23);
+  }
+  .homestead-building-label,
+  .hive-dock nav > button .hive-art-icon {
+    transition: none;
+  }
+}

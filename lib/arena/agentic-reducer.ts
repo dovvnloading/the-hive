@@ -357,8 +357,7 @@ function removeTerminalAvatar(state: AgentArenaState, agentId: string) {
       agent.id === agentId
         ? {
             ...agent,
-            currentLocationId:
-              terminalLocationId ?? agent.currentLocationId,
+            currentLocationId: terminalLocationId ?? agent.currentLocationId,
             currentPosition: terminalPosition
               ? { ...terminalPosition }
               : agent.currentPosition,
@@ -970,12 +969,24 @@ export function agentArenaReducer(
   state: AgentArenaState,
   action: AgentArenaAction,
 ): AgentArenaState {
-  if (action.type === 'runtime.event')
-    return applyRuntimeEvent(state, action.event);
+  if (action.type === 'runtime.event') {
+    const next = applyRuntimeEvent(state, action.event);
+    // Arrival, spawn, and departure can alter proximity without another
+    // movement frame, including when replaying an already-finished route.
+    return next.avatars === state.avatars
+      ? next
+      : {
+          ...next,
+          avatars: annotateNearbyAgents(next.avatars),
+        };
+  }
   if (action.type === 'projection.tick') {
     // Root production callers supply `now`. Archived worktree callers can
     // still compile with deltaMs, but no delta is accumulated here.
     const now = action.now ?? Date.now();
+    // A quiet facility needs no React updates. Only authored navigation can
+    // change the projection between incoming events.
+    if (!state.avatars.some((avatar) => avatar.navigation)) return state;
     const avatars = annotateNearbyAgents(
       state.avatars.map((avatar) => projectAvatarAt(avatar, now)),
     );
@@ -992,6 +1003,12 @@ export function agentArenaReducer(
           agent.navigation &&
           avatar.navigation === undefined &&
           avatar.stationId === agent.navigation.toLocationId;
+        if (
+          !arrived &&
+          agent.currentPosition?.x === avatar.position.x &&
+          agent.currentPosition?.y === avatar.position.y
+        )
+          return agent;
         return {
           ...agent,
           currentLocationId: arrived

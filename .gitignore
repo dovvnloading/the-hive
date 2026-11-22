@@ -44,3 +44,6 @@ next-env.d.ts
 # downloaded asset-audit workspaces and rejected visual prototypes
 /.asset-audit-*/
 /public/assets/facility-v2/
+
+# Original first-party sound drop; URL-safe runtime copies live in public/audio.
+/Swarm-Sounds/

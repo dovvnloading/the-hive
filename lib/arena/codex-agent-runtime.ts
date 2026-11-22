@@ -149,6 +149,12 @@ const ARTIFACT_KINDS = new Set([
 ]);
 
 function hasValidPayload(kind: RuntimeEvent['kind'], payload: JsonRecord) {
+  if (kind === 'sandbox.changed')
+    return (
+      isString(payload.operation) &&
+      Number.isSafeInteger(payload.revision) &&
+      isString(payload.summary)
+    );
   if (kind === 'run.started') return isString(payload.objective);
   if (kind === 'run.completed') return isString(payload.summary);
   if (kind === 'run.canceled') return isString(payload.reason);
@@ -399,7 +405,10 @@ function isRuntimeEvent(value: unknown): value is RuntimeEvent {
   }
 
   const kind = value.kind as RuntimeEvent['kind'];
-  const isAgentEvent = !kind.startsWith('run.') && !kind.startsWith('chat.');
+  const isAgentEvent =
+    !kind.startsWith('run.') &&
+    !kind.startsWith('chat.') &&
+    kind !== 'sandbox.changed';
   if (isAgentEvent && !isString(value.agentId)) return false;
   return hasValidPayload(kind, value.payload);
 }

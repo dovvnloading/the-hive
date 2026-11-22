@@ -1,0 +1,22 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-09-05",
+  "mode": "lighting-weather edit",
+  "assets": [
+    {
+      "name": "oak-planks-v2-lights-off",
+      "reference": "sources/oak-planks-v2.png",
+      "prompt": "Use case: lighting-weather\nInput image1 is the exact original quiet oak-planks-v2 floor texture, EDIT TARGET.\nCreate the same texture with the room lights off. Change only lighting and color temperature. Keep EVERY horizontal board seam, sparse vertical end joint, faint wood grain mark, spacing and pixel position exactly as in the original. Do not add knots, extra grain, scratched detail, herringbone, chevrons, new seams, contrast or decoration.\nIllumination: uniform very dim neutral-to-cool ambient room spill. The muted oak becomes dark desaturated gray-brown, retaining only faint quiet seam contrast, about one third the original perceived brightness. No warm yellow/orange direct illumination, no blue saturated tint, no cast shadow, no vignette or light gradient.\nKeep the exact square full-bleed canvas and original flat top-down perspective. Preserve edge-to-edge pattern registration and source framing, with no border or transparent area. Do not redraw, crop, shift, rescale, simplify or reinterpret the pattern. This is only an alternate lighting state of the SAME texture."
+    },
+    {
+      "name": "wall-band-lights-off",
+      "reference": "sources/wall-band.png",
+      "prompt": "Use case: lighting-weather\nInput image1 is the exact original workshop wall-band master, EDIT TARGET.\nCreate the same wall band with the room lights switched off. This is ONLY a lighting edit. Keep the exact top crown molding, plaster area, brass horizontal divider, all honeycomb wainscot panels and bottom walnut rail in precisely the same positions, sizes and spacing. Preserve the source's complete edge-to-edge2:1 composition.\nIllumination: uniformly dim neutral-to-cool ambient light, about one third current perceived brightness. The pale plaster becomes quiet dark cool gray, green panels become near-black muted slate-green, walnut turns dark gray-brown and brass turns subdued dark bronze. Keep subtle readability, with no glow or bright metallic points. No saturated blue tint.\nDo not redraw, move any seam, change panel count, reinterpret honeycomb geometry, add new wear, exaggerate texture, add decoration, smooth the pixel art, shift framing or crop. No dramatic shadows, vignette, light beam or new lighting gradient. Entire canvas stays opaque full-bleed wall material. Same flat straight-on view; only colors, brightness and highlight strength change for the unlit state."
+    },
+    {
+      "name": "walnut-beam-lights-off",
+      "reference": "sources/walnut-beam.png",
+      "prompt": "Use case: lighting-weather\nInput image1 is the exact original walnut-beam sprite master, EDIT TARGET.\nCreate the same beam with the workshop lights off. Change ONLY illumination. Preserve the exact long thin beam silhouette, its upper/lower brass rails, two brass endcaps, all four rivets, wood grain positions, proportions and placement on the same wide2:1 source canvas. The beam remains in the same horizontal strip, with identical empty margins above/below.\nIllumination: very dim neutral-to-cool ambient spill. Warm walnut becomes dark desaturated brown-gray; bright gold/brass becomes dull dark cold bronze with a few faint gray highlights. About one third current perceived brightness. No glow or bright edges.\nPreserve original pixel art contours and transparent alpha outside the beam. No checkerboard paint, solid background, floor or new shadow. If a transparency preview must be rendered, it must appear black, never white/gray. Do not redraw, thicken, stretch, move, crop, rotate, simplify, add extra grain, add rivets or change the outline. Only change lighting colors and highlight strength."
+    }
+  ]
+}
