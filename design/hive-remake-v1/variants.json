@@ -1,0 +1,9 @@
+{
+  "floor-lamp-off": "floor-lamp-on",
+  "plant-wilted": "plant-healthy",
+  "plant-dead": "plant-healthy",
+  "mailbox-empty": "mailbox-full",
+  "wall-lamp-single-off": "wall-lamp-single-on",
+  "wall-lamp-dual-off": "wall-lamp-dual-on",
+  "switch-off": "switch-on"
+}

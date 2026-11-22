@@ -1,0 +1,406 @@
+{
+  "rooms": [
+    {
+      "id": "research",
+      "world": [
+        32,
+        32,
+        224,
+        160
+      ],
+      "canvas": [
+        1536,
+        1024
+      ],
+      "placed": [
+        51.2,
+        0,
+        1433.6,
+        1024
+      ]
+    },
+    {
+      "id": "command",
+      "world": [
+        256,
+        32,
+        192,
+        160
+      ],
+      "canvas": [
+        1536,
+        1024
+      ],
+      "placed": [
+        153.6,
+        0,
+        1228.8,
+        1024
+      ]
+    },
+    {
+      "id": "tools",
+      "world": [
+        448,
+        32,
+        288,
+        160
+      ],
+      "canvas": [
+        1536,
+        1024
+      ],
+      "placed": [
+        0,
+        85.33,
+        1536,
+        853.33
+      ]
+    },
+    {
+      "id": "synthesis",
+      "world": [
+        32,
+        256,
+        256,
+        160
+      ],
+      "canvas": [
+        1536,
+        1024
+      ],
+      "placed": [
+        0,
+        32,
+        1536,
+        960
+      ]
+    },
+    {
+      "id": "context",
+      "world": [
+        288,
+        256,
+        192,
+        160
+      ],
+      "canvas": [
+        1536,
+        1024
+      ],
+      "placed": [
+        153.6,
+        0,
+        1228.8,
+        1024
+      ]
+    },
+    {
+      "id": "build",
+      "world": [
+        480,
+        256,
+        256,
+        160
+      ],
+      "canvas": [
+        1536,
+        1024
+      ],
+      "placed": [
+        0,
+        32,
+        1536,
+        960
+      ]
+    }
+  ],
+  "props": [
+    {
+      "name": "utility-workstation",
+      "footprint": [
+        54,
+        40
+      ],
+      "placed": [
+        112.64,
+        216.18,
+        798.72,
+        591.64
+      ]
+    },
+    {
+      "name": "verification-desk",
+      "footprint": [
+        62,
+        40
+      ],
+      "placed": [
+        112.64,
+        254.35,
+        798.72,
+        515.3
+      ]
+    },
+    {
+      "name": "writing-desk",
+      "footprint": [
+        50,
+        38
+      ],
+      "placed": [
+        112.64,
+        208.49,
+        798.72,
+        607.03
+      ]
+    },
+    {
+      "name": "build-workbench",
+      "footprint": [
+        70,
+        40
+      ],
+      "placed": [
+        112.64,
+        283.79,
+        798.72,
+        456.41
+      ]
+    },
+    {
+      "name": "planning-table",
+      "footprint": [
+        54,
+        40
+      ],
+      "placed": [
+        112.64,
+        216.18,
+        798.72,
+        591.64
+      ]
+    },
+    {
+      "name": "bookshelf-filled",
+      "footprint": [
+        50,
+        64
+      ],
+      "placed": [
+        200,
+        112.64,
+        624,
+        798.72
+      ]
+    },
+    {
+      "name": "bookshelf-sparse",
+      "footprint": [
+        50,
+        64
+      ],
+      "placed": [
+        200,
+        112.64,
+        624,
+        798.72
+      ]
+    },
+    {
+      "name": "parts-cabinet",
+      "footprint": [
+        48,
+        64
+      ],
+      "placed": [
+        212.48,
+        112.64,
+        599.04,
+        798.72
+      ]
+    },
+    {
+      "name": "reading-armchair",
+      "footprint": [
+        30,
+        38
+      ],
+      "placed": [
+        196.72,
+        112.64,
+        630.57,
+        798.72
+      ]
+    },
+    {
+      "name": "lounge-couch",
+      "footprint": [
+        52,
+        38
+      ],
+      "placed": [
+        112.64,
+        220.16,
+        798.72,
+        583.68
+      ]
+    },
+    {
+      "name": "chair-north",
+      "footprint": [
+        20,
+        32
+      ],
+      "placed": [
+        262.4,
+        112.64,
+        499.2,
+        798.72
+      ]
+    },
+    {
+      "name": "chair-east",
+      "footprint": [
+        22,
+        32
+      ],
+      "placed": [
+        237.44,
+        112.64,
+        549.12,
+        798.72
+      ]
+    },
+    {
+      "name": "floor-lamp-on",
+      "footprint": [
+        13,
+        30
+      ],
+      "placed": [
+        338.94,
+        112.64,
+        346.11,
+        798.72
+      ]
+    },
+    {
+      "name": "plant-healthy",
+      "footprint": [
+        14,
+        24
+      ],
+      "placed": [
+        279.04,
+        112.64,
+        465.92,
+        798.72
+      ]
+    },
+    {
+      "name": "mailbox-full",
+      "footprint": [
+        24,
+        20
+      ],
+      "placed": [
+        112.64,
+        179.2,
+        798.72,
+        665.6
+      ]
+    },
+    {
+      "name": "command-board",
+      "footprint": [
+        132,
+        52
+      ],
+      "placed": [
+        112.64,
+        354.68,
+        798.72,
+        314.65
+      ]
+    },
+    {
+      "name": "tool-board",
+      "footprint": [
+        140,
+        36
+      ],
+      "placed": [
+        112.64,
+        409.31,
+        798.72,
+        205.39
+      ]
+    },
+    {
+      "name": "verification-chart",
+      "footprint": [
+        68,
+        34
+      ],
+      "placed": [
+        112.64,
+        312.32,
+        798.72,
+        399.36
+      ]
+    },
+    {
+      "name": "wall-lamp-single-on",
+      "footprint": [
+        22,
+        26
+      ],
+      "placed": [
+        174.08,
+        112.64,
+        675.84,
+        798.72
+      ]
+    },
+    {
+      "name": "wall-lamp-dual-on",
+      "footprint": [
+        48,
+        28
+      ],
+      "placed": [
+        112.64,
+        279.04,
+        798.72,
+        465.92
+      ]
+    },
+    {
+      "name": "switch-on",
+      "footprint": [
+        6,
+        10
+      ],
+      "placed": [
+        272.38,
+        112.64,
+        479.23,
+        798.72
+      ]
+    },
+    {
+      "name": "doorway",
+      "footprint": [
+        44,
+        64
+      ],
+      "placed": [
+        237.44,
+        112.64,
+        549.12,
+        798.72
+      ]
+    }
+  ]
+}

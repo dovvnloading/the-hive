@@ -1,6 +1,15 @@
 /** Full-resolution artwork; dimensions below are physical world footprints, never texture sizes.
- * Masters, chroma extraction and lighting-pair audits: design/homestead-v1/interiors/. */
+ * Remade art (rooms and interactable props): mockups, generation prompts and processing
+ * live in design/hive-remake-v1/. Earlier masters: design/homestead-v1/interiors/. */
 export const INTERIOR_ART = {
+  // Whole-room backgrounds (walls, floor, trim, rugs, windows) sized to each
+  // room rect. Interactable props are separate sprites drawn on top.
+  roomResearch: { file: 'room-research', width: 224, height: 160 },
+  roomCommand: { file: 'room-command', width: 192, height: 160 },
+  roomTools: { file: 'room-tools', width: 288, height: 160 },
+  roomSynthesis: { file: 'room-synthesis', width: 256, height: 160 },
+  roomContext: { file: 'room-context', width: 192, height: 160 },
+  roomBuild: { file: 'room-build', width: 256, height: 160 },
   partsCabinet: {
     file: 'parts-cabinet',
     width: 48,

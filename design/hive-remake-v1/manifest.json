@@ -1,0 +1,410 @@
+{
+  "note": "Runtime interior art for the Hive remake. lightingPair 'graded' means the lights-off file is a programmatic night grade of the lit art; 'model' means it was carried over from homestead-v1, whose dark partners were model-generated.",
+  "assets": [
+    {
+      "name": "bookshelf-empty",
+      "logicalWidth": 50,
+      "logicalHeight": 64,
+      "width": 400,
+      "height": 512,
+      "source": "generated/props/bookshelf-sparse.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "bookshelf-filled",
+      "logicalWidth": 50,
+      "logicalHeight": 64,
+      "width": 400,
+      "height": 512,
+      "source": "generated/props/bookshelf-filled.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "build-workbench",
+      "logicalWidth": 70,
+      "logicalHeight": 40,
+      "width": 560,
+      "height": 320,
+      "source": "generated/props/build-workbench.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "chair-east",
+      "logicalWidth": 22,
+      "logicalHeight": 32,
+      "width": 176,
+      "height": 256,
+      "source": "generated/props/chair-east.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "chair-north",
+      "logicalWidth": 20,
+      "logicalHeight": 32,
+      "width": 160,
+      "height": 256,
+      "source": "generated/props/chair-north.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "chair-south",
+      "logicalWidth": 20,
+      "logicalHeight": 30,
+      "width": 274,
+      "height": 466,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "chair-west",
+      "logicalWidth": 22,
+      "logicalHeight": 32,
+      "width": 176,
+      "height": 256,
+      "source": "generated/props/chair-east.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "command-board",
+      "logicalWidth": 132,
+      "logicalHeight": 52,
+      "width": 1056,
+      "height": 416,
+      "source": "generated/props/command-board.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "document-index",
+      "logicalWidth": 40,
+      "logicalHeight": 40,
+      "width": 342,
+      "height": 221,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "doorway",
+      "logicalWidth": 44,
+      "logicalHeight": 64,
+      "width": 352,
+      "height": 512,
+      "source": "generated/props/doorway.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "floor-lamp-off",
+      "logicalWidth": 13,
+      "logicalHeight": 30,
+      "width": 104,
+      "height": 240,
+      "source": "generated/props/floor-lamp-off.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "floor-lamp-on",
+      "logicalWidth": 13,
+      "logicalHeight": 30,
+      "width": 104,
+      "height": 240,
+      "source": "generated/props/floor-lamp-on.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "lounge-couch",
+      "logicalWidth": 52,
+      "logicalHeight": 38,
+      "width": 416,
+      "height": 304,
+      "source": "generated/props/lounge-couch.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "mailbox-empty",
+      "logicalWidth": 24,
+      "logicalHeight": 20,
+      "width": 192,
+      "height": 160,
+      "source": "generated/props/mailbox-empty.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "mailbox-full",
+      "logicalWidth": 24,
+      "logicalHeight": 20,
+      "width": 192,
+      "height": 160,
+      "source": "generated/props/mailbox-full.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "oak-beam",
+      "logicalWidth": 320,
+      "logicalHeight": 32,
+      "width": 703,
+      "height": 77,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "oak-floor",
+      "logicalWidth": 320,
+      "logicalHeight": 192,
+      "width": 700,
+      "height": 412,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "parts-cabinet",
+      "logicalWidth": 48,
+      "logicalHeight": 64,
+      "width": 384,
+      "height": 512,
+      "source": "generated/props/parts-cabinet.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "planning-table",
+      "logicalWidth": 54,
+      "logicalHeight": 40,
+      "width": 432,
+      "height": 320,
+      "source": "generated/props/planning-table.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "plant-dead",
+      "logicalWidth": 14,
+      "logicalHeight": 24,
+      "width": 112,
+      "height": 192,
+      "source": "generated/props/plant-dead.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "plant-healthy",
+      "logicalWidth": 14,
+      "logicalHeight": 24,
+      "width": 112,
+      "height": 192,
+      "source": "generated/props/plant-healthy.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "plant-wilted",
+      "logicalWidth": 14,
+      "logicalHeight": 24,
+      "width": 112,
+      "height": 192,
+      "source": "generated/props/plant-wilted.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "plaster-wall",
+      "logicalWidth": 128,
+      "logicalHeight": 64,
+      "width": 694,
+      "height": 408,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "project-blueprint",
+      "logicalWidth": 48,
+      "logicalHeight": 32,
+      "width": 146,
+      "height": 105,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "reading-armchair",
+      "logicalWidth": 30,
+      "logicalHeight": 38,
+      "width": 240,
+      "height": 304,
+      "source": "generated/props/reading-armchair.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "research-desk",
+      "logicalWidth": 62,
+      "logicalHeight": 40,
+      "width": 401,
+      "height": 299,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "room-build",
+      "logicalWidth": 256,
+      "logicalHeight": 160,
+      "width": 1536,
+      "height": 960,
+      "source": "generated/rooms/build.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "room-command",
+      "logicalWidth": 192,
+      "logicalHeight": 160,
+      "width": 1152,
+      "height": 960,
+      "source": "generated/rooms/command.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "room-context",
+      "logicalWidth": 192,
+      "logicalHeight": 160,
+      "width": 1152,
+      "height": 960,
+      "source": "generated/rooms/context.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "room-research",
+      "logicalWidth": 224,
+      "logicalHeight": 160,
+      "width": 1344,
+      "height": 960,
+      "source": "generated/rooms/research.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "room-synthesis",
+      "logicalWidth": 256,
+      "logicalHeight": 160,
+      "width": 1536,
+      "height": 960,
+      "source": "generated/rooms/synthesis.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "room-tools",
+      "logicalWidth": 288,
+      "logicalHeight": 160,
+      "width": 1728,
+      "height": 960,
+      "source": "generated/rooms/tools.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "sideboard",
+      "logicalWidth": 46,
+      "logicalHeight": 34,
+      "width": 441,
+      "height": 306,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "switch-off",
+      "logicalWidth": 6,
+      "logicalHeight": 10,
+      "width": 48,
+      "height": 80,
+      "source": "generated/props/switch-off.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "switch-on",
+      "logicalWidth": 6,
+      "logicalHeight": 10,
+      "width": 48,
+      "height": 80,
+      "source": "generated/props/switch-on.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "tool-board",
+      "logicalWidth": 140,
+      "logicalHeight": 36,
+      "width": 1120,
+      "height": 288,
+      "source": "generated/props/tool-board.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "utility-workstation",
+      "logicalWidth": 54,
+      "logicalHeight": 40,
+      "width": 432,
+      "height": 320,
+      "source": "generated/props/utility-workstation.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "verification-chart",
+      "logicalWidth": 68,
+      "logicalHeight": 34,
+      "width": 544,
+      "height": 272,
+      "source": "generated/props/verification-chart.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "verification-desk",
+      "logicalWidth": 62,
+      "logicalHeight": 40,
+      "width": 496,
+      "height": 320,
+      "source": "generated/props/verification-desk.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "wall-lamp-dual-off",
+      "logicalWidth": 48,
+      "logicalHeight": 28,
+      "width": 384,
+      "height": 224,
+      "source": "generated/props/wall-lamp-dual-off.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "wall-lamp-dual-on",
+      "logicalWidth": 48,
+      "logicalHeight": 28,
+      "width": 384,
+      "height": 224,
+      "source": "generated/props/wall-lamp-dual-on.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "wall-lamp-single-off",
+      "logicalWidth": 22,
+      "logicalHeight": 26,
+      "width": 176,
+      "height": 208,
+      "source": "generated/props/wall-lamp-single-off.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "wall-lamp-single-on",
+      "logicalWidth": 22,
+      "logicalHeight": 26,
+      "width": 176,
+      "height": 208,
+      "source": "generated/props/wall-lamp-single-on.webp",
+      "lightingPair": "graded"
+    },
+    {
+      "name": "woven-rug",
+      "logicalWidth": 112,
+      "logicalHeight": 63,
+      "width": 650,
+      "height": 341,
+      "source": "homestead-v1",
+      "lightingPair": "model"
+    },
+    {
+      "name": "writing-desk",
+      "logicalWidth": 50,
+      "logicalHeight": 38,
+      "width": 400,
+      "height": 304,
+      "source": "generated/props/writing-desk.webp",
+      "lightingPair": "graded"
+    }
+  ]
+}

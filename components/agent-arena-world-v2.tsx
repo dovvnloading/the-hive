@@ -66,7 +66,8 @@ const BACK_WALL_FURNITURE_OVERLAP = 4;
 const CHARACTER_SCALE = 1.5;
 const CHARACTER_FRAME_WIDTH = 16;
 const CHARACTER_FRAME_HEIGHT = 32;
-const INTERIOR_ASSET_ROOT = '/assets/homestead-v1/interiors';
+const INTERIOR_ASSET_ROOT = '/assets/hive-remake-v1/interiors';
+const INTERIOR_ASSET_EXT = 'webp';
 const ASSET_MOTIONS = ['run', 'idle_anim', 'phone', 'sit', 'sit2'] as const;
 
 type Motion = (typeof ASSET_MOTIONS)[number] | 'sit_back' | 'sit_front';
@@ -116,7 +117,7 @@ type FacilityAssetKey = keyof typeof INTERIOR_ART;
 const FACILITY_ASSETS = Object.fromEntries(
   Object.entries(INTERIOR_ART).map(([key, art]) => [
     key,
-    `${INTERIOR_ASSET_ROOT}/${art.file}.png`,
+    `${INTERIOR_ASSET_ROOT}/${art.file}.${INTERIOR_ASSET_EXT}`,
   ]),
 ) as Record<FacilityAssetKey, string>;
 function facilitySize(key: FacilityAssetKey, _image: HTMLImageElement) {
@@ -478,7 +479,7 @@ function facilityAssetSource(
   lighting: FacilityLighting,
 ) {
   return lighting === 'lightsOff'
-    ? `${INTERIOR_ASSET_ROOT}/lights-off/${INTERIOR_ART[key].file}.png`
+    ? `${INTERIOR_ASSET_ROOT}/lights-off/${INTERIOR_ART[key].file}.${INTERIOR_ASSET_EXT}`
     : FACILITY_ASSETS[key];
 }
 
@@ -690,6 +691,20 @@ function drawTimberImage(
   context.restore();
 }
 
+const ROOM_ART: Record<RoomId, FacilityAssetKey> = {
+  research: 'roomResearch',
+  command: 'roomCommand',
+  tools: 'roomTools',
+  synthesis: 'roomSynthesis',
+  context: 'roomContext',
+  build: 'roomBuild',
+};
+
+/** True once a room's painted background (walls, floor and trim) has loaded. */
+function roomArtReady(bank: ImageBank, roomId: RoomId) {
+  return imageReady(bank[facilityKey(ROOM_ART[roomId], 'lit')]);
+}
+
 function drawRoom(
   context: CanvasRenderingContext2D,
   bank: ImageBank,
@@ -703,6 +718,23 @@ function drawRoom(
   context.beginPath();
   context.rect(room.x, room.y, room.w, room.h);
   context.clip();
+  if (roomArtReady(bank, room.id)) {
+    drawLightingVariant(
+      context,
+      bank,
+      ROOM_ART[room.id],
+      { state, roomId: room.id, now, reducedMotion },
+      (image) => {
+        const smoothing = context.imageSmoothingEnabled;
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(image, room.x, room.y, room.w, room.h);
+        context.imageSmoothingEnabled = smoothing;
+      },
+    );
+    context.restore();
+    return;
+  }
   const north = room.y < 200;
   const lightLevel = roomLightLevel(state, room.id, now, reducedMotion);
   const floorY = room.y + BACK_WALL_HEIGHT;
@@ -920,6 +952,8 @@ function drawDoorwayForegrounds(
   // 36px aperture around a 24px resident; repainting those sprites here cuts
   // moving residents apart at the jamb and must not happen.
   NORTH_DOORS.forEach((door) => {
+    // Painted room backgrounds already carry this sill opening and its trim.
+    if (roomArtReady(bank, roomIdForDoor(door))) return;
     drawDownwardDoorFrame(
       context,
       bank,
@@ -937,6 +971,7 @@ function drawDoorways(
   reducedMotion: boolean,
 ) {
   NORTH_DOORS.forEach((door) => {
+    if (roomArtReady(bank, roomIdForDoor(door))) return;
     drawDownwardDoor(
       context,
       bank,
@@ -974,6 +1009,8 @@ function drawPartitions(
   reducedMotion: boolean,
 ) {
   for (const room of ROOMS) {
+    // Painted backgrounds include their own corner posts.
+    if (roomArtReady(bank, room.id)) continue;
     const level = roomLightLevel(state, room.id, now, reducedMotion);
     context.save();
     context.beginPath();

@@ -61,7 +61,65 @@ await test('room camera coordinates remain correct at the edges, independent of 
   }
 });
 
-await test('all consumed interior art has full-resolution registered lit and lights-off exports', async () => {
+const localPath = (relative) =>
+  new URL(relative, import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+
+await test('all consumed interior art has registered full-resolution lit and lights-off exports', async () => {
+  const manifest = JSON.parse(
+    await fs.readFile(
+      new URL('../design/hive-remake-v1/manifest.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const consumed = new Map(
+    Object.values(INTERIOR_ART).map((asset) => [asset.file, asset]),
+  );
+  for (const [file, art] of consumed) {
+    const record = manifest.assets.find((asset) => asset.name === file);
+    assert.ok(record, `${file} is not registered in the remake manifest`);
+    assert.ok(['graded', 'model'].includes(record.lightingPair), file);
+    const [lit, dark] = await Promise.all(
+      ['', 'lights-off/'].map((variant) =>
+        sharp(
+          localPath(
+            `../public/assets/hive-remake-v1/interiors/${variant}${file}.webp`,
+          ),
+        ).metadata(),
+      ),
+    );
+    assert.equal(lit.width, dark.width, file);
+    assert.equal(lit.height, dark.height, file);
+    assert.ok(
+      lit.width > record.logicalWidth * 2,
+      `${file} was reduced to world pixels`,
+    );
+    if (record.lightingPair === 'graded') {
+      const ratio = art.width / art.height;
+      assert.ok(
+        Math.abs(lit.width / lit.height - ratio) < ratio * 0.03,
+        `${file} does not match its ${art.width} x ${art.height} footprint`,
+      );
+    }
+    if (file.startsWith('room-')) {
+      assert.equal(lit.hasAlpha, false, `${file} must be an opaque room`);
+    } else if (record.lightingPair === 'graded') {
+      const { data, info } = await sharp(
+        localPath(`../public/assets/hive-remake-v1/interiors/${file}.webp`),
+      )
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      assert.equal(data[3], 0, `${file} keeps a transparent corner`);
+      assert.equal(
+        data[(info.width * info.height - 1) * 4 + 3],
+        0,
+        `${file} keeps a transparent corner`,
+      );
+    }
+  }
+});
+
+await test('homestead-v1 interior art keeps full-resolution lit and lights-off exports', async () => {
   const manifest = JSON.parse(
     await fs.readFile(
       new URL(
@@ -73,10 +131,12 @@ await test('all consumed interior art has full-resolution registered lit and lig
   );
   assert.deepEqual(manifest.pending, []);
   assert.equal(manifest.assets.length, 55);
-  const uniqueFiles = [
-    ...new Set(Object.values(INTERIOR_ART).map((asset) => asset.file)),
-  ];
-  for (const file of uniqueFiles) {
+  // The earlier set stays on disk as the source for carried-over assets. UI
+  // icons share its manifest but are not interior art and have no dark pair.
+  const interiorFiles = manifest.assets
+    .map((asset) => asset.name)
+    .filter((name) => !name.startsWith('icon-'));
+  for (const file of interiorFiles) {
     const record = manifest.assets.find((asset) => asset.name === file);
     assert.ok(
       record?.lightingPair,
