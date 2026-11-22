@@ -240,7 +240,7 @@
   height: 100%;
   background-image: var(--sprite);
   background-size: 2400% 100%;
-  image-rendering: pixelated;
+  image-rendering: auto;
   animation: homestead-walk var(--sprite-speed) steps(6) infinite;
 }
 @keyframes homestead-walk {
@@ -528,10 +528,14 @@
   font-size: 9px;
   letter-spacing: 0.09em;
 }
+/* The frame's corner leaves reach 52 source pixels in from each edge. Slicing
+   at 54 keeps every leaf inside a uniformly scaled corner; a 32 slice left
+   part of each leaf in the edge strips, which stretch with the panel height
+   and skewed the art. The 30px border also keeps content clear of the leaves. */
 .hive-residents,
 .hive-guide {
-  border: 18px solid transparent;
-  border-image: var(--homestead-paper) 32 fill / 18px stretch;
+  border: 30px solid transparent;
+  border-image: var(--homestead-paper) 54 fill / 30px stretch;
   border-radius: 0;
   background: #f2deb0;
   background-clip: padding-box;
@@ -542,11 +546,12 @@
 .hive-residents {
   top: 116px;
   left: 25px;
-  max-height: calc(100dvh - 260px);
+  width: 322px;
+  max-height: calc(100dvh - 236px);
   scrollbar-color: #9a7641 #edd6a6;
 }
 .hive-residents > header {
-  padding: 12px 7px 13px;
+  padding: 2px 2px 10px;
 }
 .hive-residents h2 {
   font-size: 25px;
