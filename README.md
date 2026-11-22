@@ -53,18 +53,26 @@ What you get is an agent observatory where **the picture is the evidence**: a sp
 </td>
 </tr>
 <tr>
-<td width="50%" valign="top">
+<td colspan="2" valign="top">
 
 <img src="docs/media/lit-and-dark.jpg" alt="Side by side: the lit Study with warm lamps, and the Commons with its lights switched off in cool shadow." width="100%">
 
 **Lighting is world state, not decoration.** A dark room hides its inventory from a resident's perception until someone flips the wall switch. The Study (left) is lit; the Commons (right) is switched off.
 
 </td>
-<td width="50%" valign="top">
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="38%" valign="middle">
 
 <img src="docs/media/dispatch-box.jpg" alt="The operator dispatch composer: a parchment card with a recipient picker, message field, Save draft and Send dispatch buttons." width="100%">
 
-**Talk to residents through the world.** Write a note in the Commons dispatch box. The resident has to walk to the mailbox to read it; the shared journal records only that a sealed letter was collected.
+</td>
+<td valign="middle">
+
+**Talk to residents through the world.** Write a note in the Commons dispatch box and address one resident or everyone on the roster. The resident has to walk to the mailbox to read it. The shared journal records only that a sealed letter was collected, and the reply comes back through the comms board.
 
 </td>
 </tr>
