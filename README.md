@@ -82,7 +82,7 @@ What you get is an agent observatory where **the picture is the evidence**: a sp
 
 ## What's inside
 
-|                                         |                                                                                                                                                                                                                                                                                                                                  |
+| Capability                              | What it means                                                                                                                                                                                                                                                                                                                    |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 🧭 **Diegetic perception**              | Residents receive a compact, first-person observation: place, people, visible fixtures, exits, what they just heard. They never see browser pixels or omniscient state, and the packet contains no "simulation" vocabulary.                                                                                                      |
 | 🚪 **One move, one edge**               | Every move crosses exactly one edge of the building graph and cites the observation it was based on. The bridge validates adjacency, reach, occupancy, doorway reservations and staleness, then hands back a fresh observation.                                                                                                  |
@@ -111,7 +111,7 @@ The Maker's change was kept apart for review instead of being promoted as verifi
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Codex["Your Codex session"]
         Root["Root agent<br/>(Steward)"]
         Exp["Explorer"]
