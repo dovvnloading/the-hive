@@ -119,10 +119,10 @@ flowchart TB
         Cri["Critic"]
     end
     Root -- "spawns real subagents" --> Exp & Mak & Cri
-    Codex -- "observe · move · interact · speak<br/>tool-start / tool-finish" --> Driver["arena-driver CLI<br/>per-identity credentials"]
-    Driver --> Bridge[("Loopback bridge<br/>scene graph · action arbiter<br/>append-only journals")]
+    Codex -- "observe · move · interact · speak<br/>tool-start / tool-finish" --> Driver["arena-driver CLI<br/>one key per<br/>resident"]
+    Driver --> Bridge[("Loopback bridge<br/>scene graph<br/>action arbiter<br/>append-only<br/>journals")]
     Bridge -- "fresh partial observation" --> Driver
-    Bridge -- "sequenced event polling" --> Web["Browser projection<br/>the pixel-art village"]
+    Bridge -- "sequenced event polling" --> Web["Browser projection<br/>pixel-art village"]
     You(["You"]) -- "camera · journal · dispatch box" --> Web
     Web -- "durable intents<br/>(queued, never executed)" --> Bridge
 ```
