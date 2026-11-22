@@ -15,6 +15,7 @@ passes through an authenticated bridge into an append-only journal, and the vill
 ![React 19](https://img.shields.io/badge/react-19-149eca?style=flat-square)
 ![Local first](https://img.shields.io/badge/runs-local%20only-8a5a2b?style=flat-square)
 ![No simulated agents](https://img.shields.io/badge/simulated%20agents-zero-b33a3a?style=flat-square)
+[![MIT License](https://img.shields.io/badge/license-MIT-6b4f9a?style=flat-square)](LICENSE)
 
 </div>
 
@@ -206,6 +207,7 @@ Today the Hive is one local village, inhabited by Codex residents, with one work
 
 ## Credits and licenses
 
+- **Code.** The source code is released under the [MIT License](LICENSE). The license does not cover the art or sound: the third-party packs below keep their own licenses, and the project's own art and sound remain all rights reserved.
 - **Pixel art.** Most interiors, architecture, furniture, UI and the village map were generated for this project; prompts and processing are recorded in [`design/`](design/) and each `public/assets/*/SOURCE.md`. Third-party art: [Cosy Cabin](https://marie-pepo.itch.io/cosy-cabin) by Marie Pepo (credit required, no resale), [Basic Village Tileset](https://forchild.itch.io/village-tileset) by Forchild (CC0), and the free edition of LimeZu's Modern Interiors (non-commercial use only; commercial distribution needs the paid license or replacement assets).
 - **Sound.** An original first-party sound set in `public/audio/`.
 
