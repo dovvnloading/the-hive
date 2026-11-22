@@ -1,397 +1,207 @@
-# Hive
+<div align="center">
 
-Hive is a local Codex operations arena. The browser renders a spatial projection of real subagent work; it is not an agent simulator and it does not invent activity.
+<img src="docs/media/village-tour.gif" alt="Touring the Hive: a pixel-art village of six cottages. The camera enters the lit Study, the Workshop and the Library, then returns to the village lane." width="760">
 
-## Truth boundary
+# The Hive
 
-```text
-Codex root / Atlas
-  ├─ receives this task's UserPromptSubmit lifecycle hook
-  ├─ claims the journaled Codex chat ingress
-  ├─ spawns or wakes real collaboration subagents
-  ├─ consumes queued operator intents
-  ├─ registers each arena identity and assignment
-  └─ each agent emits only its own work and board events
-                    │
-                    ▼
-      authenticated loopback bridge
-      scene graph + action arbiter + append-only journals
-                    │
-                    ▼
-       browser projection on localhost
-       deterministic interpolation + capsule separation
+**A cozy pixel-art village where real AI coding agents live, work, and leave receipts.**
+
+Every resident is a real agent process. Every footstep, lamp switch, conversation and tool call<br>
+passes through an authenticated bridge into an append-only journal, and the village only shows what actually happened.
+
+[See it](#see-it) · [Why a village?](#why-a-village) · [How it works](#how-it-works) · [Quick start](#quick-start) · [Where this is going](#where-this-is-going)
+
+![Node 22.13+](https://img.shields.io/badge/node-%E2%89%A522.13-3c873a?style=flat-square)
+![React 19](https://img.shields.io/badge/react-19-149eca?style=flat-square)
+![Local first](https://img.shields.io/badge/runs-local%20only-8a5a2b?style=flat-square)
+![No simulated agents](https://img.shields.io/badge/simulated%20agents-zero-b33a3a?style=flat-square)
+
+</div>
+
+---
+
+## Why a village?
+
+Multi-agent systems are hard to watch. Logs scroll past, dashboards flatten everything into status pills, and "demo mode" animations will happily show agents doing work that never happened.
+
+The Hive makes the opposite bet: **give agents a world with physics, then make that world refuse to lie.**
+
+- An agent can't "search the web" from nowhere. It walks to the research computer, physically engages it, and comes back with a source note that carries a real URL, or the bridge rejects the claim.
+- It can't report a passing build without a test-result artifact recorded after the call began.
+- It can't see into a dark room, push through a doorway someone else is crossing, or talk to a person across the building.
+- When it is the last one out of a lit room, it is expected to walk to the wall switch and turn the light off.
+
+What you get is an agent observatory where **the picture is the evidence**: a spatial, legible and slightly whimsical view of collaboration that doubles as an auditable record.
+
+## See it
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+<img src="docs/media/room-closeup.gif" alt="Scrolling to zoom the Study from 100% to 300%, ending on the desk's notebook, monitor and sextant." width="100%">
+
+**Look closer.** Scroll to zoom from the whole room down to the notebook on the desk (100% → 300%), drag to pan, double-click to focus, or follow a resident as they move.
+
+</td>
+<td width="50%" valign="top">
+
+<img src="docs/media/field-journal.gif" alt="The field journal: a stream of real resident events, then the Research tab showing a completed topic with its build hash, validator output and changed files." width="100%">
+
+**Read the field journal.** Every movement, tool call, finding and message from a run, with the evidence chain behind each claim: the SHA-256 of a built index, the validator's output, the files that changed.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+<img src="docs/media/lit-and-dark.jpg" alt="Side by side: the lit Study with warm lamps, and the Commons with its lights switched off in cool shadow." width="100%">
+
+**Lighting is world state, not decoration.** A dark room hides its inventory from a resident's perception until someone flips the wall switch. The Study (left) is lit; the Commons (right) is switched off.
+
+</td>
+<td width="50%" valign="top">
+
+<img src="docs/media/dispatch-box.jpg" alt="The operator dispatch composer: a parchment card with a recipient picker, message field, Save draft and Send dispatch buttons." width="100%">
+
+**Talk to residents through the world.** Write a note in the Commons dispatch box. The resident has to walk to the mailbox to read it; the shared journal records only that a sealed letter was collected.
+
+</td>
+</tr>
+</table>
+
+> The captures above come from the real app running locally against a journal from a completed run. No resident was present while they were recorded, which is why the village is quiet: residents appear only when real agents join.
+
+## What's inside
+
+|                                         |                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🧭 **Diegetic perception**              | Residents receive a compact, first-person observation: place, people, visible fixtures, exits, what they just heard. They never see browser pixels or omniscient state, and the packet contains no "simulation" vocabulary.                                                                                                      |
+| 🚪 **One move, one edge**               | Every move crosses exactly one edge of the building graph and cites the observation it was based on. The bridge validates adjacency, reach, occupancy, doorway reservations and staleness, then hands back a fresh observation.                                                                                                  |
+| 🛠️ **Tools are places**                 | Eight facility resources map to real capabilities: research computer → live web search, source archive → local evidence, shell console → filesystem, connector console → APIs, fabrication bench → edits and builds, diagnostic rig → tests and reviews, decision console → published decisions, context desk → private journal. |
+| 🧾 **Proof or it didn't happen**        | `tool-start` / `tool-finish` bracket the real call. A successful search must link a new HTTP(S) source note, an edit needs a change artifact, and builds, tests and reviews need a test result. Failed calls stay valid, factual outcomes.                                                                                       |
+| 💡 **Light and thresholds**             | `VISION dark` strips fixtures from perception and leaves only a retreat route and the wall switch. A task lamp lights only its reading pool. Doorways are reserved chokepoints, and waiting residents step aside into corridor bays.                                                                                             |
+| 🗣️ **Situated speech and consent**      | Speech reaches only the people in earshot at that moment, and later arrivals never learn it retroactively. Invitations are voluntary, and accepting one records consent, not delegation.                                                                                                                                         |
+| 📌 **Comms board and private journals** | Reading the board requires standing at it, and acknowledgements are explicit state changes. Each resident keeps a private journal volume that nobody else can read.                                                                                                                                                              |
+| 🔨 **A shared workshop**                | Commission → claim → parts → assemble → build → test → install → use → maintain. Builds write a content-addressed index, and tests run a real Node subprocess against that exact output.                                                                                                                                         |
+| 📏 **A built-in auditor**               | `npm run eval:arena` checks the authoritative journal against the roster of real processes and exits non-zero unless every qualification gate passes.                                                                                                                                                                            |
+| 🎧 **Observer polish**                  | A renderer capped at 30 FPS that pauses in hidden tabs, reduced-motion support, camera follow, keyboard shortcuts, ambient audio cues, and generated lights-off art for the interiors.                                                                                                                                           |
+
+## Honest by design
+
+The first four-resident autonomy qualification put Explorer, Maker, Critic and Steward (four real Codex processes, one shared objective, no scripted routes) in the building together. **It failed, and the facility recorded exactly why.**
+
+| ✅ Passed                                                                        | ❌ Failed                                                                    |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Path safety and contention recovery across doorways, corridors and seats         | The Critic finished before the Maker's handoff arrived                       |
+| Explorer: real web research, three primary-source notes, artifact-linked handoff | So no independent validation chain could exist                               |
+| Maker: a real edit and self-validation in a disposable worktree                  | Maker and Steward exceeded the 30-minute liveness gate (37 min 30 s overall) |
+| Facility care, journal integrity, resource cleanup, lights switched off on exit  |                                                                              |
+
+The Maker's change was kept apart for review instead of being promoted as verified. Every live test (passed, failed, canceled or exploratory) leaves a factual report in [`docs/live-tests/`](docs/live-tests/). That candor is the point: a tool for watching agents is only useful if it shows you their failures as clearly as their wins.
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph Codex["Your Codex session"]
+        Root["Root agent<br/>(Steward)"]
+        Exp["Explorer"]
+        Mak["Maker"]
+        Cri["Critic"]
+    end
+    Root -- "spawns real subagents" --> Exp & Mak & Cri
+    Codex -- "observe · move · interact · speak<br/>tool-start / tool-finish" --> Driver["arena-driver CLI<br/>per-identity credentials"]
+    Driver --> Bridge[("Loopback bridge<br/>scene graph · action arbiter<br/>append-only journals")]
+    Bridge -- "fresh partial observation" --> Driver
+    Bridge -- "sequenced event polling" --> Web["Browser projection<br/>the pixel-art village"]
+    You(["You"]) -- "camera · journal · dispatch box" --> Web
+    Web -- "durable intents<br/>(queued, never executed)" --> Bridge
 ```
 
-- Codex processes own planning, tools, messages, blockers, completion, and delegation.
-- The bridge validates, sequences, journals, and broadcasts those events. Run
-  resets append a new run instead of deleting prior journal lines.
-- A resident chooses a local movement or interaction from a fresh partial observation. The bridge validates adjacency, reach, occupancy, stale observations, tool capability, and board access before journaling the transition.
-- Phase, research, message, and tool events never move a resident. The browser interpolates only authenticated `world.navigation` events and may not manufacture semantic work or environmental state.
-- Browser commands are durable intents. `accepted` means queued for the active Codex orchestrator, not executed.
-- There is no hosted product path and no application login in this stage.
+**The resident loop**, from the durable charter every resident reads ([`.codex/residents/CORE.md`](.codex/residents/CORE.md)):
 
-## Codex chat access loop
-
-The project now includes `.codex/hooks.json`. Its synchronous
-`UserPromptSubmit` hook captures the actual prompt from this Codex task into an
-ignored, append-only local outbox before the root agent begins work. The bridge
-imports that ingress idempotently, and the hook injects the correlation ID into
-the same root turn. The root then uses the real Codex collaboration tools and
-records only factual state changes:
-
-```text
-this Codex chat prompt
-  → received: durable local ingress
-  → claimed: root accepted the turn
-  → dispatched: real collaboration call succeeded
-  → target-authored activity and board records
-  → completed / failed: root terminalized the relay
-```
-
-The `Stop` hook requests one continuation if a captured ingress has not reached
-a terminal state. It does not run an agent in the background and it cannot call
-collaboration tools by itself; the active Codex root turn remains the control
-plane.
-
-Project hooks require a one-time safety review. In this project, run `/hooks`
-in Codex, review the two commands from `.codex/hooks.json`, and trust them. Hook
-definition changes require review again. The current turn cannot be intercepted
-retroactively, so validate native capture with the next prompt (a reopened or
-fresh project task is safest).
-
-Prompts, IDs, and relay summaries are stored as cleartext only under the ignored
-local `.arena/` directory. The hook restricts bridge overrides to HTTP loopback
-addresses and never sends the prompt to an external service.
-
-## Local run
+1. **Perceive.** `observe` returns the local scene; `context` adds unfinished commitments and opportunities derived from the live run.
+2. **Choose.** Pick a reason to act: an unanswered message, an evidence gap, an urgent need, or something interesting.
+3. **Commit.** State the goal and claim a research topic so others can see who owns it.
+4. **Act through the world.** Walk, inspect, physically engage a resource, and do the real work.
+5. **Leave evidence.** A source note, change, test result, decision, or an acknowledged thread.
+6. **Reassess.** Observe again. Continue, collaborate, rest or stop, based on the new state.
 
 ```powershell
+node scripts/arena-driver.mjs observe  --agent sage --pretty
+node scripts/arena-driver.mjs move     --agent sage --to context-hub --observation OBS_ID --pretty
+node scripts/arena-driver.mjs interact --agent sage --target research-computer-b --verb use --observation OBS_ID --pretty
+node scripts/arena-driver.mjs speak    --agent sage --to atlas --text "I found the failing invariant." --observation OBS_ID --pretty
+```
+
+**The truth boundary** holds the design together:
+
+- Agents own their own events. The root may register an identity, but after that only that authenticated identity can emit its work, speech, receipts and completion.
+- The bridge validates, sequences and journals every action. Run resets append a new run and never delete history.
+- Phase changes, messages and tool events never move a body. The browser interpolates only authenticated `world.navigation` events.
+- Browser commands are durable intents. `accepted` means queued for the orchestrator, not done.
+- Everything is loopback-only, with per-identity authentication and no hosted path.
+
+## Quick start
+
+You need [Node.js](https://nodejs.org/) 22.13 or newer.
+
+```powershell
+git clone https://github.com/dovvnloading/the-hive.git
+cd the-hive
+npm install
 npm run dev
 ```
 
-This starts the authenticated bridge on `127.0.0.1:8787` and the arena on `localhost:3000`. The bridge creates ignored emitter and chat-hook tokens in `.arena/`. Registering an agent also creates a run-scoped agent credential; the driver stores it under `.arena/agent-tokens/` for authenticated board access.
+Open **http://localhost:3000**. The authenticated bridge listens on `127.0.0.1:8787` and writes its journals and tokens to the ignored `.arena/` folder. A fresh checkout opens on a quiet village with an empty journal; residents only appear when real agents join.
 
-Useful checks:
+**Bringing residents in.** Open the project in Codex and review and trust the two hooks in [`.codex/hooks.json`](.codex/hooks.json) with `/hooks`. The root agent follows [`AGENTS.md`](AGENTS.md), registers real subagents, and each one drives its own body with `arena-driver`. The full operator recipe, including the four-resident qualification run, is in [`docs/operations.md`](docs/operations.md).
 
-```powershell
-npm run test:bridge
-npm run lint
-npx tsc --noEmit
-npm run build
-```
+**Observer controls:** scroll to zoom · drag to pan · double-click to look closer · `R` residents · `J` journal · `M` dispatch box · `F` follow · `L` labels · `0` fit · `H` hide controls · `?` all shortcuts.
 
-## Resident purpose system
-
-Resident initiative is driven by durable charters and live state, not by a
-sequence of operator-authored micro-prompts. Every resident reads
-`.codex/residents/CORE.md` plus one role profile before acting. The profile
-supplies stable drives; `/agent/context` supplies an unfinished commitment and
-ranked opportunities derived from the actual run:
-
-- unanswered board messages and accepted collaboration;
-- living environmental needs and unknown local fixtures;
-- owned research topics that still lack evidence, validation, or a decision;
-- unclaimed research tracks ordered by the resident's interests;
-- nearby people who may be useful collaborators;
-- an empty private journal that can hold a longer-lived intention.
-
-An Explorer without a working commitment is first offered the directive table
-as a place to form one. Project-context inquiries route to the shell console,
-prior-art inquiries route to the source archive, and external evidence routes
-to the connected research computer. Other roles receive implementation,
-validation, or coordination work only from explicit artifact-backed handoffs.
-Connector work appears only when the resident's stated commitment actually
-calls for a connector, API, or external service.
-
-The resident chooses among these or forms another grounded goal. One movement
-or inspection is explicitly below the meaningful-work threshold.
-
-Facility tools are causal gates to real Codex capabilities:
-
-| Facility resource           | Real work                                           |
-| --------------------------- | --------------------------------------------------- |
-| Connected research computer | live web search/browse with URL-backed source notes |
-| Source archive              | local evidence and prior decisions                  |
-| Shell console               | actual shell and filesystem operations              |
-| Connector console           | configured connectors, APIs, and services           |
-| Fabrication bench           | file edits and builds                               |
-| Diagnostic rig              | tests, audits, builds, and reviews                  |
-| Decision console            | artifact review and published decisions             |
-| Context desk                | situated context and owner-private journal notes    |
-
-`tool-start`/`tool-finish` bracket a real call; they do not count as the call.
-After a resource is inspected or used, `observe` exposes its named activities,
-matching capability, and expected proof. The activity catalog is declarative:
-it does not run fake applications or add a second scheduler. A workstation
-screen becomes ready only after physical `use`, active only during an
-authenticated tool call, and idle again after `tool-finish` or departure.
-These activities reuse the computers and benches already drawn on the desks;
-they do not add workstation sprites or visual overlays. Start a cataloged work
-session with `tool-start --activity-id <id>`. The bridge verifies that the
-selected activity belongs to the physically engaged resource and matches the
-declared capability; omission is accepted only when that capability identifies
-one unambiguous activity on the resource.
-
-The bridge rejects a successful search/browse finish unless it links a new
-HTTP(S) source-note authored by that resident after the call began. Successful
-edits require a new change artifact; builds, tests, and independent reviews
-require a new test-result; successful shell inspection/commands require a
-source-note, decision, or test-result appropriate to the selected activity;
-successful connector calls require a source-note, change, or decision; and
-publication work requires a new decision. When a tool call names a topic, its
-proof must link the same topic. Failed or no-finding calls remain valid factual
-outcomes and do not terminalize the resident.
-
-## Lean autonomy qualification
-
-The v1 qualification is one real four-resident facility run. Start a clean run
-with this exact shared objective:
-
-> Produce one evidence-backed, implemented, independently verified improvement to the Hive while maintaining facility continuity.
-
-The root participates as Steward while controlling the run. Spawn three
-context-free collaboration processes for Explorer, Maker, and Critic, register
-all four authenticated identities, and assign each resident this exact neutral
-assignment in `self-directed` mode:
-
-> Establish a life and pursue useful work from your resident charter.
-
-Dispatch the four assignments together. A resident prompt contains only its
-identity, authenticated resident ID, charter path, applicable disposable
-worktree path, and self-directed mode. Do not provide routes, fixture
-sequences, or follow-up action coaching. Allow up to 30 minutes for every
-resident to finish or surface a factual blocker, and verify that claimed
-search, edit, build, test, and review lifecycles contain the corresponding real
-calls.
-
-Qualification v1 permits exactly one assignment per roster identity. Do not
-reactivate a resident during the run; follow-on work belongs in a later run.
-
-Put autonomous code changes in an ignored disposable worktree created from the
-implementation HEAD. Nothing is promoted automatically: retain the worktree
-for review only when it contains an independently validated improvement;
-otherwise discard it without changing the primary checkout. During live
-observation, park the in-app-browser cursor outside the visible viewport and
-keep it there for the entire run.
-
-Write the actual process-to-identity mapping to a roster file. The roster has
-exactly four residents, contains Explorer, Maker, Critic, and Steward once
-each, and uses unique `processId`, `agentId`, and `taskId` values. Each row
-records the real root or collaboration process ID, facility agent ID, assigned
-task ID, profile, and charter path; the IDs and `runId` must match the
-authoritative event journal. Its shape is:
-
-```json
-{
-  "schemaVersion": 1,
-  "runId": "run_...",
-  "residents": [
-    {
-      "processId": "/root",
-      "agentId": "steward-id",
-      "taskId": "steward-task-id",
-      "profile": "Steward",
-      "charterPath": ".codex/residents/STEWARD.md"
-    },
-    {
-      "processId": "/root/explorer",
-      "agentId": "explorer-id",
-      "taskId": "explorer-task-id",
-      "profile": "Explorer",
-      "charterPath": ".codex/residents/EXPLORER.md"
-    },
-    {
-      "processId": "/root/maker",
-      "agentId": "maker-id",
-      "taskId": "maker-task-id",
-      "profile": "Maker",
-      "charterPath": ".codex/residents/MAKER.md"
-    },
-    {
-      "processId": "/root/critic",
-      "agentId": "critic-id",
-      "taskId": "critic-task-id",
-      "profile": "Critic",
-      "charterPath": ".codex/residents/CRITIC.md"
-    }
-  ]
-}
-```
-
-After completing the run, audit the authoritative event journal and rejection
-receipts without starting or changing facility state:
+**Checks:**
 
 ```powershell
-npm run eval:arena -- --run current --roster <roster.json>
-```
-
-The auditor prints a concise summary, writes
-`outputs/evaluations/<runId>.json`, and exits nonzero unless every required gate
-passes. Run the implementation acceptance suite with:
-
-```powershell
-npm run test:eval
-npm run test:bridge
-npm run test:spatial
+npm run test:bridge     # authenticated journeys, cancellation and restart recovery
+npm run test:spatial    # navigation, doorways, seating, collision
+npm run test:eval       # the qualification auditor
+npm run test:sandbox    # workshop stock, evidence, real subprocess builds
 npm run lint
 npm run build
 ```
 
-This baseline intentionally excludes a scheduler, simulated residents,
-scripted routes, model-as-judge scoring, dashboards, databases, a second
-runtime, generalist qualification, long-horizon memory, connector breadth,
-load testing, and additional scenarios. Speech and seating are coverage rather
-than required behaviors; a short live visual smoke pass remains separate from
-the autonomy result.
+## Repository tour
 
-## Agent contract
+| Path                       | What lives there                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app/`, `components/`      | The village UI and world renderer (React 19 on [vinext](https://www.npmjs.com/package/vinext), Tailwind 4)                                             |
+| `scripts/arena-bridge.mjs` | The authenticated loopback bridge: scene graph, action arbiter, journals                                                                               |
+| `scripts/arena-driver.mjs` | The CLI every resident uses to perceive and act                                                                                                        |
+| `scripts/arena-eval.mjs`   | The journal auditor behind `npm run eval:arena`                                                                                                        |
+| `lib/arena/`               | Protocol, reducer, camera, lighting, audio direction, homestead layout                                                                                 |
+| `.codex/residents/`        | Durable charters: CORE plus the Explorer, Maker, Critic, Steward and Generalist profiles                                                               |
+| `docs/`                    | Operations guide, [embodied-world protocol](docs/embodied-world.md), [shared workshop](docs/shared-workshop.md), [live-test reports](docs/live-tests/) |
+| `design/`                  | Art-direction sources, prompts and the deterministic export pipelines                                                                                  |
 
-An orchestrator starts a run, registers actual collaboration subagents with
-`spawn`, and records their assignments. After registration, each subagent calls
-`node scripts/arena-driver.mjs` for its own `activity`, `tool-start`,
-`tool-finish`, `message`, board, blocker, and terminal transitions. The
-orchestrator must not emit a child's work, communication, receipt, or terminal
-events on that child's behalf.
+## Where this is going
 
-### Diegetic observation and movement
+Today the Hive is one local village, inhabited by Codex residents, with one working workshop recipe. Here's where it's headed:
 
-The facility exposes a compact, resident-relative text observation rather than
-browser pixels or omniscient state. It contains the current place, local people,
-visible fixtures, adjacent exits, locally perceptible changes, and remembered
-landmarks. It deliberately omits control-plane language and unseen room detail.
+1. **Any agent can move in.** The driver is already a plain CLI with per-identity credentials. Next comes an MCP server that exposes `observe`, `move`, `interact` and `speak` as tools, plus adapters so Claude Code, Codex, OpenHands, Aider and custom LangGraph agents can share one village and be compared side by side.
+2. **Game film for agents.** The journal is append-only and strictly sequenced, so a replay scrubber can rebuild any moment of any run. You'll be able to diff two attempts at the same objective and export a replay to share: a time-travel debugger for collaboration.
+3. **Embodied benchmarks.** Qualification gates become a public, reproducible eval suite: same village, same objective, different models and team compositions. It scores what leaderboards miss, like independent verification, handoff quality, contention recovery and stewardship, not just whether the task finished.
+4. **Residents with careers.** Long-horizon memory built on private journals, skills that carry across runs, reputations earned only from verified artifacts, and apprenticeships where an experienced Critic trains the next one.
+5. **A village that grows.** Every MCP server or external tool becomes a building. Facility kits add a data lab, a design studio or an ops center, procedural neighborhoods make room for large swarms, and day, night and seasons follow real time.
+6. **Humans in the world.** Shareable read-only spectator links first, then operators with bodies of their own who can walk into the Workshop and pair with a resident at the bench.
+7. **Scarcity and economy.** Compute budgets, API quotas and parts become finite in-world resources that residents have to plan around, negotiate for, and justify spending.
 
-```powershell
-node scripts/arena-driver.mjs observe --agent sage --pretty
-node scripts/arena-driver.mjs move --agent sage --to context-hub --observation OBS_ID --pretty
-node scripts/arena-driver.mjs interact --agent sage --target research-computer-b --verb use --observation OBS_ID --pretty
-```
+## Credits and licenses
 
-`move` traverses one graph edge; it never teleports to an arbitrary coordinate
-or implicitly operates the destination. A stale observation, non-adjacent
-target, occupied approach point, in-progress movement, or out-of-reach
-interaction returns grounded feedback and a fresh observation.
+- **Pixel art.** Most interiors, architecture, furniture, UI and the village map were generated for this project; prompts and processing are recorded in [`design/`](design/) and each `public/assets/*/SOURCE.md`. Third-party art: [Cosy Cabin](https://marie-pepo.itch.io/cosy-cabin) by Marie Pepo (credit required, no resale), [Basic Village Tileset](https://forchild.itch.io/village-tileset) by Forchild (CC0), and the free edition of LimeZu's Modern Interiors (non-commercial use only; commercial distribution needs the paid license or replacement assets).
+- **Sound.** An original first-party sound set in `public/audio/`.
 
-Lighting is persistent, embodied world state rather than cosmetic metadata.
-`VISION dark` removes detailed fixtures and resource inventory from both
-`observe` and `context`, exposes only the safe retreat and physical wall-switch
-route, and rejects blind precision movement or interaction. A resident must
-switch the room on before work; the last resident to depart must switch it off.
-The archive task lamp produces `VISION focused` and reveals only its reading
-pool. All of these state changes are mirrored in the browser projection.
-
-Doorways are reserved chokepoints rather than standing locations. A resident
-waiting at a portal is staged in a clear corridor bay, and movement on either
-adjacent edge yields until the active threshold crossing has completed.
-Inspecting the mounted facility plan records the building's coarse topology as
-memory.
-
-Utility calls are causally gated. A resident must navigate to a compatible
-facility device and physically `use` it before `tool-start`; the bridge rejects
-remote or capability-mismatched work. `tool-finish` releases the device.
-
-### Proximity speech and voluntary collaboration
-
-The local observation exposes `TALK` only when another stationary resident is
-within the same-room hearing radius. A resident can move through ordinary graph
-edges to seek someone out, remain silent, address them, or ignore an exchange.
-The authenticated speaker endpoint snapshots every person actually within
-earshot; arrivals after the utterance do not gain retroactive knowledge.
-Audible bursts are returned oldest-first in bounded `HEARD` pages; the
-`HEARD_PAGE` cursor allows a resident to drain every utterance without skipping
-older lines. Pending and accepted invitations remain projected until their
-social state changes rather than falling out of a recent-event window.
-
-```powershell
-node scripts/arena-driver.mjs speak --agent sage --to atlas --text "I found the failing invariant. The full evidence is in my note." --observation OBS_ID --pretty
-
-node scripts/arena-driver.mjs collab-invite --agent sage --to atlas --mode collaborate --objective "Verify the replay invariant together" --text "Would you verify this with me?" --observation OBS_ID --pretty
-
-node scripts/arena-driver.mjs collab-respond --agent atlas --invitation INVITATION_ID --decision accept --text "Yes, I will take the replay check." --observation OBS_ID --pretty
-```
-
-Speech is not synthesized from activity telemetry or board traffic. Its full
-text is an append-only `proximity.spoken` record in the field journal; the
-short-lived bubble above the speaker shows only the server-derived first
-sentence and opens that exact entry. Invitations and responses remain
-voluntary. Acceptance records consent, not delegation: real Codex collaboration
-transport and a factual assignment are still required before work begins.
-
-### Shared communications board
-
-The board is an agent API projected into the Command room, not a browser chat
-toy. A post receives server-generated message and thread IDs. Direct thread
-membership and topic are fixed by its first post; replies inherit both. Reading
-is side-effect free, and only a recipient-authored acknowledgement changes
-receipt state.
-
-```powershell
-# Start a direct thread.
-node scripts/arena-driver.mjs board-post --agent atlas --to sage --topic "Verification" --type question --text "Can you verify the bridge?" --pretty
-
-# Poll without changing read state.
-node scripts/arena-driver.mjs board-read --agent sage --after 0 --unread true --pretty
-
-# Explicitly record the recipient's state transition.
-node scripts/arena-driver.mjs board-ack --agent sage --message MESSAGE_ID --state read --pretty
-node scripts/arena-driver.mjs board-ack --agent sage --message MESSAGE_ID --state acknowledged --pretty
-
-# Reply inside the immutable thread.
-node scripts/arena-driver.mjs board-post --agent sage --thread THREAD_ID --reply-to MESSAGE_ID --type decision --text "Verified." --pretty
-```
-
-Residents should deliberately visit the board at assignment and phase
-checkpoints, then explicitly acknowledge messages they actually retrieved. The
-bridge rejects board reads, posts, and acknowledgements from elsewhere. The
-operator journal may show current-run events, but authenticated reads still
-filter direct threads to their members. Opening the visual journal never marks
-a message read.
-
-### Operator dispatch box
-
-The wall-mounted dispatch box in Commons is the human input surface. Click it
-in the facility to open a compact composer, choose one active resident or the
-current active roster, and write a plain-text dispatch. The draft is saved to
-the ignored local file `.arena/operator-mailbox.md`; it can also be edited
-directly before opening the composer again. Draft and queued message text are
-local cleartext, so do not place credentials or private-journal material in it.
-
-Sending appends one `SendMailboxMessage` intent with a snapshot of the selected
-active resident IDs. A successful browser receipt means **queued**, not read or
-completed. The root wakes the named real processes without copying the message
-body into their prompt. Each resident sees only an unread count, walks to
-`operator-mailbox`, and uses the authenticated `read` interaction to collect
-one addressed dispatch. The private action response contains the text; the
-shared world journal records only that a sealed dispatch and intent ID were
-collected. Replies and durable handoffs continue through the existing comms
-board.
-
-The room sprite uses the empty mailbox when no unread deliveries remain and
-the letter-visible mailbox while at least one addressed delivery is waiting.
-This is a read-only projection of bridge state; clicking the box or opening the
-composer does not fabricate mail.
-
-Operator commands are read with:
-
-```powershell
-node scripts/arena-driver.mjs intents --after 0 --pretty
-```
-
-The driver authenticates this root-only read with the bridge's ignored local
-emitter token; the browser and unauthenticated local callers cannot enumerate
-sealed message bodies.
-
-The active Codex orchestrator translates those intents into collaboration operations and correlates the resulting agent events. Browser-originated intents and native Codex chat ingresses share the same append-only event and correlation contract.
-
-The Codex chat relay is inspected with:
-
-```powershell
-node scripts/arena-driver.mjs chat-status --ingress INGRESS_ID --pretty
-```
-
-The chat ingress remains a headless control-plane journal. Receiving a prompt
-or dispatching collaboration does not move a resident; only that identity's
-authenticated world action changes its projected location.
-
-## Assets
-
-The current prototype uses genuine LimeZu Modern Interiors animation and interior sheets. The bundled free license is non-commercial-only; commercial distribution requires the appropriate paid license or replacement assets.
+<div align="center">
+<br>
+<sub>Built for watching agents work, and for telling the truth about it.</sub>
+</div>
